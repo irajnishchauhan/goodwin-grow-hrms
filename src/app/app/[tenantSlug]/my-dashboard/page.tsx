@@ -45,6 +45,9 @@ export default function EmployeeSelfServiceDashboard() {
   const [payslips, setPayslips] = useState<SalarySlip[]>([]);
   const [documents, setDocuments] = useState<EmployeeDocument[]>([]);
   
+  // Live ticking clock
+  const [currentTime, setCurrentTime] = useState<Date | null>(null);
+
   // Punch Clock State
   const [isClockedIn, setIsClockedIn] = useState(false);
   const [clockInTime, setClockInTime] = useState<string | null>(null);
@@ -59,9 +62,52 @@ export default function EmployeeSelfServiceDashboard() {
   const [leaveEndDate, setLeaveEndDate] = useState('');
   const [leaveReason, setLeaveReason] = useState('');
   const [leaveSubmitting, setLeaveSubmitting] = useState(false);
+  const [leaveFeedback, setLeaveFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   // Payslip Modal State
   const [viewingSlip, setViewingSlip] = useState<SalarySlip | null>(null);
+
+  // Live timer tick
+  useEffect(() => {
+    setCurrentTime(new Date());
+    const timer = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // Standard statutory fallback leave types
+  const fallbackLeaveTypes: LeaveType[] = [
+    {
+      id: `lt-${tenantSlug}-cl`,
+      tenantId: tenant?.id || '',
+      name: 'Casual Leave (CL)',
+      code: 'CL',
+      daysPerYear: 12,
+      color: '#3B82F6',
+      isPaid: true
+    },
+    {
+      id: `lt-${tenantSlug}-sl`,
+      tenantId: tenant?.id || '',
+      name: 'Sick / Medical Leave (SL)',
+      code: 'SL',
+      daysPerYear: 10,
+      color: '#EF4444',
+      isPaid: true
+    },
+    {
+      id: `lt-${tenantSlug}-pl`,
+      tenantId: tenant?.id || '',
+      name: 'Privilege Leave (PL)',
+      code: 'PL',
+      daysPerYear: 18,
+      color: '#10B981',
+      isPaid: true
+    }
+  ];
+
+  const activeLeaveTypes = leaveTypes.length > 0 ? leaveTypes : fallbackLeaveTypes;
 
   // Fetch all initial data
   const loadDashboardData = async () => {
@@ -72,7 +118,7 @@ export default function EmployeeSelfServiceDashboard() {
       
       if (empJson.success) {
         setTenant(empJson.data.tenant);
-        const emps: Employee[] = empJson.data.employees;
+        const emps: Employee[] = empJson.data.employees || [];
         setEmployees(emps);
         
         // Find matching employee for current user
@@ -103,7 +149,7 @@ export default function EmployeeSelfServiceDashboard() {
 
           matchedEmp = {
             id: `emp-user-${user.id || 'current'}`,
-            tenantId: tenant?.id || 'tenant-goodwin-batteries-fleet',
+            tenantId: empJson.data.tenant?.id || 'tenant-goodwin-batteries-fleet',
             userId: user.id,
             employeeCode: isOwnerUser ? 'GB-OWNER' : 'GB-1001',
             firstName: fName,
@@ -121,8 +167,8 @@ export default function EmployeeSelfServiceDashboard() {
             employmentType: 'FULL_TIME',
             status: 'ACTIVE',
             monthlySalary: isOwnerUser ? 350000 : 50000,
-            workLocation: 'Bangalore Headquarters',
-            shiftName: 'General Factory Shift',
+            workLocation: 'Indore Facility',
+            shiftName: 'General Day Shift',
             loginStatus: 'ACCEPTED',
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString()
@@ -151,17 +197,20 @@ export default function EmployeeSelfServiceDashboard() {
       const attJson = await attRes.json();
       if (attJson.success) {
         const today = new Date().toISOString().split('T')[0];
-        const todayRec = attJson.data.records.find(
+        const records = attJson.data?.records || [];
+        const todayRec = records.find(
           (r: any) => r.employeeId === empId && r.date === today
         );
+        
         if (todayRec) {
-          setIsClockedIn(true);
-          setClockInTime(todayRec.clockInTime);
+          // If clocked out, they are no longer clocked in
+          setIsClockedIn(!todayRec.clockOutTime);
+          setClockInTime(todayRec.clockInTime || null);
           setClockOutTime(todayRec.clockOutTime || null);
         } else {
-          // Default demo clocked in status
-          setIsClockedIn(true);
-          setClockInTime('09:02 AM');
+          // Not punched today
+          setIsClockedIn(false);
+          setClockInTime(null);
           setClockOutTime(null);
         }
       }
@@ -170,12 +219,16 @@ export default function EmployeeSelfServiceDashboard() {
       const leavesRes = await fetch(`/api/tenants/${tenantSlug}/leaves`);
       const leavesJson = await leavesRes.json();
       if (leavesJson.success) {
-        setLeaveTypes(leavesJson.data.leaveTypes || []);
-        if (leavesJson.data.leaveTypes?.length > 0 && !selectedLeaveTypeId) {
-          setSelectedLeaveTypeId(leavesJson.data.leaveTypes[0].id);
+        const fetchedTypes = leavesJson.data?.leaveTypes || [];
+        setLeaveTypes(fetchedTypes);
+        
+        const effectiveTypes = fetchedTypes.length > 0 ? fetchedTypes : fallbackLeaveTypes;
+        if (effectiveTypes.length > 0) {
+          setSelectedLeaveTypeId((prev) => prev || effectiveTypes[0].id);
         }
+
         setLeaveApps(
-          (leavesJson.data.applications || []).filter((a: LeaveApplication) => a.employeeId === empId)
+          (leavesJson.data?.applications || []).filter((a: LeaveApplication) => a.employeeId === empId)
         );
       }
 
@@ -183,7 +236,7 @@ export default function EmployeeSelfServiceDashboard() {
       const payRes = await fetch(`/api/tenants/${tenantSlug}/payroll`);
       const payJson = await payRes.json();
       if (payJson.success) {
-        const empSlips = (payJson.data.slips || []).filter((s: SalarySlip) => s.employeeId === empId);
+        const empSlips = (payJson.data?.slips || []).filter((s: SalarySlip) => s.employeeId === empId);
         setPayslips(empSlips);
       }
 
@@ -191,7 +244,7 @@ export default function EmployeeSelfServiceDashboard() {
       const docRes = await fetch(`/api/tenants/${tenantSlug}/documents?employeeId=${empId}`);
       const docJson = await docRes.json();
       if (docJson.success) {
-        setDocuments(docJson.data.documents || []);
+        setDocuments(docJson.data?.documents || []);
       }
     } catch (err) {
       console.error('Error fetching employee sub-resources', err);
@@ -206,6 +259,11 @@ export default function EmployeeSelfServiceDashboard() {
 
   const handleSwitchEmployee = (empId: string) => {
     setSelectedEmpId(empId);
+    setPunchMessage(null);
+    setIsClockedIn(false);
+    setClockInTime(null);
+    setClockOutTime(null);
+    
     const emp = employees.find((e) => e.id === empId);
     if (emp) {
       setCurrentEmp(emp);
@@ -231,21 +289,26 @@ export default function EmployeeSelfServiceDashboard() {
 
       const json = await res.json();
       if (json.success) {
+        const timeNow = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         if (action === 'IN') {
           setIsClockedIn(true);
-          setClockInTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
-          setPunchMessage('Successfully punched IN for your shift.');
+          setClockInTime(timeNow);
+          setPunchMessage(`Successfully punched IN at ${timeNow}.`);
         } else {
           setIsClockedIn(false);
-          setClockOutTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
-          setPunchMessage('Successfully punched OUT. Have a great evening!');
+          setClockOutTime(timeNow);
+          setPunchMessage(`Successfully punched OUT at ${timeNow}. Have a great evening!`);
         }
+        // Refresh attendance records
+        await loadEmployeeDetails(currentEmp.id);
+      } else {
+        setPunchMessage(json.error || 'Failed to record punch.');
       }
     } catch (err) {
-      setPunchMessage('Failed to record punch.');
+      setPunchMessage('Failed to record punch. Please check your network connection.');
     } finally {
       setPunchLoading(false);
-      setTimeout(() => setPunchMessage(null), 4000);
+      setTimeout(() => setPunchMessage(null), 5000);
     }
   };
 
@@ -253,18 +316,26 @@ export default function EmployeeSelfServiceDashboard() {
     e.preventDefault();
     if (!currentEmp) return;
     setLeaveSubmitting(true);
+    setLeaveFeedback(null);
 
     try {
       const start = new Date(leaveStartDate);
       const end = new Date(leaveEndDate);
+      if (end < start) {
+        setLeaveFeedback({ type: 'error', message: 'End date cannot be earlier than start date.' });
+        setLeaveSubmitting(false);
+        return;
+      }
+
       const diffDays = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / (1000 * 3600 * 24)) + 1);
+      const targetLeaveTypeId = selectedLeaveTypeId || activeLeaveTypes[0]?.id;
 
       const res = await fetch(`/api/tenants/${tenantSlug}/leaves`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           employeeId: currentEmp.id,
-          leaveTypeId: selectedLeaveTypeId,
+          leaveTypeId: targetLeaveTypeId,
           startDate: leaveStartDate,
           endDate: leaveEndDate,
           totalDays: diffDays,
@@ -274,14 +345,16 @@ export default function EmployeeSelfServiceDashboard() {
 
       const json = await res.json();
       if (json.success) {
-        setLeaveModalOpen(false);
         setLeaveReason('');
         setLeaveStartDate('');
         setLeaveEndDate('');
+        setLeaveModalOpen(false);
         await loadEmployeeDetails(currentEmp.id);
+      } else {
+        setLeaveFeedback({ type: 'error', message: json.error || 'Failed to submit leave request.' });
       }
     } catch (err) {
-      console.error(err);
+      setLeaveFeedback({ type: 'error', message: 'Network error submitting leave request.' });
     } finally {
       setLeaveSubmitting(false);
     }
@@ -289,10 +362,10 @@ export default function EmployeeSelfServiceDashboard() {
 
   if (loading || !currentEmp) {
     return (
-      <div className="flex items-center justify-center min-h-[60vh] text-slate-400">
-        <div className="flex items-center gap-2">
-          <div className="w-5 h-5 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
-          <span className="text-sm">Loading Employee Self-Service Workspace...</span>
+      <div className="flex items-center justify-center min-h-[60vh] text-slate-500">
+        <div className="flex items-center gap-3 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+          <div className="w-5 h-5 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin"></div>
+          <span className="text-sm font-semibold text-slate-700">Loading Employee Self-Service Workspace...</span>
         </div>
       </div>
     );
@@ -300,32 +373,34 @@ export default function EmployeeSelfServiceDashboard() {
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto pb-12 font-sans">
-      {/* Top Banner / Persona Bar */}
-      <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-2xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400 font-bold text-lg shadow-inner">
+      {/* Top Banner / Persona Bar (Executive Light Theme) */}
+      <div className="p-4 sm:p-5 rounded-2xl bg-white border border-slate-200/90 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex items-center gap-3.5">
+          <div className="w-12 h-12 rounded-2xl bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-700 font-bold text-lg shadow-sm">
             {(user?.name || currentEmp.firstName).split(' ').map((n) => n[0]).slice(0, 2).join('')}
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-lg sm:text-xl font-extrabold text-white">
-                Welcome back, {user?.name || `${currentEmp.firstName} ${currentEmp.lastName}`}
+              <h1 className="text-lg sm:text-xl font-extrabold text-slate-900">
+                Welcome back, {currentEmp.firstName} {currentEmp.lastName}
               </h1>
-              <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[10px] font-semibold">
+              <span className="px-2.5 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-[10px] font-bold">
                 Self-Service Portal
               </span>
             </div>
-            <p className="text-xs text-slate-400 mt-0.5">
-              {currentEmp.designationTitle} &bull; {currentEmp.departmentName} &bull;{' '}
-              <span className="font-mono text-slate-300">{currentEmp.employeeCode}</span>
+            <p className="text-xs text-slate-500 mt-0.5">
+              <span className="font-semibold text-slate-700">{currentEmp.designationTitle}</span> &bull; {currentEmp.departmentName} &bull;{' '}
+              <span className="font-mono text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded text-[11px] font-semibold">
+                {currentEmp.employeeCode}
+              </span>
             </p>
           </div>
         </div>
 
-        {/* Switch persona widget for presentation (Admins & Managers only) */}
+        {/* Switch persona widget for presentation (Admins & Managers) */}
         {isEmployeeOnly ? (
-          <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-xs text-slate-300">
-            <ShieldCheck className="w-4 h-4 text-emerald-400" />
+          <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-700 font-medium">
+            <ShieldCheck className="w-4 h-4 text-emerald-600" />
             <span>Self-Service Verified</span>
           </div>
         ) : (
@@ -334,12 +409,12 @@ export default function EmployeeSelfServiceDashboard() {
               <span className="block text-[10px] uppercase tracking-wider text-slate-500 font-bold">
                 Switch Employee View
               </span>
-              <span className="text-xs text-slate-300 font-mono">Goodwin Batteries</span>
+              <span className="text-xs text-slate-800 font-semibold">{tenant?.name || 'Goodwin Batteries'}</span>
             </div>
             <select
               value={selectedEmpId}
               onChange={(e) => handleSwitchEmployee(e.target.value)}
-              className="px-3 py-1.5 text-xs rounded-xl bg-slate-900 border border-slate-700 text-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-500/40 cursor-pointer"
+              className="px-3 py-1.5 text-xs font-medium rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-300 text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500/30 cursor-pointer shadow-sm transition-colors"
             >
               {employees.map((emp) => (
                 <option key={emp.id} value={emp.id}>
@@ -354,34 +429,49 @@ export default function EmployeeSelfServiceDashboard() {
       {/* Main Grid: Punch Clock & Leave Balances */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Attendance Punch Clock Card */}
-        <div className="lg:col-span-1 p-6 rounded-2xl bg-gradient-to-b from-slate-900 to-slate-950 border border-slate-800 shadow-xl flex flex-col justify-between space-y-6">
+        <div className="lg:col-span-1 p-6 rounded-2xl bg-white border border-slate-200/90 shadow-sm flex flex-col justify-between space-y-6">
           <div>
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
-                <Clock className="w-4 h-4 text-amber-400" />
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
+                <Clock className="w-4 h-4 text-amber-600" />
                 <span>Daily Punch & Shift</span>
               </span>
-              <span className="text-[11px] px-2 py-0.5 rounded-md bg-slate-800 text-slate-300 font-mono">
-                {currentEmp.shiftName || 'General Factory Shift'}
+              <span className="text-[11px] px-2.5 py-0.5 rounded-md bg-slate-100 border border-slate-200 text-slate-700 font-mono font-medium">
+                {currentEmp.shiftName || 'General Day Shift'}
               </span>
             </div>
 
-            <div className="mt-4 text-center py-5 bg-slate-950/60 rounded-xl border border-slate-800/80">
-              <div className="text-3xl font-extrabold text-white tracking-tight font-mono">
-                {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+            <div className="mt-4 text-center py-5 bg-slate-50/80 rounded-xl border border-slate-200/80">
+              <div className="text-3xl font-black text-slate-900 tracking-tight font-mono">
+                {currentTime ? currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '--:--:--'}
               </div>
-              <p className="text-xs text-slate-400 mt-1">
-                {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' })}
+              <p className="text-xs text-slate-500 mt-1 font-medium">
+                {currentTime ? currentTime.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' }) : ''}
               </p>
 
-              <div className="mt-4 inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                <span>{isClockedIn ? `Clocked In at ${clockInTime || '09:02 AM'}` : 'Not Clocked In'}</span>
+              {/* Dynamic Punch Status Badge */}
+              <div className="mt-4 inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-bold border">
+                {isClockedIn ? (
+                  <span className="inline-flex items-center gap-2 text-emerald-700 bg-emerald-50 border-emerald-200">
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                    <span>Clocked In at {clockInTime || 'Just Now'}</span>
+                  </span>
+                ) : clockOutTime ? (
+                  <span className="inline-flex items-center gap-2 text-blue-700 bg-blue-50 border-blue-200">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-blue-600" />
+                    <span>Shift Complete (Punched Out at {clockOutTime})</span>
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-2 text-slate-600 bg-slate-100 border-slate-200">
+                    <span className="w-2.5 h-2.5 rounded-full bg-slate-400"></span>
+                    <span>Not Clocked In Today</span>
+                  </span>
+                )}
               </div>
             </div>
 
             {punchMessage && (
-              <div className="mt-3 p-2.5 rounded-xl bg-emerald-950/60 border border-emerald-800/50 text-emerald-300 text-xs text-center animate-fade-in">
+              <div className="mt-3 p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-medium text-center animate-fade-in shadow-sm">
                 {punchMessage}
               </div>
             )}
@@ -391,9 +481,9 @@ export default function EmployeeSelfServiceDashboard() {
             <div className="grid grid-cols-2 gap-3">
               <button
                 type="button"
-                disabled={isClockedIn || punchLoading}
+                disabled={isClockedIn || punchLoading || Boolean(clockOutTime)}
                 onClick={() => handlePunch('IN')}
-                className="py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs transition-all shadow-md shadow-emerald-900/30 disabled:opacity-40 disabled:hover:bg-emerald-600 flex items-center justify-center gap-1.5"
+                className="py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs transition-all shadow-sm disabled:opacity-40 disabled:hover:bg-emerald-600 flex items-center justify-center gap-1.5 cursor-pointer disabled:cursor-not-allowed"
               >
                 <CheckCircle2 className="w-4 h-4" />
                 <span>Punch In</span>
@@ -403,82 +493,84 @@ export default function EmployeeSelfServiceDashboard() {
                 type="button"
                 disabled={!isClockedIn || punchLoading}
                 onClick={() => handlePunch('OUT')}
-                className="py-3 px-4 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs transition-all shadow-md shadow-rose-900/30 disabled:opacity-40 disabled:hover:bg-rose-600 flex items-center justify-center gap-1.5"
+                className="py-3 px-4 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs transition-all shadow-sm disabled:opacity-40 disabled:hover:bg-rose-600 flex items-center justify-center gap-1.5 cursor-pointer disabled:cursor-not-allowed"
               >
                 <Clock className="w-4 h-4" />
                 <span>Punch Out</span>
               </button>
             </div>
 
-            <div className="text-[11px] text-slate-500 text-center">
+            <div className="text-[11px] text-slate-500 text-center font-medium">
               Shift: 09:00 AM – 06:00 PM &bull; Grace Period: 15 min &bull; Biometric auto-synced
             </div>
           </div>
         </div>
 
         {/* Leave Balances Ledger */}
-        <div className="lg:col-span-2 p-6 rounded-2xl bg-slate-900 border border-slate-800 shadow-xl flex flex-col justify-between space-y-6">
+        <div className="lg:col-span-2 p-6 rounded-2xl bg-white border border-slate-200/90 shadow-sm flex flex-col justify-between space-y-6">
           <div>
             <div className="flex items-center justify-between mb-4">
               <div>
-                <h2 className="text-base font-bold text-white flex items-center gap-2">
-                  <Calendar className="w-4 h-4 text-emerald-400" />
+                <h2 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
+                  <Calendar className="w-4 h-4 text-emerald-600" />
                   Leave Balances & Quota
                 </h2>
-                <p className="text-xs text-slate-400">Available annual leaves for {tenant?.financialYear || 'FY 2026-27'}</p>
+                <p className="text-xs text-slate-500 font-medium">
+                  Available annual leaves for {tenant?.financialYear || 'January - December'}
+                </p>
               </div>
 
               <button
-                onClick={() => setLeaveModalOpen(true)}
-                className="px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-semibold text-xs transition-all shadow-md shadow-amber-900/30 flex items-center gap-1.5"
+                type="button"
+                onClick={() => {
+                  setLeaveFeedback(null);
+                  setLeaveModalOpen(true);
+                }}
+                className="px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs transition-all shadow-sm flex items-center gap-1.5 cursor-pointer"
               >
                 <Send className="w-3.5 h-3.5" />
                 <span>Apply for Leave</span>
               </button>
             </div>
 
+            {/* Dynamic Leave Types Balances */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div className="p-4 rounded-xl bg-slate-950/70 border border-slate-800 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-slate-400 font-medium">Casual Leave (CL)</span>
-                  <span className="w-2.5 h-2.5 rounded-full bg-blue-500"></span>
-                </div>
-                <div className="flex items-baseline gap-1.5">
-                  <span className="text-2xl font-black text-white">10</span>
-                  <span className="text-xs text-slate-500">/ 12 days left</span>
-                </div>
-                <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
-                  <div className="bg-blue-500 h-full w-[83%] rounded-full"></div>
-                </div>
-              </div>
+              {activeLeaveTypes.map((lt) => {
+                // Compute leaves consumed
+                const takenDays = leaveApps
+                  .filter(
+                    (app) =>
+                      (app.leaveTypeId === lt.id || app.leaveTypeName?.toLowerCase().includes(lt.code.toLowerCase())) &&
+                      app.status !== 'REJECTED' &&
+                      app.status !== 'CANCELLED'
+                  )
+                  .reduce((sum, app) => sum + (Number(app.totalDays) || 0), 0);
 
-              <div className="p-4 rounded-xl bg-slate-950/70 border border-slate-800 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-slate-400 font-medium">Sick / Medical (SL)</span>
-                  <span className="w-2.5 h-2.5 rounded-full bg-rose-500"></span>
-                </div>
-                <div className="flex items-baseline gap-1.5">
-                  <span className="text-2xl font-black text-white">8</span>
-                  <span className="text-xs text-slate-500">/ 10 days left</span>
-                </div>
-                <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
-                  <div className="bg-rose-500 h-full w-[80%] rounded-full"></div>
-                </div>
-              </div>
+                const remainingDays = Math.max(0, lt.daysPerYear - takenDays);
+                const percentLeft = Math.round((remainingDays / lt.daysPerYear) * 100);
 
-              <div className="p-4 rounded-xl bg-slate-950/70 border border-slate-800 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-slate-400 font-medium">Privilege Leave (PL)</span>
-                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
-                </div>
-                <div className="flex items-baseline gap-1.5">
-                  <span className="text-2xl font-black text-white">18</span>
-                  <span className="text-xs text-slate-500">/ 18 days left</span>
-                </div>
-                <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
-                  <div className="bg-emerald-500 h-full w-[100%] rounded-full"></div>
-                </div>
-              </div>
+                const badgeColor =
+                  lt.code === 'CL' ? 'bg-blue-500' : lt.code === 'SL' ? 'bg-rose-500' : 'bg-emerald-500';
+
+                return (
+                  <div key={lt.id} className="p-4 rounded-xl bg-slate-50/80 border border-slate-200/80 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-slate-700 font-semibold">{lt.name}</span>
+                      <span className={`w-2.5 h-2.5 rounded-full ${badgeColor}`}></span>
+                    </div>
+                    <div className="flex items-baseline gap-1.5">
+                      <span className="text-2xl font-black text-slate-900 font-mono">{remainingDays}</span>
+                      <span className="text-xs text-slate-500 font-medium">/ {lt.daysPerYear} days left</span>
+                    </div>
+                    <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full rounded-full ${badgeColor}`}
+                        style={{ width: `${percentLeft}%` }}
+                      ></div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
 
@@ -488,30 +580,30 @@ export default function EmployeeSelfServiceDashboard() {
               My Recent Leave Requests
             </h3>
             {leaveApps.length === 0 ? (
-              <div className="p-4 rounded-xl bg-slate-950/50 border border-dashed border-slate-800 text-center text-xs text-slate-500">
+              <div className="p-4 rounded-xl bg-slate-50 border border-dashed border-slate-200 text-center text-xs text-slate-500 font-medium">
                 No leave requests filed yet this financial year.
               </div>
             ) : (
               <div className="space-y-2">
-                {leaveApps.slice(0, 2).map((app) => (
+                {leaveApps.slice(0, 3).map((app) => (
                   <div
                     key={app.id}
-                    className="p-3 rounded-xl bg-slate-950 border border-slate-800/80 flex items-center justify-between text-xs"
+                    className="p-3 rounded-xl bg-slate-50 border border-slate-200/90 flex items-center justify-between text-xs"
                   >
                     <div>
-                      <div className="font-semibold text-white">{app.leaveTypeName}</div>
-                      <div className="text-slate-400 text-[11px]">
+                      <div className="font-bold text-slate-900">{app.leaveTypeName}</div>
+                      <div className="text-slate-500 text-[11px] mt-0.5">
                         {app.startDate} to {app.endDate} &bull; {app.totalDays} day(s) &bull;{' '}
-                        <span className="text-slate-500 italic">"{app.reason}"</span>
+                        <span className="text-slate-600 italic">"{app.reason}"</span>
                       </div>
                     </div>
                     <span
-                      className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${
+                      className={`px-2.5 py-1 rounded-full text-[10px] font-bold border ${
                         app.status === 'APPROVED'
-                          ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30'
+                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                           : app.status === 'PENDING'
-                          ? 'bg-amber-500/10 text-amber-400 border border-amber-500/30'
-                          : 'bg-rose-500/10 text-rose-400 border border-rose-500/30'
+                          ? 'bg-amber-50 text-amber-700 border-amber-200'
+                          : 'bg-rose-50 text-rose-700 border-rose-200'
                       }`}
                     >
                       {app.status}
@@ -527,33 +619,33 @@ export default function EmployeeSelfServiceDashboard() {
       {/* Row 2: Recent Salary Slip, Announcements & Documents */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {/* Latest Payslip Summary */}
-        <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 shadow-md space-y-4">
+        <div className="p-5 rounded-2xl bg-white border border-slate-200/90 shadow-sm space-y-4">
           <div className="flex items-center justify-between">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
-              <CreditCard className="w-4 h-4 text-emerald-400" />
+            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
+              <CreditCard className="w-4 h-4 text-emerald-600" />
               <span>Latest Salary Slip</span>
             </h3>
-            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold">
               DISBURSED
             </span>
           </div>
 
           {payslips.length > 0 ? (
-            <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-3">
+            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
               <div className="flex items-center justify-between">
                 <div>
-                  <span className="text-xs text-slate-400">Month:</span>
-                  <div className="font-bold text-white text-sm">{payslips[0].month}</div>
+                  <span className="text-xs text-slate-500 font-medium">Month:</span>
+                  <div className="font-bold text-slate-900 text-sm">{payslips[0].month}</div>
                 </div>
                 <div className="text-right">
-                  <span className="text-xs text-slate-400">Net Take-Home:</span>
-                  <div className="font-black text-emerald-400 text-base font-mono">
+                  <span className="text-xs text-slate-500 font-medium">Net Take-Home:</span>
+                  <div className="font-black text-emerald-700 text-base font-mono">
                     ₹{payslips[0].netPay.toLocaleString()}
                   </div>
                 </div>
               </div>
 
-              <div className="pt-2 border-t border-slate-800 grid grid-cols-2 text-[11px] text-slate-400">
+              <div className="pt-2 border-t border-slate-200 grid grid-cols-2 text-[11px] text-slate-600 font-medium">
                 <div>Gross: ₹{payslips[0].grossSalary.toLocaleString()}</div>
                 <div className="text-right">Deductions: ₹{payslips[0].totalDeductions.toLocaleString()}</div>
               </div>
@@ -561,60 +653,60 @@ export default function EmployeeSelfServiceDashboard() {
               <button
                 type="button"
                 onClick={() => setViewingSlip(payslips[0])}
-                className="w-full py-2 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors"
+                className="w-full py-2 px-3 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
               >
                 <Download className="w-3.5 h-3.5" />
                 <span>View / Download Payslip</span>
               </button>
             </div>
           ) : (
-            <div className="p-4 rounded-xl bg-slate-950 border border-dashed border-slate-800 text-center text-xs text-slate-500">
+            <div className="p-4 rounded-xl bg-slate-50 border border-dashed border-slate-200 text-center text-xs text-slate-500 font-medium">
               No salary slips generated for current cycle.
             </div>
           )}
         </div>
 
         {/* Company Announcements & Safety Bulletin */}
-        <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 shadow-md space-y-3">
+        <div className="p-5 rounded-2xl bg-white border border-slate-200/90 shadow-sm space-y-3">
           <div className="flex items-center justify-between">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
-              <BellRing className="w-4 h-4 text-amber-400" />
-              <span>Goodwin Factory Bulletin</span>
+            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
+              <BellRing className="w-4 h-4 text-amber-600" />
+              <span>Goodwin Fleet Bulletin</span>
             </h3>
-            <span className="text-[10px] text-slate-500">Live Updates</span>
+            <span className="text-[10px] text-slate-500 font-semibold">Live Updates</span>
           </div>
 
           <div className="space-y-2.5">
-            <div className="p-3 rounded-xl bg-slate-950 border border-slate-800/80">
-              <div className="flex items-center gap-1.5 text-xs font-bold text-amber-400 mb-0.5">
+            <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-amber-700 mb-0.5">
                 <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                <span>Lithium Safety SOP v4.2 Mandatory Review</span>
+                <span>Fleet Safety SOP v4.2 Mandatory Review</span>
               </div>
-              <p className="text-[11px] text-slate-400">
-                All production and BMS cell testing personnel must wear anti-static footwear in Bay 3.
+              <p className="text-[11px] text-slate-600 font-medium">
+                All production, testing and field delivery personnel must verify battery discharge limits.
               </p>
             </div>
 
-            <div className="p-3 rounded-xl bg-slate-950 border border-slate-800/80">
-              <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-400 mb-0.5">
+            <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-700 mb-0.5">
                 <Sparkles className="w-3.5 h-3.5 shrink-0" />
-                <span>Diwali Bonus & Advance Disbursed</span>
+                <span>Diwali Festival Advance Disbursed</span>
               </div>
-              <p className="text-[11px] text-slate-400">
-                October festival bonus credited along with biometric attendance regularization.
+              <p className="text-[11px] text-slate-600 font-medium">
+                Festival advance credited along with biometric attendance regularization.
               </p>
             </div>
           </div>
         </div>
 
         {/* Document Vault & Compliance */}
-        <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 shadow-md space-y-3">
+        <div className="p-5 rounded-2xl bg-white border border-slate-200/90 shadow-sm space-y-3">
           <div className="flex items-center justify-between">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
-              <FileText className="w-4 h-4 text-blue-400" />
+            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
+              <FileText className="w-4 h-4 text-blue-600" />
               <span>My Compliance Vault</span>
             </h3>
-            <span className="text-[10px] text-slate-500">{documents.length} Files</span>
+            <span className="text-[10px] text-slate-500 font-semibold">{documents.length} Files</span>
           </div>
 
           {documents.length > 0 ? (
@@ -622,15 +714,15 @@ export default function EmployeeSelfServiceDashboard() {
               {documents.map((doc) => (
                 <div
                   key={doc.id}
-                  className="p-2.5 rounded-xl bg-slate-950 border border-slate-800/80 flex items-center justify-between text-xs"
+                  className="p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 flex items-center justify-between text-xs"
                 >
                   <div className="min-w-0 pr-2">
-                    <div className="font-semibold text-slate-200 truncate">{doc.title}</div>
-                    <div className="text-[10px] text-slate-500">{doc.fileName} &bull; {doc.fileSize}</div>
+                    <div className="font-semibold text-slate-900 truncate">{doc.title}</div>
+                    <div className="text-[10px] text-slate-500 font-medium">{doc.fileName} &bull; {doc.fileSize}</div>
                   </div>
                   <button
-                    onClick={() => alert(`Simulating secure download for ${doc.fileName}`)}
-                    className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white"
+                    onClick={() => alert(`Downloading ${doc.fileName}`)}
+                    className="p-1.5 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-700 hover:text-slate-900 transition-colors cursor-pointer"
                   >
                     <Download className="w-3.5 h-3.5" />
                   </button>
@@ -638,42 +730,55 @@ export default function EmployeeSelfServiceDashboard() {
               ))}
             </div>
           ) : (
-            <div className="p-4 rounded-xl bg-slate-950 border border-dashed border-slate-800 text-center text-xs text-slate-500">
+            <div className="p-4 rounded-xl bg-slate-50 border border-dashed border-slate-200 text-center text-xs text-slate-500 font-medium">
               No compliance files uploaded yet.
             </div>
           )}
         </div>
       </div>
 
-      {/* Apply Leave Modal */}
+      {/* Apply Leave Modal (Light Theme) */}
       {leaveModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-fade-in">
-          <div className="w-full max-w-md rounded-2xl bg-slate-900 border border-slate-800 shadow-2xl p-6 text-white space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
-                <Calendar className="w-4 h-4 text-amber-400" />
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-md rounded-2xl bg-white border border-slate-200 shadow-2xl p-6 text-slate-900 space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+              <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
+                <Calendar className="w-4 h-4 text-amber-600" />
                 Apply for Time-Off
               </h3>
               <button
+                type="button"
                 onClick={() => setLeaveModalOpen(false)}
-                className="text-slate-400 hover:text-white p-1 rounded-lg"
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg cursor-pointer transition-colors"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
+            {leaveFeedback && (
+              <div
+                className={`p-3 rounded-xl text-xs font-semibold ${
+                  leaveFeedback.type === 'error'
+                    ? 'bg-rose-50 border border-rose-200 text-rose-700'
+                    : 'bg-emerald-50 border border-emerald-200 text-emerald-700'
+                }`}
+              >
+                {leaveFeedback.message}
+              </div>
+            )}
+
             <form onSubmit={handleApplyLeave} className="space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">Leave Category *</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Leave Category *</label>
                 <select
                   required
                   value={selectedLeaveTypeId}
                   onChange={(e) => setSelectedLeaveTypeId(e.target.value)}
-                  className="w-full px-3 py-2 text-xs rounded-xl bg-slate-950 border border-slate-700 text-white focus:outline-none focus:ring-2 focus:ring-amber-500/40"
+                  className="w-full px-3 py-2 text-xs font-medium rounded-xl bg-slate-50 border border-slate-300 text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500/30 cursor-pointer shadow-sm"
                 >
-                  {leaveTypes.map((lt) => (
+                  {activeLeaveTypes.map((lt) => (
                     <option key={lt.id} value={lt.id}>
-                      {lt.name} ({lt.daysPerYear} days/yr)
+                      {lt.name} ({lt.daysPerYear} days/yr quota)
                     </option>
                   ))}
                 </select>
@@ -681,36 +786,36 @@ export default function EmployeeSelfServiceDashboard() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">Start Date *</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Start Date *</label>
                   <input
                     type="date"
                     required
                     value={leaveStartDate}
                     onChange={(e) => setLeaveStartDate(e.target.value)}
-                    className="w-full px-3 py-2 text-xs rounded-xl bg-slate-950 border border-slate-700 text-white focus:outline-none focus:ring-2 focus:ring-amber-500/40"
+                    className="w-full px-3 py-2 text-xs font-medium rounded-xl bg-slate-50 border border-slate-300 text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500/30 shadow-sm"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">End Date *</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">End Date *</label>
                   <input
                     type="date"
                     required
                     value={leaveEndDate}
                     onChange={(e) => setLeaveEndDate(e.target.value)}
-                    className="w-full px-3 py-2 text-xs rounded-xl bg-slate-950 border border-slate-700 text-white focus:outline-none focus:ring-2 focus:ring-amber-500/40"
+                    className="w-full px-3 py-2 text-xs font-medium rounded-xl bg-slate-50 border border-slate-300 text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500/30 shadow-sm"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">Reason for Leave *</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Reason for Leave *</label>
                 <textarea
                   required
                   rows={3}
                   placeholder="e.g. Family function / Medical consultation"
                   value={leaveReason}
                   onChange={(e) => setLeaveReason(e.target.value)}
-                  className="w-full px-3 py-2 text-xs rounded-xl bg-slate-950 border border-slate-700 text-white focus:outline-none focus:ring-2 focus:ring-amber-500/40"
+                  className="w-full px-3 py-2 text-xs font-medium rounded-xl bg-slate-50 border border-slate-300 text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500/30 shadow-sm"
                 ></textarea>
               </div>
 
@@ -718,14 +823,14 @@ export default function EmployeeSelfServiceDashboard() {
                 <button
                   type="button"
                   onClick={() => setLeaveModalOpen(false)}
-                  className="px-4 py-2 text-xs text-slate-400 hover:text-white"
+                  className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-900 cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={leaveSubmitting}
-                  className="px-5 py-2 text-xs font-semibold rounded-xl bg-amber-600 hover:bg-amber-500 text-white transition-all shadow-md shadow-amber-900/30 disabled:opacity-50"
+                  className="px-5 py-2 text-xs font-bold rounded-xl bg-amber-600 hover:bg-amber-500 text-white transition-all shadow-sm disabled:opacity-50 cursor-pointer"
                 >
                   {leaveSubmitting ? 'Submitting...' : 'Submit Request'}
                 </button>
@@ -735,65 +840,66 @@ export default function EmployeeSelfServiceDashboard() {
         </div>
       )}
 
-      {/* Payslip View Modal */}
+      {/* Payslip View Modal (Light Theme) */}
       {viewingSlip && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-fade-in">
-          <div className="w-full max-w-lg rounded-2xl bg-slate-900 border border-slate-800 shadow-2xl p-6 text-white space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-lg rounded-2xl bg-white border border-slate-200 shadow-2xl p-6 text-slate-900 space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200">
               <div className="flex items-center gap-2">
-                <CreditCard className="w-5 h-5 text-emerald-400" />
+                <CreditCard className="w-5 h-5 text-emerald-600" />
                 <div>
-                  <h3 className="text-base font-bold text-white">Goodwin Batteries Pvt Ltd</h3>
-                  <p className="text-xs text-slate-400">Salary Slip for {viewingSlip.month}</p>
+                  <h3 className="text-base font-extrabold text-slate-900">{tenant?.name || 'Goodwin Batteries Pvt Ltd'}</h3>
+                  <p className="text-xs text-slate-500 font-medium">Salary Slip for {viewingSlip.month}</p>
                 </div>
               </div>
               <button
+                type="button"
                 onClick={() => setViewingSlip(null)}
-                className="text-slate-400 hover:text-white p-1 rounded-lg"
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg cursor-pointer transition-colors"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="p-3 rounded-xl bg-slate-950 text-xs grid grid-cols-2 gap-2 text-slate-300">
-              <div><span className="text-slate-500">Employee:</span> {viewingSlip.employeeName}</div>
-              <div><span className="text-slate-500">Code:</span> {viewingSlip.employeeCode}</div>
+            <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs grid grid-cols-2 gap-2 text-slate-700 font-medium">
+              <div><span className="text-slate-500">Employee:</span> <span className="font-bold text-slate-900">{viewingSlip.employeeName}</span></div>
+              <div><span className="text-slate-500">Code:</span> <span className="font-mono font-semibold">{viewingSlip.employeeCode}</span></div>
               <div><span className="text-slate-500">Department:</span> {viewingSlip.departmentName}</div>
-              <div><span className="text-slate-500">Payment Status:</span> <span className="text-emerald-400 font-semibold">DISBURSED</span></div>
+              <div><span className="text-slate-500">Payment Status:</span> <span className="text-emerald-700 font-bold">DISBURSED</span></div>
             </div>
 
             <div className="grid grid-cols-2 gap-4 text-xs">
               <div className="space-y-2">
-                <div className="font-bold text-slate-400 uppercase tracking-wider pb-1 border-b border-slate-800">
+                <div className="font-bold text-slate-600 uppercase tracking-wider pb-1 border-b border-slate-200">
                   Earnings
                 </div>
-                <div className="flex justify-between"><span>Basic Pay</span> <span className="font-mono">₹{viewingSlip.basicPay.toLocaleString()}</span></div>
-                <div className="flex justify-between"><span>House Rent Allowance</span> <span className="font-mono">₹{viewingSlip.hra.toLocaleString()}</span></div>
-                <div className="flex justify-between"><span>Special Allowance</span> <span className="font-mono">₹{viewingSlip.specialAllowance.toLocaleString()}</span></div>
-                <div className="flex justify-between pt-1 border-t border-slate-800 font-bold text-white">
+                <div className="flex justify-between text-slate-700"><span>Basic Pay</span> <span className="font-mono font-semibold">₹{viewingSlip.basicPay.toLocaleString()}</span></div>
+                <div className="flex justify-between text-slate-700"><span>HRA</span> <span className="font-mono font-semibold">₹{viewingSlip.hra.toLocaleString()}</span></div>
+                <div className="flex justify-between text-slate-700"><span>Special Allowance</span> <span className="font-mono font-semibold">₹{viewingSlip.specialAllowance.toLocaleString()}</span></div>
+                <div className="flex justify-between pt-1 border-t border-slate-200 font-extrabold text-slate-900">
                   <span>Gross Earnings</span> <span className="font-mono">₹{viewingSlip.grossSalary.toLocaleString()}</span>
                 </div>
               </div>
 
               <div className="space-y-2">
-                <div className="font-bold text-slate-400 uppercase tracking-wider pb-1 border-b border-slate-800">
+                <div className="font-bold text-slate-600 uppercase tracking-wider pb-1 border-b border-slate-200">
                   Deductions
                 </div>
-                <div className="flex justify-between"><span>Provident Fund (PF)</span> <span className="font-mono">₹{viewingSlip.providentFund.toLocaleString()}</span></div>
-                <div className="flex justify-between"><span>Professional Tax (PT)</span> <span className="font-mono">₹{viewingSlip.professionalTax.toLocaleString()}</span></div>
-                <div className="flex justify-between"><span>TDS / Income Tax</span> <span className="font-mono">₹{viewingSlip.taxDeduction.toLocaleString()}</span></div>
-                <div className="flex justify-between pt-1 border-t border-slate-800 font-bold text-rose-400">
+                <div className="flex justify-between text-slate-700"><span>PF</span> <span className="font-mono font-semibold">₹{viewingSlip.providentFund.toLocaleString()}</span></div>
+                <div className="flex justify-between text-slate-700"><span>PT</span> <span className="font-mono font-semibold">₹{viewingSlip.professionalTax.toLocaleString()}</span></div>
+                <div className="flex justify-between text-slate-700"><span>TDS / Tax</span> <span className="font-mono font-semibold">₹{viewingSlip.taxDeduction.toLocaleString()}</span></div>
+                <div className="flex justify-between pt-1 border-t border-slate-200 font-extrabold text-rose-600">
                   <span>Total Deductions</span> <span className="font-mono">₹{viewingSlip.totalDeductions.toLocaleString()}</span>
                 </div>
               </div>
             </div>
 
-            <div className="p-3 rounded-xl bg-emerald-950/40 border border-emerald-800/60 flex items-center justify-between">
+            <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-between">
               <div>
-                <span className="text-xs text-emerald-300">Net Take-Home Disbursed</span>
-                <p className="text-[10px] text-slate-400">Credited directly to Axis Bank A/C</p>
+                <span className="text-xs text-emerald-800 font-bold">Net Take-Home Disbursed</span>
+                <p className="text-[10px] text-slate-500 font-medium">Bank transfer processed</p>
               </div>
-              <div className="text-xl font-black text-emerald-400 font-mono">
+              <div className="text-xl font-black text-emerald-700 font-mono">
                 ₹{viewingSlip.netPay.toLocaleString()}
               </div>
             </div>
@@ -802,14 +908,14 @@ export default function EmployeeSelfServiceDashboard() {
               <button
                 type="button"
                 onClick={() => setViewingSlip(null)}
-                className="px-4 py-2 text-xs text-slate-400 hover:text-white"
+                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-900 cursor-pointer"
               >
                 Close
               </button>
               <button
                 type="button"
-                onClick={() => alert('Printing / PDF export simulated')}
-                className="px-4 py-2 text-xs font-semibold rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white flex items-center gap-1.5"
+                onClick={() => alert('Printing / PDF export')}
+                className="px-4 py-2 text-xs font-bold rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white flex items-center gap-1.5 cursor-pointer shadow-sm"
               >
                 <Download className="w-3.5 h-3.5" />
                 <span>Export PDF</span>

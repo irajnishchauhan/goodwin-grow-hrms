@@ -558,6 +558,27 @@ export class SupabaseStore {
     }));
   }
 
+  public static async saveLeaveType(lt: LeaveType): Promise<boolean> {
+    const supabase = getSupabaseAdmin();
+    if (!supabase) return false;
+
+    const { error } = await supabase.from('leave_types').upsert({
+      id: lt.id,
+      tenant_id: lt.tenantId,
+      name: lt.name,
+      code: lt.code,
+      days_per_year: lt.daysPerYear,
+      color: lt.color,
+      is_paid: lt.isPaid
+    });
+
+    if (error) {
+      console.warn('Supabase saveLeaveType error:', error.message);
+      return false;
+    }
+    return true;
+  }
+
   public static async getLeaveApplications(tenantId: string): Promise<LeaveApplication[] | null> {
     const supabase = getSupabaseAdmin();
     if (!supabase) return null;

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db/store';
 import { SupabaseStore } from '@/lib/db/supabaseStore';
+import { Employee } from '@/lib/types';
 
 export async function GET(
   req: Request,
@@ -65,6 +66,45 @@ export async function POST(
 
     if (!employeeId || !action) {
       return NextResponse.json({ success: false, error: 'Employee ID and action (IN/OUT) required' }, { status: 400 });
+    }
+
+    // Ensure employee exists in db memory before punching
+    let emp = db.getEmployeeById(tenant.id, employeeId);
+    if (!emp) {
+      const emps = await SupabaseStore.getEmployees(tenant.id);
+      if (emps && emps.length > 0) {
+        db.syncEmployees(emps);
+        emp = db.getEmployeeById(tenant.id, employeeId);
+      }
+    }
+    if (!emp) {
+      const allEmps = db.getEmployees(tenant.id);
+      emp = allEmps.find((e) => e.id === employeeId) || null;
+      if (!emp) {
+        const placeholderEmp: Employee = {
+          id: employeeId,
+          tenantId: tenant.id,
+          employeeCode: 'EMP-GEN',
+          firstName: 'Team',
+          lastName: 'Member',
+          workEmail: 'employee@goodwin.local',
+          phone: '+91 99999 00000',
+          gender: 'MALE',
+          joiningDate: '2024-01-01',
+          departmentId: 'dept-gen',
+          designationId: 'desig-gen',
+          departmentName: 'General',
+          designationTitle: 'Team Member',
+          employmentType: 'FULL_TIME',
+          status: 'ACTIVE',
+          loginStatus: 'ACCEPTED',
+          monthlySalary: 30000,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        };
+        db.upsertEmployee(placeholderEmp);
+        emp = placeholderEmp;
+      }
     }
 
     const record = db.recordPunch(tenant.id, employeeId, action, notes);
