@@ -348,30 +348,65 @@ ALTER TABLE public.documents ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.holidays ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
 
+-- Public Anon access for tenant discovery & universal login company selector:
+DROP POLICY IF EXISTS anon_select_tenants ON public.tenants;
+CREATE POLICY anon_select_tenants ON public.tenants FOR SELECT TO anon USING (true);
+
 -- Service Role (Server Backend) has full bypass access:
+DROP POLICY IF EXISTS service_role_all_tenants ON public.tenants;
 CREATE POLICY service_role_all_tenants ON public.tenants FOR ALL TO service_role USING (true);
+
+DROP POLICY IF EXISTS service_role_all_users ON public.users;
 CREATE POLICY service_role_all_users ON public.users FOR ALL TO service_role USING (true);
+
+DROP POLICY IF EXISTS service_role_all_memberships ON public.tenant_memberships;
 CREATE POLICY service_role_all_memberships ON public.tenant_memberships FOR ALL TO service_role USING (true);
+
+DROP POLICY IF EXISTS service_role_all_departments ON public.departments;
 CREATE POLICY service_role_all_departments ON public.departments FOR ALL TO service_role USING (true);
+
+DROP POLICY IF EXISTS service_role_all_designations ON public.designations;
 CREATE POLICY service_role_all_designations ON public.designations FOR ALL TO service_role USING (true);
+
+DROP POLICY IF EXISTS service_role_all_employees ON public.employees;
 CREATE POLICY service_role_all_employees ON public.employees FOR ALL TO service_role USING (true);
+
+DROP POLICY IF EXISTS service_role_all_invitations ON public.invitations;
 CREATE POLICY service_role_all_invitations ON public.invitations FOR ALL TO service_role USING (true);
+
+DROP POLICY IF EXISTS service_role_all_shifts ON public.shifts;
 CREATE POLICY service_role_all_shifts ON public.shifts FOR ALL TO service_role USING (true);
+
+DROP POLICY IF EXISTS service_role_all_attendance ON public.attendance;
 CREATE POLICY service_role_all_attendance ON public.attendance FOR ALL TO service_role USING (true);
+
+DROP POLICY IF EXISTS service_role_all_leave_types ON public.leave_types;
 CREATE POLICY service_role_all_leave_types ON public.leave_types FOR ALL TO service_role USING (true);
+
+DROP POLICY IF EXISTS service_role_all_leave_apps ON public.leave_applications;
 CREATE POLICY service_role_all_leave_apps ON public.leave_applications FOR ALL TO service_role USING (true);
+
+DROP POLICY IF EXISTS service_role_all_salary_slips ON public.salary_slips;
 CREATE POLICY service_role_all_salary_slips ON public.salary_slips FOR ALL TO service_role USING (true);
+
+DROP POLICY IF EXISTS service_role_all_documents ON public.documents;
 CREATE POLICY service_role_all_documents ON public.documents FOR ALL TO service_role USING (true);
+
+DROP POLICY IF EXISTS service_role_all_holidays ON public.holidays;
 CREATE POLICY service_role_all_holidays ON public.holidays FOR ALL TO service_role USING (true);
+
+DROP POLICY IF EXISTS service_role_all_audit_logs ON public.audit_logs;
 CREATE POLICY service_role_all_audit_logs ON public.audit_logs FOR ALL TO service_role USING (true);
 
 -- Authenticated Users can read their assigned tenant workspace:
+DROP POLICY IF EXISTS user_read_accessible_tenants ON public.tenants;
 CREATE POLICY user_read_accessible_tenants ON public.tenants
     FOR SELECT TO authenticated
     USING (
         id IN (SELECT tenant_id FROM public.tenant_memberships WHERE user_id = auth.uid()::text)
     );
 
+DROP POLICY IF EXISTS user_read_tenant_employees ON public.employees;
 CREATE POLICY user_read_tenant_employees ON public.employees
     FOR SELECT TO authenticated
     USING (
