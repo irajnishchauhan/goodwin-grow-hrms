@@ -23,13 +23,16 @@ import {
   ArrowRight,
   Sparkles,
   KeyRound,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Lock
 } from 'lucide-react';
 import { Employee, Department, Tenant } from '@/lib/types';
+import { useCurrentUser } from '@/lib/auth/useCurrentUser';
 
 export default function TenantEmployeesPage() {
   const params = useParams();
   const tenantSlug = params.tenantSlug as string;
+  const { user, isEmployeeOnly } = useCurrentUser(tenantSlug);
 
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
@@ -295,49 +298,55 @@ Ritu,Chopra,ritu.chopra@goodwinbatteries.com,+91 98444 55667,Research & Battery 
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-extrabold text-white tracking-tight">Workforce & Employee Directory</h1>
+            <h1 className="text-2xl font-extrabold text-white tracking-tight">
+              {isEmployeeOnly ? 'Colleague Directory' : 'Workforce & Employee Directory'}
+            </h1>
             <span className="text-xs px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-300 font-mono">
-              {employees.length} Records
+              {employees.length} Colleagues
             </span>
           </div>
           <p className="text-xs text-slate-400 mt-1">
-            Independent workforce records & credentials lifecycle for {tenant?.name || 'this organization'}
+            {isEmployeeOnly
+              ? `Browse colleagues, designations, and departments across ${tenant?.name || 'this organization'}`
+              : `Independent workforce records & credentials lifecycle for ${tenant?.name || 'this organization'}`}
           </p>
         </div>
 
-        <div className="flex items-center gap-2.5 flex-wrap">
-          <button
-            onClick={() => {
-              setBulkModalOpen(true);
-              setImportResult(null);
-            }}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white font-semibold text-xs transition-all border border-slate-700 shadow-sm"
-          >
-            <Upload className="w-4 h-4 text-emerald-400" />
-            <span>Bulk CSV Import</span>
-          </button>
+        {!isEmployeeOnly && (
+          <div className="flex items-center gap-2.5 flex-wrap">
+            <button
+              onClick={() => {
+                setBulkModalOpen(true);
+                setImportResult(null);
+              }}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white font-semibold text-xs transition-all border border-slate-700 shadow-sm"
+            >
+              <Upload className="w-4 h-4 text-emerald-400" />
+              <span>Bulk CSV Import</span>
+            </button>
 
-          <Link
-            href={`/app/${tenantSlug}/invitations`}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-600/20 hover:bg-amber-600/30 text-amber-300 hover:text-amber-200 font-semibold text-xs transition-all border border-amber-500/30"
-          >
-            <KeyRound className="w-4 h-4 text-amber-400" />
-            <span>Manage Invitations ({pendingInvitesCount})</span>
-          </Link>
+            <Link
+              href={`/app/${tenantSlug}/invitations`}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-600/20 hover:bg-amber-600/30 text-amber-300 hover:text-amber-200 font-semibold text-xs transition-all border border-amber-500/30"
+            >
+              <KeyRound className="w-4 h-4 text-amber-400" />
+              <span>Manage Invitations ({pendingInvitesCount})</span>
+            </Link>
 
-          <button
-            onClick={() => {
-              if (departments.length > 0 && !departmentId) {
-                setDepartmentId(departments[0].id);
-              }
-              setModalOpen(true);
-            }}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs transition-all shadow-md shadow-emerald-900/30"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Add Employee</span>
-          </button>
-        </div>
+            <button
+              onClick={() => {
+                if (departments.length > 0 && !departmentId) {
+                  setDepartmentId(departments[0].id);
+                }
+                setModalOpen(true);
+              }}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs transition-all shadow-md shadow-emerald-900/30"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Add Employee</span>
+            </button>
+          </div>
+        )}
       </div>
 
       {/* KPI Summary Cards */}
@@ -419,17 +428,27 @@ Ritu,Chopra,ritu.chopra@goodwinbatteries.com,+91 98444 55667,Research & Battery 
                 <th className="px-6 py-3.5">Employee</th>
                 <th className="px-6 py-3.5">Code</th>
                 <th className="px-6 py-3.5">Department & Role</th>
-                <th className="px-6 py-3.5">Monthly Compensation</th>
-                <th className="px-6 py-3.5">Login Account</th>
-                <th className="px-6 py-3.5">Status</th>
-                <th className="px-6 py-3.5 text-right">Actions</th>
+                {isEmployeeOnly ? (
+                  <>
+                    <th className="px-6 py-3.5">Work Phone</th>
+                    <th className="px-6 py-3.5">Work Location</th>
+                    <th className="px-6 py-3.5">Status</th>
+                  </>
+                ) : (
+                  <>
+                    <th className="px-6 py-3.5">Monthly Compensation</th>
+                    <th className="px-6 py-3.5">Login Account</th>
+                    <th className="px-6 py-3.5">Status</th>
+                    <th className="px-6 py-3.5 text-right">Actions</th>
+                  </>
+                )}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/80">
               {filteredEmployees.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-6 py-8 text-center text-slate-500 text-xs">
-                    No employees matching the criteria found in this company workspace.
+                  <td colSpan={isEmployeeOnly ? 6 : 7} className="px-6 py-8 text-center text-slate-500 text-xs">
+                    No colleagues matching the criteria found in this company workspace.
                   </td>
                 </tr>
               ) : (
@@ -461,44 +480,64 @@ Ritu,Chopra,ritu.chopra@goodwinbatteries.com,+91 98444 55667,Research & Battery 
                       <div className="font-semibold text-slate-200">{emp.designationTitle}</div>
                       <div className="text-[11px] text-slate-400">{emp.departmentName}</div>
                     </td>
-                    <td className="px-6 py-4 font-semibold text-slate-200">
-                      {tenant?.currency} {emp.monthlySalary.toLocaleString()} / mo
-                    </td>
-                    <td className="px-6 py-4">
-                      {emp.loginStatus === 'ACCEPTED' ? (
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
-                          <CheckCircle2 className="w-3 h-3" />
-                          <span>Active Account</span>
-                        </span>
-                      ) : emp.loginStatus === 'PENDING' ? (
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/30">
-                          <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></span>
-                          <span>Invite Pending</span>
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-800 text-slate-400 border border-slate-700">
-                          <span>Not Invited</span>
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-                        {emp.status}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDeleteEmployee(emp.id, `${emp.firstName} ${emp.lastName}`);
-                        }}
-                        className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
-                        title="Remove Employee"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </td>
+
+                    {isEmployeeOnly ? (
+                      <>
+                        <td className="px-6 py-4 text-slate-300 font-mono">
+                          {emp.phone || '+91 80 4912 8800'}
+                        </td>
+                        <td className="px-6 py-4 text-slate-300">
+                          {emp.workLocation || 'Bangalore Facility'}
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                            {emp.status}
+                          </span>
+                        </td>
+                      </>
+                    ) : (
+                      <>
+                        <td className="px-6 py-4 font-semibold text-slate-200">
+                          {tenant?.currency} {emp.monthlySalary.toLocaleString()} / mo
+                        </td>
+                        <td className="px-6 py-4">
+                          {emp.loginStatus === 'ACCEPTED' ? (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+                              <CheckCircle2 className="w-3 h-3" />
+                              <span>Active Account</span>
+                            </span>
+                          ) : emp.loginStatus === 'PENDING' ? (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/30">
+                              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></span>
+                              <span>Invite Pending</span>
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-800 text-slate-400 border border-slate-700">
+                              <span>Not Invited</span>
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                            {emp.status}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteEmployee(emp.id, `${emp.firstName} ${emp.lastName}`);
+                            }}
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+                            title="Remove Employee"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </td>
+                      </>
+                    )}
                   </tr>
                 ))
               )}
@@ -904,27 +943,44 @@ Ritu,Chopra,ritu.chopra@goodwinbatteries.com,+91 98444 55667,Research & Battery 
               </div>
             </div>
 
-            <div className="p-3.5 rounded-xl bg-slate-900 border border-slate-800 space-y-2">
-              <div className="text-[10px] font-bold uppercase text-slate-500 tracking-wider">Payroll & Statutory</div>
-              <div className="flex justify-between py-1 border-b border-slate-800/60">
-                <span className="text-slate-400">Monthly Compensation</span>
-                <span className="font-bold text-emerald-400">
-                  {tenant?.currency} {selectedEmp.monthlySalary.toLocaleString()}
-                </span>
+            {isEmployeeOnly &&
+            !(
+              user &&
+              (selectedEmp.workEmail.toLowerCase() === user.email.toLowerCase() ||
+                selectedEmp.firstName.toLowerCase() === user.name.toLowerCase().split(' ')[0])
+            ) ? (
+              <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 space-y-2 text-center py-4">
+                <div className="w-8 h-8 rounded-full bg-slate-800 text-amber-400 flex items-center justify-center mx-auto mb-1 border border-slate-700">
+                  <Lock className="w-4 h-4" />
+                </div>
+                <div className="text-xs font-bold text-slate-200">Confidential HR Record</div>
+                <p className="text-[11px] text-slate-500 leading-relaxed max-w-xs mx-auto">
+                  Compensation, statutory tax identification, and bank account numbers are restricted to Company Administrators and HR Officers under Goodwin Grow RBAC policies.
+                </p>
               </div>
-              <div className="flex justify-between py-1 border-b border-slate-800/60">
-                <span className="text-slate-400">PAN / Tax ID</span>
-                <span className="font-mono text-slate-200">{selectedEmp.panOrTaxId || 'N/A'}</span>
+            ) : (
+              <div className="p-3.5 rounded-xl bg-slate-900 border border-slate-800 space-y-2">
+                <div className="text-[10px] font-bold uppercase text-slate-500 tracking-wider">Payroll & Statutory</div>
+                <div className="flex justify-between py-1 border-b border-slate-800/60">
+                  <span className="text-slate-400">Monthly Compensation</span>
+                  <span className="font-bold text-emerald-400">
+                    {tenant?.currency} {selectedEmp.monthlySalary.toLocaleString()}
+                  </span>
+                </div>
+                <div className="flex justify-between py-1 border-b border-slate-800/60">
+                  <span className="text-slate-400">PAN / Tax ID</span>
+                  <span className="font-mono text-slate-200">{selectedEmp.panOrTaxId || 'N/A'}</span>
+                </div>
+                <div className="flex justify-between py-1 border-b border-slate-800/60">
+                  <span className="text-slate-400">Bank Name</span>
+                  <span className="text-slate-200">{selectedEmp.bankName || 'N/A'}</span>
+                </div>
+                <div className="flex justify-between py-1">
+                  <span className="text-slate-400">Account No.</span>
+                  <span className="font-mono text-slate-200">{selectedEmp.bankAccountNumber || 'N/A'}</span>
+                </div>
               </div>
-              <div className="flex justify-between py-1 border-b border-slate-800/60">
-                <span className="text-slate-400">Bank Name</span>
-                <span className="text-slate-200">{selectedEmp.bankName || 'N/A'}</span>
-              </div>
-              <div className="flex justify-between py-1">
-                <span className="text-slate-400">Account No.</span>
-                <span className="font-mono text-slate-200">{selectedEmp.bankAccountNumber || 'N/A'}</span>
-              </div>
-            </div>
+            )}
 
             <div className="p-3 rounded-xl bg-emerald-950/40 border border-emerald-500/30 text-emerald-300 text-[11px] flex items-center gap-2">
               <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />

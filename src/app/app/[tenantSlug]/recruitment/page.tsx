@@ -17,6 +17,7 @@ import {
   ChevronRight
 } from 'lucide-react';
 import { JobOpening, JobApplicant, CandidateStage, Tenant } from '@/lib/types';
+import RoleGuard from '@/components/RoleGuard';
 
 const STAGES: { id: CandidateStage; label: string; color: string }[] = [
   { id: 'APPLIED', label: 'Applied', color: 'border-slate-700 bg-slate-900/60' },
@@ -131,7 +132,12 @@ export default function TenantRecruitmentPage() {
   };
 
   return (
-    <div className="space-y-8 max-w-7xl">
+    <RoleGuard
+      tenantSlug={tenantSlug}
+      requiredRoles={['COMPANY_ADMIN', 'HR_ADMIN', 'SUPER_ADMIN']}
+      moduleName="Recruitment & ATS"
+    >
+      <div className="space-y-8 max-w-7xl">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -336,5 +342,6 @@ export default function TenantRecruitmentPage() {
         </div>
       )}
     </div>
+    </RoleGuard>
   );
 }

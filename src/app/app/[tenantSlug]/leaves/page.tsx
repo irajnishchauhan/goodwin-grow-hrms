@@ -14,10 +14,12 @@ import {
   User
 } from 'lucide-react';
 import { LeaveApplication, LeaveType, Employee, Tenant } from '@/lib/types';
+import { useCurrentUser } from '@/lib/auth/useCurrentUser';
 
 export default function TenantLeavesPage() {
   const params = useParams();
   const tenantSlug = params.tenantSlug as string;
+  const { user, isEmployeeOnly, isManager } = useCurrentUser(tenantSlug);
 
   const [applications, setApplications] = useState<LeaveApplication[]>([]);
   const [leaveTypes, setLeaveTypes] = useState<LeaveType[]>([]);
@@ -52,10 +54,20 @@ export default function TenantLeavesPage() {
       const empRes = await fetch(`/api/tenants/${tenantSlug}/employees`);
       const empJson = await empRes.json();
       if (empJson.success) {
-        setEmployees(empJson.data.employees);
+        const emps: Employee[] = empJson.data.employees;
+        setEmployees(emps);
         setTenant(empJson.data.tenant);
-        if (empJson.data.employees.length > 0 && !employeeId) {
-          setEmployeeId(empJson.data.employees[0].id);
+        if (emps.length > 0) {
+          let targetEmp: Employee | undefined;
+          if (user) {
+            targetEmp = emps.find(
+              (e) =>
+                (user.email && e.workEmail.toLowerCase() === user.email.toLowerCase()) ||
+                (user.name && e.firstName.toLowerCase() === user.name.toLowerCase().split(' ')[0])
+            );
+          }
+          if (!targetEmp) targetEmp = emps[0];
+          setEmployeeId(targetEmp.id);
         }
       }
     } catch (e) {
@@ -126,6 +138,14 @@ export default function TenantLeavesPage() {
     }
   };
 
+  const visibleApplications = isEmployeeOnly
+    ? applications.filter((app) => {
+        if (!user) return true;
+        const firstName = user.name.toLowerCase().split(' ')[0];
+        return Boolean(app.employeeName?.toLowerCase().includes(firstName));
+      })
+    : applications;
+
   return (
     <div className="space-y-6 max-w-6xl">
       {/* Header */}
@@ -133,10 +153,12 @@ export default function TenantLeavesPage() {
         <div>
           <h1 className="text-2xl font-extrabold text-white tracking-tight flex items-center gap-2">
             <Calendar className="w-6 h-6 text-emerald-400" />
-            Leave Management & Approvals
+            {isEmployeeOnly ? 'My Leave Applications & Entitlements' : 'Leave Management & Approvals'}
           </h1>
           <p className="text-xs text-slate-400 mt-1">
-            Leave policies, quota balances, and multi-tier approval workflow for {tenant?.name || 'Workspace'}
+            {isEmployeeOnly
+              ? `Track your annual leave balances, apply for time-off, and check review status (${user?.name || 'Employee'})`
+              : `Leave policies, quota balances, and multi-tier approval workflow for ${tenant?.name || 'Workspace'}`}
           </p>
         </div>
 
@@ -172,8 +194,10 @@ export default function TenantLeavesPage() {
       {/* Leave Applications Table */}
       <div className="rounded-2xl bg-slate-950 border border-slate-800 overflow-hidden shadow-xl">
         <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
-          <h3 className="text-sm font-bold text-white">Leave Requests & Approvals</h3>
-          <span className="text-xs text-slate-400">{applications.length} Applications</span>
+          <h3 className="text-sm font-bold text-white">
+            {isEmployeeOnly ? 'My Leave Requests' : 'Leave Requests & Approvals'}
+          </h3>
+          <span className="text-xs text-slate-400">{visibleApplications.length} Request(s)</span>
         </div>
 
         <div className="overflow-x-auto">
@@ -186,18 +210,20 @@ export default function TenantLeavesPage() {
                 <th className="px-6 py-3.5">Days</th>
                 <th className="px-6 py-3.5">Reason</th>
                 <th className="px-6 py-3.5">Status</th>
-                <th className="px-6 py-3.5 text-right">HR Review</th>
+                <th className="px-6 py-3.5 text-right">{isEmployeeOnly ? 'Review Remarks' : 'HR Review'}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/80">
-              {applications.length === 0 ? (
+              {visibleApplications.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="px-6 py-8 text-center text-slate-500 text-xs">
-                    No leave applications found for this tenant workspace.
+                    {isEmployeeOnly
+                      ? 'You have no submitted leave applications on record.'
+                      : 'No leave applications found for this tenant workspace.'}
                   </td>
                 </tr>
               ) : (
-                applications.map((app) => (
+                visibleApplications.map((app) => (
                   <tr key={app.id} className="hover:bg-slate-900/60 transition-colors">
                     <td className="px-6 py-4 font-bold text-white">{app.employeeName}</td>
                     <td className="px-6 py-4 font-medium text-slate-300">{app.leaveTypeName}</td>
@@ -222,7 +248,11 @@ export default function TenantLeavesPage() {
                       </span>
                     </td>
                     <td className="px-6 py-4 text-right">
-                      {app.status === 'PENDING' ? (
+                      {isEmployeeOnly ? (
+                        <span className="text-[11px] text-slate-400 italic">
+                          {app.reviewComment || (app.status === 'PENDING' ? 'Under Review' : 'Processed')}
+                        </span>
+                      ) : app.status === 'PENDING' ? (
                         <div className="flex items-center justify-end gap-2">
                           <button
                             onClick={() => handleStatusUpdate(app.id, 'APPROVED')}
@@ -273,17 +303,23 @@ export default function TenantLeavesPage() {
 
               <div>
                 <label className="block font-semibold text-slate-700 mb-1">Applying Employee *</label>
-                <select
-                  value={employeeId}
-                  onChange={(e) => setEmployeeId(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
-                >
-                  {employees.map((e) => (
-                    <option key={e.id} value={e.id}>
-                      {e.firstName} {e.lastName} ({e.employeeCode})
-                    </option>
-                  ))}
-                </select>
+                {isEmployeeOnly ? (
+                  <div className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-100 text-slate-800 font-semibold">
+                    {user?.name || 'Self'}
+                  </div>
+                ) : (
+                  <select
+                    value={employeeId}
+                    onChange={(e) => setEmployeeId(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+                  >
+                    {employees.map((e) => (
+                      <option key={e.id} value={e.id}>
+                        {e.firstName} {e.lastName} ({e.employeeCode})
+                      </option>
+                    ))}
+                  </select>
+                )}
               </div>
 
               <div>

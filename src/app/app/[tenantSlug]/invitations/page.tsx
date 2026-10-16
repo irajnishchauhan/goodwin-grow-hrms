@@ -19,6 +19,7 @@ import {
   X
 } from 'lucide-react';
 import { Invitation, Employee, Tenant, UserRole } from '@/lib/types';
+import RoleGuard from '@/components/RoleGuard';
 
 export default function TenantInvitationsPage() {
   const params = useParams();
@@ -140,7 +141,12 @@ export default function TenantInvitationsPage() {
   };
 
   return (
-    <div className="space-y-6 max-w-6xl">
+    <RoleGuard
+      tenantSlug={tenantSlug}
+      requiredRoles={['COMPANY_ADMIN', 'HR_ADMIN', 'SUPER_ADMIN']}
+      moduleName="Invitations & Credential Lifecycle"
+    >
+      <div className="space-y-6 max-w-6xl">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -481,5 +487,6 @@ export default function TenantInvitationsPage() {
         </div>
       )}
     </div>
+    </RoleGuard>
   );
 }

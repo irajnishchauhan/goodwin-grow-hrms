@@ -24,10 +24,12 @@ import {
   X
 } from 'lucide-react';
 import { Employee, Shift, LeaveType, LeaveApplication, SalarySlip, Holiday, EmployeeDocument, Tenant } from '@/lib/types';
+import { useCurrentUser } from '@/lib/auth/useCurrentUser';
 
 export default function EmployeeSelfServiceDashboard() {
   const params = useParams();
   const tenantSlug = params.tenantSlug as string;
+  const { user, isEmployeeOnly } = useCurrentUser(tenantSlug);
 
   const [loading, setLoading] = useState(true);
   const [tenant, setTenant] = useState<Tenant | null>(null);
@@ -65,7 +67,6 @@ export default function EmployeeSelfServiceDashboard() {
   const loadDashboardData = async () => {
     try {
       setLoading(true);
-      // Fetch employees to pick Sunil Kumar or initial employee
       const empRes = await fetch(`/api/tenants/${tenantSlug}/employees`);
       const empJson = await empRes.json();
       
@@ -74,12 +75,25 @@ export default function EmployeeSelfServiceDashboard() {
         const emps: Employee[] = empJson.data.employees;
         setEmployees(emps);
         
-        // Find Sunil Kumar or default to first employee
-        const sunil = emps.find((e) => e.workEmail.includes('sunil') || e.firstName === 'Sunil') || emps[0];
-        if (sunil) {
-          setSelectedEmpId(sunil.id);
-          setCurrentEmp(sunil);
-          await loadEmployeeDetails(sunil.id);
+        // Find matching employee for current user or default to Sunil Kumar
+        let matchedEmp: Employee | undefined;
+        if (user) {
+          const userFirst = user.name?.toLowerCase().split(' ')[0] || '';
+          matchedEmp = emps.find(
+            (e) =>
+              (user.email && e.workEmail.toLowerCase() === user.email.toLowerCase()) ||
+              (userFirst && e.firstName.toLowerCase() === userFirst)
+          );
+        }
+
+        if (!matchedEmp) {
+          matchedEmp = emps.find((e) => e.workEmail.includes('sunil') || e.firstName === 'Sunil') || emps[0];
+        }
+
+        if (matchedEmp) {
+          setSelectedEmpId(matchedEmp.id);
+          setCurrentEmp(matchedEmp);
+          await loadEmployeeDetails(matchedEmp.id);
         }
       }
     } catch (err) {
@@ -268,26 +282,33 @@ export default function EmployeeSelfServiceDashboard() {
           </div>
         </div>
 
-        {/* Switch persona widget for presentation */}
-        <div className="flex items-center gap-2.5">
-          <div className="text-right hidden sm:block">
-            <span className="block text-[10px] uppercase tracking-wider text-slate-500 font-bold">
-              Switch Employee View
-            </span>
-            <span className="text-xs text-slate-300 font-mono">Goodwin Batteries</span>
+        {/* Switch persona widget for presentation (Admins & Managers only) */}
+        {isEmployeeOnly ? (
+          <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-xs text-slate-300">
+            <ShieldCheck className="w-4 h-4 text-emerald-400" />
+            <span>Self-Service Verified</span>
           </div>
-          <select
-            value={selectedEmpId}
-            onChange={(e) => handleSwitchEmployee(e.target.value)}
-            className="px-3 py-1.5 text-xs rounded-xl bg-slate-900 border border-slate-700 text-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-500/40 cursor-pointer"
-          >
-            {employees.map((emp) => (
-              <option key={emp.id} value={emp.id}>
-                {emp.firstName} {emp.lastName} ({emp.employeeCode})
-              </option>
-            ))}
-          </select>
-        </div>
+        ) : (
+          <div className="flex items-center gap-2.5">
+            <div className="text-right hidden sm:block">
+              <span className="block text-[10px] uppercase tracking-wider text-slate-500 font-bold">
+                Switch Employee View
+              </span>
+              <span className="text-xs text-slate-300 font-mono">Goodwin Batteries</span>
+            </div>
+            <select
+              value={selectedEmpId}
+              onChange={(e) => handleSwitchEmployee(e.target.value)}
+              className="px-3 py-1.5 text-xs rounded-xl bg-slate-900 border border-slate-700 text-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-500/40 cursor-pointer"
+            >
+              {employees.map((emp) => (
+                <option key={emp.id} value={emp.id}>
+                  {emp.firstName} {emp.lastName} ({emp.employeeCode})
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
 
       {/* Main Grid: Punch Clock & Leave Balances */}

@@ -14,6 +14,7 @@ import {
   Globe
 } from 'lucide-react';
 import { Tenant } from '@/lib/types';
+import RoleGuard from '@/components/RoleGuard';
 
 const COLORS = [
   { name: 'Emerald', value: '#059669' },
@@ -59,7 +60,12 @@ export default function TenantSettingsPage() {
   };
 
   return (
-    <div className="space-y-6 max-w-4xl">
+    <RoleGuard
+      tenantSlug={tenantSlug}
+      requiredRoles={['COMPANY_ADMIN', 'SUPER_ADMIN']}
+      moduleName="Company Settings & Branding"
+    >
+      <div className="space-y-6 max-w-4xl">
       <div>
         <h1 className="text-2xl font-extrabold text-white tracking-tight flex items-center gap-2">
           <Settings className="w-6 h-6 text-emerald-400" />
@@ -177,5 +183,6 @@ export default function TenantSettingsPage() {
         </button>
       </form>
     </div>
+    </RoleGuard>
   );
 }

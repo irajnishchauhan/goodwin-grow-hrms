@@ -21,6 +21,7 @@ import {
   Plus
 } from 'lucide-react';
 import { Tenant, OnboardingStep } from '@/lib/types';
+import RoleGuard from '@/components/RoleGuard';
 
 export default function CompanySetupWizardPage() {
   const params = useParams();
@@ -99,7 +100,12 @@ export default function CompanySetupWizardPage() {
   };
 
   return (
-    <div className="space-y-8 max-w-5xl">
+    <RoleGuard
+      tenantSlug={tenantSlug}
+      requiredRoles={['COMPANY_ADMIN', 'SUPER_ADMIN']}
+      moduleName="Company Setup Wizard"
+    >
+      <div className="space-y-8 max-w-5xl">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -495,5 +501,6 @@ export default function CompanySetupWizardPage() {
         </div>
       </div>
     </div>
+    </RoleGuard>
   );
 }

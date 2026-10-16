@@ -14,10 +14,12 @@ import {
   UserCheck
 } from 'lucide-react';
 import { AttendanceRecord, Employee, Tenant } from '@/lib/types';
+import { useCurrentUser } from '@/lib/auth/useCurrentUser';
 
 export default function TenantAttendancePage() {
   const params = useParams();
   const tenantSlug = params.tenantSlug as string;
+  const { user, isEmployeeOnly } = useCurrentUser(tenantSlug);
 
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -39,10 +41,23 @@ export default function TenantAttendancePage() {
       const empRes = await fetch(`/api/tenants/${tenantSlug}/employees`);
       const empJson = await empRes.json();
       if (empJson.success) {
-        setEmployees(empJson.data.employees);
+        const emps: Employee[] = empJson.data.employees;
+        setEmployees(emps);
         setTenant(empJson.data.tenant);
-        if (empJson.data.employees.length > 0 && !selectedEmpId) {
-          setSelectedEmpId(empJson.data.employees[0].id);
+
+        if (emps.length > 0) {
+          // If employee role, auto select their own record
+          const myEmp = emps.find(
+            (e) =>
+              user &&
+              (e.workEmail.toLowerCase() === user.email.toLowerCase() ||
+                e.firstName.toLowerCase() === user.name.toLowerCase().split(' ')[0])
+          );
+          if (myEmp) {
+            setSelectedEmpId(myEmp.id);
+          } else if (!selectedEmpId) {
+            setSelectedEmpId(emps[0].id);
+          }
         }
       }
     } catch (e) {
@@ -84,7 +99,15 @@ export default function TenantAttendancePage() {
     }
   };
 
-  const presentCount = records.filter((r) => r.status === 'PRESENT' || r.status === 'LATE_ENTRY').length;
+  const visibleRecords = isEmployeeOnly
+    ? records.filter((r) => {
+        if (!user) return true;
+        const firstName = user.name.toLowerCase().split(' ')[0];
+        return (selectedEmpId && r.employeeId === selectedEmpId) || Boolean(r.employeeName?.toLowerCase().includes(firstName));
+      })
+    : records;
+
+  const presentCount = visibleRecords.filter((r) => r.status === 'PRESENT' || r.status === 'LATE_ENTRY').length;
 
   return (
     <div className="space-y-6 max-w-6xl">
@@ -93,10 +116,12 @@ export default function TenantAttendancePage() {
         <div>
           <h1 className="text-2xl font-extrabold text-white tracking-tight flex items-center gap-2">
             <Clock className="w-6 h-6 text-emerald-400" />
-            Attendance & Shifts
+            {isEmployeeOnly ? 'My Attendance & Shift Clock' : 'Attendance & Shifts'}
           </h1>
           <p className="text-xs text-slate-400 mt-1">
-            Real-time web punch tracking and shift regularization for {tenant?.name || 'Workspace'}
+            {isEmployeeOnly
+              ? `Real-time web punch tracking and personal shift hours for ${user?.name || 'Employee'}`
+              : `Real-time web punch tracking and shift regularization for ${tenant?.name || 'Workspace'}`}
           </p>
         </div>
 
@@ -124,22 +149,30 @@ export default function TenantAttendancePage() {
           </div>
           <h3 className="text-xl font-bold text-white">Record Attendance Punch</h3>
           <p className="text-xs text-slate-400 max-w-md">
-            Simulate an employee punching in or out via browser, mobile geo-fence, or biometric integration.
+            {isEmployeeOnly
+              ? 'Record your clock-in or clock-out timestamps with automated grace calculation.'
+              : 'Simulate an employee punching in or out via browser, mobile geo-fence, or biometric integration.'}
           </p>
 
           <div className="pt-1 flex items-center gap-2">
-            <span className="text-xs text-slate-400">Employee:</span>
-            <select
-              value={selectedEmpId}
-              onChange={(e) => setSelectedEmpId(e.target.value)}
-              className="px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
-            >
-              {employees.map((e) => (
-                <option key={e.id} value={e.id}>
-                  {e.firstName} {e.lastName} ({e.employeeCode})
-                </option>
-              ))}
-            </select>
+            <span className="text-xs text-slate-400">{isEmployeeOnly ? 'Active Employee:' : 'Employee:'}</span>
+            {isEmployeeOnly ? (
+              <span className="px-3 py-1.5 rounded-lg bg-slate-900 border border-emerald-500/40 text-emerald-300 text-xs font-bold">
+                {user?.name || 'Employee'}
+              </span>
+            ) : (
+              <select
+                value={selectedEmpId}
+                onChange={(e) => setSelectedEmpId(e.target.value)}
+                className="px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+              >
+                {employees.map((e) => (
+                  <option key={e.id} value={e.id}>
+                    {e.firstName} {e.lastName} ({e.employeeCode})
+                  </option>
+                ))}
+              </select>
+            )}
           </div>
         </div>
 
@@ -170,7 +203,7 @@ export default function TenantAttendancePage() {
           <div>
             <h3 className="text-sm font-bold text-white flex items-center gap-2">
               <UserCheck className="w-4 h-4 text-emerald-400" />
-              Daily Attendance Records
+              {isEmployeeOnly ? 'My Daily Attendance Records' : 'Daily Attendance Records'}
             </h3>
             <p className="text-xs text-slate-400">Logs captured for today ({new Date().toISOString().split('T')[0]})</p>
           </div>
@@ -193,14 +226,16 @@ export default function TenantAttendancePage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/80">
-              {records.length === 0 ? (
+              {visibleRecords.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="px-6 py-8 text-center text-slate-500 text-xs">
-                    No attendance records logged yet today.
+                    {isEmployeeOnly
+                      ? 'No attendance records logged for your profile today.'
+                      : 'No attendance records logged yet today.'}
                   </td>
                 </tr>
               ) : (
-                records.map((r) => (
+                visibleRecords.map((r) => (
                   <tr key={r.id} className="hover:bg-slate-900/60 transition-colors">
                     <td className="px-6 py-4 font-bold text-white">{r.employeeName}</td>
                     <td className="px-6 py-4 font-mono text-slate-400">{r.date}</td>

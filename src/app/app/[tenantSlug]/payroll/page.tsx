@@ -15,12 +15,15 @@ import {
   Building2
 } from 'lucide-react';
 import { SalarySlip, Tenant } from '@/lib/types';
+import { useCurrentUser } from '@/lib/auth/useCurrentUser';
 
 export default function TenantPayrollPage() {
   const params = useParams();
   const tenantSlug = params.tenantSlug as string;
+  const { user, isEmployeeOnly } = useCurrentUser(tenantSlug);
 
   const [slips, setSlips] = useState<SalarySlip[]>([]);
+  const [employees, setEmployees] = useState<any[]>([]);
   const [tenant, setTenant] = useState<Tenant | null>(null);
   const [loading, setLoading] = useState(true);
   const [runningBatch, setRunningBatch] = useState(false);
@@ -41,6 +44,7 @@ export default function TenantPayrollPage() {
       const empJson = await empRes.json();
       if (empJson.success) {
         setTenant(empJson.data.tenant);
+        setEmployees(empJson.data.employees || []);
       }
     } catch (e) {
       console.error(e);
@@ -76,9 +80,26 @@ export default function TenantPayrollPage() {
     }
   };
 
-  const totalGross = slips.reduce((sum, s) => sum + s.grossSalary, 0);
-  const totalDeductions = slips.reduce((sum, s) => sum + s.totalDeductions, 0);
-  const totalNet = slips.reduce((sum, s) => sum + s.netPay, 0);
+  // Filter slips if employee
+  const myEmp = employees.find(
+    (e) =>
+      user &&
+      (e.workEmail?.toLowerCase() === user.email?.toLowerCase() ||
+        e.firstName?.toLowerCase() === user.name?.toLowerCase().split(' ')[0])
+  );
+
+  const visibleSlips = isEmployeeOnly
+    ? slips.filter((s) => {
+        if (!user) return true;
+        if (myEmp && s.employeeId === myEmp.id) return true;
+        const firstName = user.name?.toLowerCase().split(' ')[0] || '';
+        return s.employeeName.toLowerCase().includes(firstName);
+      })
+    : slips;
+
+  const totalGross = visibleSlips.reduce((sum, s) => sum + s.grossSalary, 0);
+  const totalDeductions = visibleSlips.reduce((sum, s) => sum + s.totalDeductions, 0);
+  const totalNet = visibleSlips.reduce((sum, s) => sum + s.netPay, 0);
 
   return (
     <div className="space-y-6 max-w-6xl">
@@ -87,21 +108,25 @@ export default function TenantPayrollPage() {
         <div>
           <h1 className="text-2xl font-extrabold text-white tracking-tight flex items-center gap-2">
             <CreditCard className="w-6 h-6 text-emerald-400" />
-            Payroll & Statutory Compensation
+            {isEmployeeOnly ? 'My Salary Slips & Compensation' : 'Payroll & Statutory Compensation'}
           </h1>
           <p className="text-xs text-slate-400 mt-1">
-            Salary structure engine, automated tax calculations, and payslip disbursement for {tenant?.name}
+            {isEmployeeOnly
+              ? `Personal monthly payslips and tax deductions for ${user?.name || 'Employee'}`
+              : `Salary structure engine, automated tax calculations, and payslip disbursement for ${tenant?.name}`}
           </p>
         </div>
 
-        <button
-          onClick={handleRunPayroll}
-          disabled={runningBatch}
-          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs shadow-md shadow-emerald-900/30 transition-all disabled:opacity-50"
-        >
-          <Play className="w-3.5 h-3.5 fill-white" />
-          <span>{runningBatch ? 'Processing Batch...' : 'Run October 2026 Payroll'}</span>
-        </button>
+        {!isEmployeeOnly && (
+          <button
+            onClick={handleRunPayroll}
+            disabled={runningBatch}
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs shadow-md shadow-emerald-900/30 transition-all disabled:opacity-50"
+          >
+            <Play className="w-3.5 h-3.5 fill-white" />
+            <span>{runningBatch ? 'Processing Batch...' : 'Run October 2026 Payroll'}</span>
+          </button>
+        )}
       </div>
 
       {batchMsg && (
@@ -116,15 +141,21 @@ export default function TenantPayrollPage() {
       {/* Summary KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="p-5 rounded-2xl bg-slate-950 border border-slate-800 shadow-md">
-          <div className="text-xs font-semibold uppercase text-slate-400">Total Monthly Gross</div>
+          <div className="text-xs font-semibold uppercase text-slate-400">
+            {isEmployeeOnly ? 'My Monthly Gross' : 'Total Monthly Gross'}
+          </div>
           <div className="text-2xl font-extrabold text-white mt-1">
             {tenant?.currency} {totalGross.toLocaleString()}
           </div>
-          <p className="text-[11px] text-slate-400 mt-1">Before statutory deductions</p>
+          <p className="text-[11px] text-slate-400 mt-1">
+            {isEmployeeOnly ? 'Agreed monthly CTC' : 'Before statutory deductions'}
+          </p>
         </div>
 
         <div className="p-5 rounded-2xl bg-slate-950 border border-slate-800 shadow-md">
-          <div className="text-xs font-semibold uppercase text-slate-400">Statutory Deductions (PF/Tax)</div>
+          <div className="text-xs font-semibold uppercase text-slate-400">
+            {isEmployeeOnly ? 'My Deductions (PF/Tax)' : 'Statutory Deductions (PF/Tax)'}
+          </div>
           <div className="text-2xl font-extrabold text-rose-400 mt-1">
             {tenant?.currency} {totalDeductions.toLocaleString()}
           </div>
@@ -132,19 +163,23 @@ export default function TenantPayrollPage() {
         </div>
 
         <div className="p-5 rounded-2xl bg-slate-950 border border-slate-800 shadow-md">
-          <div className="text-xs font-semibold uppercase text-slate-400">Net Salary Disbursed</div>
+          <div className="text-xs font-semibold uppercase text-slate-400">
+            {isEmployeeOnly ? 'My Net Take-Home Pay' : 'Net Salary Disbursed'}
+          </div>
           <div className="text-2xl font-extrabold text-emerald-400 mt-1">
             {tenant?.currency} {totalNet.toLocaleString()}
           </div>
-          <p className="text-[11px] text-emerald-400 mt-1">✓ 100% calculated & approved</p>
+          <p className="text-[11px] text-emerald-400 mt-1">✓ Credited to bank account</p>
         </div>
       </div>
 
       {/* Salary Slips Table */}
       <div className="rounded-2xl bg-slate-950 border border-slate-800 overflow-hidden shadow-xl">
         <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
-          <h3 className="text-sm font-bold text-white">October 2026 Salary Slips</h3>
-          <span className="text-xs text-slate-400">{slips.length} Payslips</span>
+          <h3 className="text-sm font-bold text-white">
+            {isEmployeeOnly ? 'My October 2026 Payslips' : 'October 2026 Salary Slips'}
+          </h3>
+          <span className="text-xs text-slate-400">{visibleSlips.length} Payslip(s)</span>
         </div>
 
         <div className="overflow-x-auto">
@@ -161,14 +196,16 @@ export default function TenantPayrollPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/80">
-              {slips.length === 0 ? (
+              {visibleSlips.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="px-6 py-8 text-center text-slate-500 text-xs">
-                    No payroll slips generated for this period. Click &quot;Run October 2026 Payroll&quot; above.
+                    {isEmployeeOnly
+                      ? 'No personal payslips found on record for your employee account.'
+                      : 'No payroll slips generated for this period. Click "Run October 2026 Payroll" above.'}
                   </td>
                 </tr>
               ) : (
-                slips.map((slip) => (
+                visibleSlips.map((slip) => (
                   <tr key={slip.id} className="hover:bg-slate-900/60 transition-colors">
                     <td className="px-6 py-4 font-bold text-white">{slip.employeeName}</td>
                     <td className="px-6 py-4 font-mono font-bold text-emerald-400">{slip.employeeCode}</td>

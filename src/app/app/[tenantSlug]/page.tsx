@@ -2,7 +2,9 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
+import RoleGuard from '@/components/RoleGuard';
+import { useCurrentUser } from '@/lib/auth/useCurrentUser';
 import {
   Users,
   Clock,
@@ -21,8 +23,16 @@ import {
 import { Tenant, Employee, LeaveApplication, AttendanceRecord, SalarySlip } from '@/lib/types';
 
 export default function TenantOverviewPage() {
+  const router = useRouter();
   const params = useParams();
   const tenantSlug = params.tenantSlug as string;
+  const { isEmployeeOnly } = useCurrentUser(tenantSlug);
+
+  useEffect(() => {
+    if (isEmployeeOnly) {
+      router.replace(`/app/${tenantSlug}/my-dashboard`);
+    }
+  }, [isEmployeeOnly, tenantSlug, router]);
 
   const [tenant, setTenant] = useState<Tenant | null>(null);
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -128,7 +138,12 @@ export default function TenantOverviewPage() {
   const totalPayroll = slips.reduce((sum, s) => sum + s.netPay, 0);
 
   return (
-    <div className="space-y-8 max-w-6xl">
+    <RoleGuard
+      tenantSlug={tenantSlug}
+      requiredRoles={['COMPANY_ADMIN', 'SUPER_ADMIN']}
+      moduleName="Executive Overview Dashboard"
+    >
+      <div className="space-y-8 max-w-6xl">
       {/* Workspace Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -349,5 +364,6 @@ export default function TenantOverviewPage() {
         </div>
       </div>
     </div>
+    </RoleGuard>
   );
 }

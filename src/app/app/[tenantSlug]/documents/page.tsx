@@ -14,10 +14,12 @@ import {
   FileCheck
 } from 'lucide-react';
 import { EmployeeDocument, Employee, Tenant } from '@/lib/types';
+import { useCurrentUser } from '@/lib/auth/useCurrentUser';
 
 export default function TenantDocumentsPage() {
   const params = useParams();
   const tenantSlug = params.tenantSlug as string;
+  const { user, isEmployeeOnly, isCompanyAdmin, isHRAdmin } = useCurrentUser(tenantSlug);
 
   const [documents, setDocuments] = useState<EmployeeDocument[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -85,7 +87,28 @@ export default function TenantDocumentsPage() {
     }
   };
 
-  const filteredDocs = documents.filter((d) => selectedEmpFilter === 'ALL' || d.employeeId === selectedEmpFilter);
+  const myEmp = employees.find(
+    (e) =>
+      user &&
+      (e.workEmail.toLowerCase() === user.email.toLowerCase() ||
+        e.firstName.toLowerCase() === user.name.toLowerCase().split(' ')[0])
+  );
+
+  useEffect(() => {
+    if (isEmployeeOnly && myEmp && !empId) {
+      setEmpId(myEmp.id);
+    }
+  }, [isEmployeeOnly, myEmp, empId]);
+
+  const filteredDocs = isEmployeeOnly
+    ? documents.filter((d) =>
+        myEmp
+          ? d.employeeId === myEmp.id
+          : user
+          ? d.employeeName.toLowerCase().includes(user.name.toLowerCase().split(' ')[0])
+          : false
+      )
+    : documents.filter((d) => selectedEmpFilter === 'ALL' || d.employeeId === selectedEmpFilter);
 
   return (
     <div className="space-y-6 max-w-6xl">
@@ -93,41 +116,62 @@ export default function TenantDocumentsPage() {
         <div>
           <h1 className="text-2xl font-extrabold text-white tracking-tight flex items-center gap-2">
             <FolderLock className="w-6 h-6 text-emerald-400" />
-            Employee Document Vault
+            {isEmployeeOnly ? 'My Document Vault' : 'Employee Document Vault'}
           </h1>
           <p className="text-xs text-slate-400 mt-1">
-            Secure, encrypted storage of employment agreements, tax declarations, and identity records
+            {isEmployeeOnly
+              ? `Personal employment contract, tax declarations, and verification records for ${user?.name || 'Employee'}`
+              : 'Secure, encrypted storage of employment agreements, tax declarations, and identity records'}
           </p>
         </div>
 
         <button
           onClick={() => {
-            if (employees.length > 0 && !empId) setEmpId(employees[0].id);
+            if (isEmployeeOnly && myEmp) {
+              setEmpId(myEmp.id);
+            } else if (employees.length > 0 && !empId) {
+              setEmpId(employees[0].id);
+            }
             setModalOpen(true);
           }}
           className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs shadow-md shadow-emerald-900/30 transition-all"
         >
           <Upload className="w-4 h-4" />
-          <span>Upload Document</span>
+          <span>{isEmployeeOnly ? 'Upload My Document' : 'Upload Document'}</span>
         </button>
       </div>
 
-      {/* Filter by employee */}
-      <div className="flex items-center gap-2 p-3 rounded-2xl bg-slate-950 border border-slate-800 text-xs">
-        <span className="text-slate-400 font-medium">Filter by Team Member:</span>
-        <select
-          value={selectedEmpFilter}
-          onChange={(e) => setSelectedEmpFilter(e.target.value)}
-          className="px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
-        >
-          <option value="ALL">All Team Members ({documents.length} Files)</option>
-          {employees.map((e) => (
-            <option key={e.id} value={e.id}>
-              {e.firstName} {e.lastName}
-            </option>
-          ))}
-        </select>
-      </div>
+      {/* Filter by employee (Admin / HR view only) */}
+      {!isEmployeeOnly && (
+        <div className="flex items-center gap-2 p-3 rounded-2xl bg-slate-950 border border-slate-800 text-xs">
+          <span className="text-slate-400 font-medium">Filter by Team Member:</span>
+          <select
+            value={selectedEmpFilter}
+            onChange={(e) => setSelectedEmpFilter(e.target.value)}
+            className="px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+          >
+            <option value="ALL">All Team Members ({documents.length} Files)</option>
+            {employees.map((e) => (
+              <option key={e.id} value={e.id}>
+                {e.firstName} {e.lastName}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {/* Empty State for Employee */}
+      {filteredDocs.length === 0 && (
+        <div className="p-8 rounded-2xl bg-slate-950 border border-slate-800 text-center space-y-2">
+          <FolderLock className="w-8 h-8 text-slate-600 mx-auto" />
+          <h3 className="text-sm font-bold text-white">No documents found</h3>
+          <p className="text-xs text-slate-400">
+            {isEmployeeOnly
+              ? 'No verified documents uploaded for your profile yet. Click "Upload My Document" to add your tax declaration or identity proof.'
+              : 'No documents match the current filter criteria.'}
+          </p>
+        </div>
+      )}
 
       {/* Document Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -174,17 +218,23 @@ export default function TenantDocumentsPage() {
             <form onSubmit={handleUpload} className="p-6 space-y-4 text-xs">
               <div>
                 <label className="block font-semibold text-slate-700 mb-1">Team Member *</label>
-                <select
-                  value={empId}
-                  onChange={(e) => setEmpId(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
-                >
-                  {employees.map((e) => (
-                    <option key={e.id} value={e.id}>
-                      {e.firstName} {e.lastName} ({e.employeeCode})
-                    </option>
-                  ))}
-                </select>
+                {isEmployeeOnly ? (
+                  <div className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-100 text-slate-800 font-semibold">
+                    {user?.name || 'Self'} ({myEmp?.employeeCode || 'ESS'})
+                  </div>
+                ) : (
+                  <select
+                    value={empId}
+                    onChange={(e) => setEmpId(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+                  >
+                    {employees.map((e) => (
+                      <option key={e.id} value={e.id}>
+                        {e.firstName} {e.lastName} ({e.employeeCode})
+                      </option>
+                    ))}
+                  </select>
+                )}
               </div>
 
               <div>

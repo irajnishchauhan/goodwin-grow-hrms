@@ -43,9 +43,14 @@ export default function UniversalLoginPage() {
         throw new Error(json.error || 'Failed to authenticate');
       }
 
-      // Store basic session state for demo
+      // Store session state in both localStorage and cookie
       localStorage.setItem('currentUser', JSON.stringify(json.data.user));
-      localStorage.setItem('authToken', json.data.token);
+      localStorage.setItem('authToken', json.data.token || 'demo-auth-token');
+      document.cookie = `gg_user=${encodeURIComponent(JSON.stringify(json.data.user))}; path=/; max-age=86400`;
+      
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('hrms-auth-change'));
+      }
 
       router.push(json.data.redirectUrl || '/');
     } catch (err: unknown) {
@@ -69,6 +74,11 @@ export default function UniversalLoginPage() {
         .then((json) => {
           if (json.success) {
             localStorage.setItem('currentUser', JSON.stringify(json.data.user));
+            localStorage.setItem('authToken', json.data.token || 'demo-auth-token');
+            document.cookie = `gg_user=${encodeURIComponent(JSON.stringify(json.data.user))}; path=/; max-age=86400`;
+            if (typeof window !== 'undefined') {
+              window.dispatchEvent(new Event('hrms-auth-change'));
+            }
             router.push(json.data.redirectUrl);
           }
         });
@@ -238,10 +248,18 @@ export default function UniversalLoginPage() {
 
             <button
               onClick={() => handleQuickDemoLogin('sunil.kumar@goodwinbatteries.com')}
-              className="p-2 rounded-lg bg-slate-950 border border-slate-800 hover:border-amber-500/50 text-left transition-colors col-span-2"
+              className="p-2 rounded-lg bg-slate-950 border border-slate-800 hover:border-emerald-500/50 text-left transition-colors"
             >
-              <div className="font-bold text-slate-200">Employee Self-Service</div>
-              <div className="text-[10px] text-slate-400">Sunil Kumar (Battery Assembly Technician)</div>
+              <div className="font-bold text-emerald-400">Employee 1 (ESS)</div>
+              <div className="text-[10px] text-slate-400">Sunil Kumar (Assembly Tech)</div>
+            </button>
+
+            <button
+              onClick={() => handleQuickDemoLogin('pooja.reddy@goodwinbatteries.com')}
+              className="p-2 rounded-lg bg-slate-950 border border-slate-800 hover:border-emerald-500/50 text-left transition-colors"
+            >
+              <div className="font-bold text-emerald-400">Employee 2 (ESS)</div>
+              <div className="text-[10px] text-slate-400">Pooja Reddy (BMS Engineer)</div>
             </button>
           </div>
         </div>
