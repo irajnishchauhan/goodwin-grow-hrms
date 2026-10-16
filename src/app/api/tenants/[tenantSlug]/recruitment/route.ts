@@ -1,0 +1,112 @@
+import { NextResponse } from 'next/server';
+import { db } from '@/lib/db/store';
+
+export async function GET(
+  _req: Request,
+  context: { params: Promise<{ tenantSlug: string }> }
+) {
+  try {
+    const { tenantSlug } = await context.params;
+    const tenant = db.getTenantBySlug(tenantSlug);
+    if (!tenant) {
+      return NextResponse.json({ success: false, error: 'Tenant workspace not found' }, { status: 404 });
+    }
+
+    const openings = db.getJobOpenings(tenant.id);
+    const applicants = db.getJobApplicants(tenant.id);
+
+    return NextResponse.json({
+      success: true,
+      data: {
+        openings,
+        applicants,
+        totalOpenings: openings.length,
+        totalApplicants: applicants.length
+      }
+    });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Error fetching recruitment data';
+    return NextResponse.json({ success: false, error: message }, { status: 500 });
+  }
+}
+
+export async function POST(
+  req: Request,
+  context: { params: Promise<{ tenantSlug: string }> }
+) {
+  try {
+    const { tenantSlug } = await context.params;
+    const tenant = db.getTenantBySlug(tenantSlug);
+    if (!tenant) {
+      return NextResponse.json({ success: false, error: 'Tenant not found' }, { status: 404 });
+    }
+
+    const body = await req.json();
+    const { type } = body;
+
+    if (type === 'APPLICANT') {
+      const { jobOpeningId, jobTitle, fullName, email, phone, experienceYears, currentCompany, expectedSalary, stage } = body;
+      const applicant = db.createApplicant(tenant.id, {
+        jobOpeningId,
+        jobTitle,
+        fullName,
+        email,
+        phone,
+        experienceYears: Number(experienceYears) || 0,
+        currentCompany,
+        expectedSalary,
+        stage: stage || 'APPLIED'
+      });
+      return NextResponse.json({ success: true, data: applicant, message: 'Candidate application recorded' });
+    } else {
+      // Create Opening
+      const { title, departmentId, departmentName, experienceLevel, employmentType, openingsCount, location, salaryRange, description } = body;
+      const opening = db.createJobOpening(tenant.id, {
+        title,
+        departmentId,
+        departmentName: departmentName || 'Engineering',
+        experienceLevel: experienceLevel || '3-5 Years',
+        employmentType: employmentType || 'FULL_TIME',
+        openingsCount: Number(openingsCount) || 1,
+        location: location || 'Bangalore, India',
+        salaryRange: salaryRange || 'Competitive',
+        status: 'OPEN',
+        description: description || 'New requisition'
+      });
+      return NextResponse.json({ success: true, data: opening, message: 'Job opening published' });
+    }
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Error creating recruitment item';
+    return NextResponse.json({ success: false, error: message }, { status: 400 });
+  }
+}
+
+export async function PATCH(
+  req: Request,
+  context: { params: Promise<{ tenantSlug: string }> }
+) {
+  try {
+    const { tenantSlug } = await context.params;
+    const tenant = db.getTenantBySlug(tenantSlug);
+    if (!tenant) {
+      return NextResponse.json({ success: false, error: 'Tenant not found' }, { status: 404 });
+    }
+
+    const body = await req.json();
+    const { applicantId, newStage } = body;
+
+    if (!applicantId || !newStage) {
+      return NextResponse.json({ success: false, error: 'Applicant ID and new stage required' }, { status: 400 });
+    }
+
+    const updated = db.updateApplicantStage(tenant.id, applicantId, newStage);
+    return NextResponse.json({
+      success: true,
+      data: updated,
+      message: `Candidate moved to ${newStage}`
+    });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Error updating applicant stage';
+    return NextResponse.json({ success: false, error: message }, { status: 400 });
+  }
+}

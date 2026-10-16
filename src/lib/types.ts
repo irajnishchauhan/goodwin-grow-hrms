@@ -95,6 +95,19 @@ export interface Employee {
   updatedAt: string;
 }
 
+export interface EmployeeDocument {
+  id: string;
+  tenantId: string;
+  employeeId: string;
+  employeeName: string;
+  title: string;
+  documentType: 'CONTRACT' | 'OFFER_LETTER' | 'IDENTITY_PROOF' | 'TAX_DECLARATION' | 'CERTIFICATE';
+  fileName: string;
+  fileSize: string;
+  uploadedAt: string;
+}
+
+// Attendance & Shifts
 export type AttendanceStatus =
   | 'PRESENT'
   | 'ABSENT'
@@ -102,6 +115,17 @@ export type AttendanceStatus =
   | 'ON_LEAVE'
   | 'LATE_ENTRY'
   | 'HOLIDAY';
+
+export interface Shift {
+  id: string;
+  tenantId: string;
+  name: string;
+  startTime: string;
+  endTime: string;
+  graceMinutes: number;
+  isDefault: boolean;
+  color: string;
+}
 
 export interface AttendanceRecord {
   id: string;
@@ -114,8 +138,33 @@ export interface AttendanceRecord {
   workingHours: number;
   status: AttendanceStatus;
   notes?: string;
+  shiftName?: string;
 }
 
+export interface RegularizationRequest {
+  id: string;
+  tenantId: string;
+  employeeId: string;
+  employeeName: string;
+  attendanceDate: string;
+  requestedClockIn: string;
+  requestedClockOut: string;
+  reason: string;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  requestedAt: string;
+  reviewedBy?: string;
+}
+
+export interface Holiday {
+  id: string;
+  tenantId: string;
+  name: string;
+  date: string;
+  dayOfWeek: string;
+  isOptional: boolean;
+}
+
+// Leaves
 export type LeaveStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
 
 export interface LeaveType {
@@ -126,18 +175,6 @@ export interface LeaveType {
   daysPerYear: number;
   color: string;
   isPaid: boolean;
-}
-
-export interface LeaveAllocation {
-  id: string;
-  tenantId: string;
-  employeeId: string;
-  leaveTypeId: string;
-  leaveTypeName?: string;
-  totalDays: number;
-  usedDays: number;
-  balanceDays: number;
-  year: number;
 }
 
 export interface LeaveApplication {
@@ -157,13 +194,16 @@ export interface LeaveApplication {
   reviewComment?: string;
 }
 
-export interface SalaryComponent {
+// Payroll
+export interface SalaryComponentConfig {
   id: string;
   tenantId: string;
   name: string;
+  code: string;
   type: 'EARNING' | 'DEDUCTION';
-  isTaxable: boolean;
   percentageOfBasic?: number;
+  isTaxable: boolean;
+  isMandatory: boolean;
 }
 
 export interface SalarySlip {
@@ -186,6 +226,49 @@ export interface SalarySlip {
   netPay: number;
   paymentStatus: 'PAID' | 'PENDING' | 'PROCESSING';
   generatedDate: string;
+}
+
+// Recruitment & ATS
+export type CandidateStage =
+  | 'APPLIED'
+  | 'SCREENING'
+  | 'TECHNICAL_INTERVIEW'
+  | 'HR_ROUND'
+  | 'OFFERED'
+  | 'HIRED'
+  | 'REJECTED';
+
+export interface JobOpening {
+  id: string;
+  tenantId: string;
+  title: string;
+  departmentId: string;
+  departmentName: string;
+  experienceLevel: string;
+  employmentType: EmploymentType;
+  openingsCount: number;
+  location: string;
+  salaryRange: string;
+  status: 'OPEN' | 'ON_HOLD' | 'CLOSED';
+  description: string;
+  createdAt: string;
+}
+
+export interface JobApplicant {
+  id: string;
+  tenantId: string;
+  jobOpeningId: string;
+  jobTitle: string;
+  fullName: string;
+  email: string;
+  phone: string;
+  stage: CandidateStage;
+  experienceYears: number;
+  currentCompany?: string;
+  expectedSalary: string;
+  rating?: number; // 1-5
+  notes?: string;
+  appliedDate: string;
 }
 
 export interface AuditLogEntry {

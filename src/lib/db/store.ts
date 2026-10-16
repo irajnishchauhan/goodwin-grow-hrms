@@ -11,7 +11,13 @@ import {
   SalarySlip,
   AuditLogEntry,
   LeaveStatus,
-  UserRole
+  Shift,
+  Holiday,
+  RegularizationRequest,
+  EmployeeDocument,
+  JobOpening,
+  JobApplicant,
+  CandidateStage
 } from '../types';
 import {
   INITIAL_PLANS,
@@ -24,10 +30,15 @@ import {
   INITIAL_LEAVE_APPLICATIONS,
   INITIAL_ATTENDANCE,
   INITIAL_SALARY_SLIPS,
-  INITIAL_AUDIT_LOGS
+  INITIAL_AUDIT_LOGS,
+  INITIAL_SHIFTS,
+  INITIAL_HOLIDAYS,
+  INITIAL_REGULARIZATIONS,
+  INITIAL_DOCUMENTS,
+  INITIAL_JOB_OPENINGS,
+  INITIAL_JOB_APPLICANTS
 } from './initialData';
 
-// In-memory persistent data store during runtime with automatic reset / hydration
 class HRMSDataStore {
   private plans: SubscriptionPlan[] = [...INITIAL_PLANS];
   private tenants: Tenant[] = [...INITIAL_TENANTS];
@@ -40,6 +51,14 @@ class HRMSDataStore {
   private attendance: AttendanceRecord[] = [...INITIAL_ATTENDANCE];
   private salarySlips: SalarySlip[] = [...INITIAL_SALARY_SLIPS];
   private auditLogs: AuditLogEntry[] = [...INITIAL_AUDIT_LOGS];
+
+  // Extended modules state
+  private shifts: Shift[] = [...INITIAL_SHIFTS];
+  private holidays: Holiday[] = [...INITIAL_HOLIDAYS];
+  private regularizations: RegularizationRequest[] = [...INITIAL_REGULARIZATIONS];
+  private documents: EmployeeDocument[] = [...INITIAL_DOCUMENTS];
+  private jobOpenings: JobOpening[] = [...INITIAL_JOB_OPENINGS];
+  private jobApplicants: JobApplicant[] = [...INITIAL_JOB_APPLICANTS];
 
   // -------------------------------------------------------------
   // SUPER ADMIN & TENANT MANAGEMENT
@@ -67,7 +86,6 @@ class HRMSDataStore {
     adminName: string;
     adminEmail: string;
   }): { tenant: Tenant; adminUser: User } {
-    // Check if slug already exists
     const existing = this.getTenantBySlug(data.slug);
     if (existing) {
       throw new Error(`Tenant slug "${data.slug}" is already in use.`);
@@ -90,7 +108,6 @@ class HRMSDataStore {
     };
     this.tenants.push(newTenant);
 
-    // Create Initial Admin User
     const adminUser: User = {
       id: `user-${tenantId}-admin`,
       tenantId: tenantId,
@@ -103,20 +120,30 @@ class HRMSDataStore {
     this.users.push(adminUser);
 
     // Bootstrap standard departments
-    const defaultDepts: Department[] = [
+    this.departments.push(
       { id: `dept-${tenantId}-hr`, tenantId, name: 'Human Resources', code: 'HR' },
       { id: `dept-${tenantId}-eng`, tenantId, name: 'Engineering', code: 'ENG' },
       { id: `dept-${tenantId}-ops`, tenantId, name: 'Operations', code: 'OPS' }
-    ];
-    this.departments.push(...defaultDepts);
+    );
 
     // Bootstrap standard leave types
-    const defaultLeaves: LeaveType[] = [
+    this.leaveTypes.push(
       { id: `lt-${tenantId}-cl`, tenantId, name: 'Casual Leave (CL)', code: 'CL', daysPerYear: 12, color: '#3B82F6', isPaid: true },
       { id: `lt-${tenantId}-sl`, tenantId, name: 'Sick Leave (SL)', code: 'SL', daysPerYear: 10, color: '#EF4444', isPaid: true },
       { id: `lt-${tenantId}-pl`, tenantId, name: 'Privilege Leave (PL)', code: 'PL', daysPerYear: 15, color: '#10B981', isPaid: true }
-    ];
-    this.leaveTypes.push(...defaultLeaves);
+    );
+
+    // Bootstrap default shift
+    this.shifts.push({
+      id: `shift-${tenantId}-def`,
+      tenantId,
+      name: 'General Business Shift',
+      startTime: '09:00 AM',
+      endTime: '06:00 PM',
+      graceMinutes: 15,
+      isDefault: true,
+      color: '#059669'
+    });
 
     this.logAudit({
       tenantId,
@@ -147,16 +174,14 @@ class HRMSDataStore {
   }
 
   // -------------------------------------------------------------
-  // EMPLOYEES (STRICT TENANT ISOLATION)
+  // EMPLOYEES & ORG CHART
   // -------------------------------------------------------------
   public getEmployees(tenantId: string): Employee[] {
-    // Rigid tenant scope check
     return this.employees.filter((e) => e.tenantId === tenantId);
   }
 
   public getEmployeeById(tenantId: string, employeeId: string): Employee | null {
     const emp = this.employees.find((e) => e.id === employeeId);
-    // Hard multi-tenant security verification
     if (!emp || emp.tenantId !== tenantId) {
       return null;
     }
@@ -174,6 +199,7 @@ class HRMSDataStore {
       departmentId: string;
       designationTitle: string;
       monthlySalary: number;
+      reportingManagerName?: string;
       panOrTaxId?: string;
       bankAccountNumber?: string;
       bankName?: string;
@@ -207,6 +233,7 @@ class HRMSDataStore {
       departmentName,
       designationId: `desig-${empId}`,
       designationTitle: data.designationTitle,
+      reportingManagerName: data.reportingManagerName || 'Sarah Jenkins (VP HR)',
       employmentType: 'FULL_TIME',
       status: 'ACTIVE',
       monthlySalary: Number(data.monthlySalary),
@@ -243,8 +270,26 @@ class HRMSDataStore {
   }
 
   // -------------------------------------------------------------
-  // ATTENDANCE & SHIFTS
+  // SHIFTS, ATTENDANCE & REGULARIZATION
   // -------------------------------------------------------------
+  public getShifts(tenantId: string): Shift[] {
+    return this.shifts.filter((s) => s.tenantId === tenantId);
+  }
+
+  public createShift(tenantId: string, data: Omit<Shift, 'id' | 'tenantId'>): Shift {
+    const newShift: Shift = {
+      id: `shift-${Date.now()}`,
+      tenantId,
+      ...data
+    };
+    this.shifts.push(newShift);
+    return newShift;
+  }
+
+  public getHolidays(tenantId: string): Holiday[] {
+    return this.holidays.filter((h) => h.tenantId === tenantId);
+  }
+
   public getAttendance(tenantId: string, date?: string): AttendanceRecord[] {
     return this.attendance.filter((a) => {
       if (a.tenantId !== tenantId) return false;
@@ -279,16 +324,79 @@ class HRMSDataStore {
         clockInTime: timeStr,
         workingHours: 0,
         status: 'PRESENT',
-        notes: notes || 'Web Punch-In'
+        notes: notes || 'Web Punch-In',
+        shiftName: 'General Shift'
       };
       this.attendance.push(record);
     } else {
       if (action === 'OUT') {
         record.clockOutTime = timeStr;
-        record.workingHours = 8.5; // Calculated standard duration
+        record.workingHours = 8.5;
       }
     }
     return record;
+  }
+
+  public getRegularizations(tenantId: string): RegularizationRequest[] {
+    return this.regularizations.filter((r) => r.tenantId === tenantId);
+  }
+
+  public createRegularization(
+    tenantId: string,
+    data: {
+      employeeId: string;
+      attendanceDate: string;
+      requestedClockIn: string;
+      requestedClockOut: string;
+      reason: string;
+    }
+  ): RegularizationRequest {
+    const emp = this.getEmployeeById(tenantId, data.employeeId);
+    if (!emp) throw new Error('Employee not found');
+
+    const newReq: RegularizationRequest = {
+      id: `reg-${Date.now()}`,
+      tenantId,
+      employeeId: data.employeeId,
+      employeeName: `${emp.firstName} ${emp.lastName}`,
+      attendanceDate: data.attendanceDate,
+      requestedClockIn: data.requestedClockIn,
+      requestedClockOut: data.requestedClockOut,
+      reason: data.reason,
+      status: 'PENDING',
+      requestedAt: new Date().toISOString()
+    };
+    this.regularizations.unshift(newReq);
+    return newReq;
+  }
+
+  public updateRegularizationStatus(
+    tenantId: string,
+    id: string,
+    status: 'APPROVED' | 'REJECTED',
+    reviewedBy: string
+  ): RegularizationRequest {
+    const req = this.regularizations.find((r) => r.id === id && r.tenantId === tenantId);
+    if (!req) throw new Error('Regularization request not found');
+
+    req.status = status;
+    req.reviewedBy = reviewedBy;
+
+    // If approved, update the attendance record accordingly
+    if (status === 'APPROVED') {
+      const att = this.attendance.find(
+        (a) => a.tenantId === tenantId && a.employeeId === req.employeeId && a.date === req.attendanceDate
+      );
+      if (att) {
+        att.clockInTime = req.requestedClockIn;
+        att.clockOutTime = req.requestedClockOut;
+        att.workingHours = 8.5;
+        att.status = 'PRESENT';
+        att.notes = 'Regularized by Manager';
+      }
+    }
+
+    return req;
   }
 
   // -------------------------------------------------------------
@@ -356,6 +464,89 @@ class HRMSDataStore {
   }
 
   // -------------------------------------------------------------
+  // DOCUMENTS
+  // -------------------------------------------------------------
+  public getDocuments(tenantId: string, employeeId?: string): EmployeeDocument[] {
+    return this.documents.filter((d) => {
+      if (d.tenantId !== tenantId) return false;
+      if (employeeId && d.employeeId !== employeeId) return false;
+      return true;
+    });
+  }
+
+  public uploadDocument(
+    tenantId: string,
+    data: {
+      employeeId: string;
+      title: string;
+      documentType: 'CONTRACT' | 'OFFER_LETTER' | 'IDENTITY_PROOF' | 'TAX_DECLARATION' | 'CERTIFICATE';
+      fileName: string;
+      fileSize: string;
+    }
+  ): EmployeeDocument {
+    const emp = this.getEmployeeById(tenantId, data.employeeId);
+    if (!emp) throw new Error('Employee not found');
+
+    const doc: EmployeeDocument = {
+      id: `doc-${Date.now()}`,
+      tenantId,
+      employeeId: data.employeeId,
+      employeeName: `${emp.firstName} ${emp.lastName}`,
+      title: data.title,
+      documentType: data.documentType,
+      fileName: data.fileName,
+      fileSize: data.fileSize,
+      uploadedAt: new Date().toISOString()
+    };
+    this.documents.unshift(doc);
+    return doc;
+  }
+
+  // -------------------------------------------------------------
+  // RECRUITMENT & ATS
+  // -------------------------------------------------------------
+  public getJobOpenings(tenantId: string): JobOpening[] {
+    return this.jobOpenings.filter((j) => j.tenantId === tenantId);
+  }
+
+  public createJobOpening(tenantId: string, data: Omit<JobOpening, 'id' | 'tenantId' | 'createdAt'>): JobOpening {
+    const newOpening: JobOpening = {
+      id: `job-${Date.now()}`,
+      tenantId,
+      ...data,
+      createdAt: new Date().toISOString()
+    };
+    this.jobOpenings.unshift(newOpening);
+    return newOpening;
+  }
+
+  public getJobApplicants(tenantId: string, openingId?: string): JobApplicant[] {
+    return this.jobApplicants.filter((a) => {
+      if (a.tenantId !== tenantId) return false;
+      if (openingId && a.jobOpeningId !== openingId) return false;
+      return true;
+    });
+  }
+
+  public updateApplicantStage(tenantId: string, applicantId: string, newStage: CandidateStage): JobApplicant {
+    const applicant = this.jobApplicants.find((a) => a.id === applicantId && a.tenantId === tenantId);
+    if (!applicant) throw new Error('Applicant not found in tenant workspace');
+    applicant.stage = newStage;
+    return applicant;
+  }
+
+  public createApplicant(tenantId: string, data: Omit<JobApplicant, 'id' | 'tenantId' | 'appliedDate'>): JobApplicant {
+    const newApplicant: JobApplicant = {
+      id: `app-${Date.now()}`,
+      tenantId,
+      ...data,
+      appliedDate: new Date().toISOString().split('T')[0]
+    };
+    this.jobApplicants.unshift(newApplicant);
+    return newApplicant;
+  }
+
+  // -------------------------------------------------------------
   // PAYROLL & SALARY SLIPS
   // -------------------------------------------------------------
   public getSalarySlips(tenantId: string, month?: string): SalarySlip[] {
@@ -379,14 +570,12 @@ class HRMSDataStore {
       const specialAllowance = emp.monthlySalary - (basicPay + hra);
       const grossSalary = emp.monthlySalary;
 
-      // Statutory deductions (calculated according to regional standards)
       const pf = tenant.currency === 'INR' ? Math.min(Math.round(basicPay * 0.12), 1800) : 0;
       const pt = tenant.currency === 'INR' ? 200 : 0;
-      const tax = Math.round(grossSalary * 0.1);
+      const tax = Math.round(grossSalary * 0.15);
       const totalDeductions = pf + pt + tax;
       const netPay = grossSalary - totalDeductions;
 
-      // Check if slip already exists for this month
       const existingIdx = this.salarySlips.findIndex(
         (s) => s.tenantId === tenantId && s.employeeId === emp.id && s.month === month
       );
@@ -447,7 +636,7 @@ class HRMSDataStore {
   // -------------------------------------------------------------
   public getAuditLogs(tenantId?: string | null): AuditLogEntry[] {
     if (!tenantId) {
-      return [...this.auditLogs]; // Super admin sees all platform logs
+      return [...this.auditLogs];
     }
     return this.auditLogs.filter((a) => a.tenantId === tenantId);
   }
@@ -475,8 +664,6 @@ class HRMSDataStore {
     }[];
   } {
     const checks = [];
-
-    // Test 1: Cross-tenant Employee Enumeration Prevention
     const tenant1 = this.tenants[0]; // Goodwin
     const tenant2 = this.tenants[1]; // Nexus
 
@@ -492,8 +679,6 @@ class HRMSDataStore {
       details: `Tenant 1 (${tenant1.name}) holds ${tenant1Employees.length} records. Tenant 2 (${tenant2.name}) holds ${tenant2Employees.length} records. Strict 0% overlap.`
     });
 
-    // Test 2: Direct IDOR (Insecure Direct Object Reference) Attack Simulation
-    // Attacker from Tenant 1 requests Tenant 2's employee directly by ID
     const victimEmployee = tenant2Employees[0];
     const interceptedEmp = this.getEmployeeById(tenant1.id, victimEmployee.id);
     const isIdorBlocked = interceptedEmp === null;
@@ -507,7 +692,6 @@ class HRMSDataStore {
         : 'CRITICAL VULNERABILITY: IDOR allowed unauthorized record access!'
     });
 
-    // Test 3: Payroll Cross-Tenant Isolation
     const slipsTenant1 = this.getSalarySlips(tenant1.id);
     const slipsTenant2 = this.getSalarySlips(tenant2.id);
     const anyPayrollLeak =
@@ -521,7 +705,6 @@ class HRMSDataStore {
       details: `Zero cross-tenant payroll leakage detected between ${tenant1.currency} and ${tenant2.currency} accounts.`
     });
 
-    // Test 4: Leave Application & Workflow Boundary
     const leavesTenant1 = this.getLeaveApplications(tenant1.id);
     const leavesTenant2 = this.getLeaveApplications(tenant2.id);
     const anyLeaveLeak =
@@ -544,5 +727,4 @@ class HRMSDataStore {
   }
 }
 
-// Global singleton instance
 export const db = new HRMSDataStore();
