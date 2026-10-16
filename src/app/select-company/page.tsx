@@ -28,7 +28,7 @@ function SelectCompanyContent() {
     } else {
       // Fallback sample memberships for testing
       setMemberships([
-        { id: 'm1', tenantId: 'tenant-goodwin-batteries', tenantName: 'Goodwin Batteries Pvt Ltd', tenantSlug: 'goodwin-batteries', role: 'COMPANY_ADMIN', status: 'ACTIVE' },
+        { id: 'm1', tenantId: 'tenant-goodwin-batteries-fleet', tenantName: 'Goodwin Batteries Pvt Ltd', tenantSlug: 'goodwin-batteries-fleet', role: 'COMPANY_ADMIN', status: 'ACTIVE' },
         { id: 'm2', tenantId: 'tenant-goodwin', tenantName: 'Goodwin Technologies Pvt Ltd', tenantSlug: 'goodwin-tech', role: 'COMPANY_ADMIN', status: 'ACTIVE' }
       ]);
     }

@@ -167,16 +167,31 @@ export class SupabaseStore {
     const supabase = getSupabaseAdmin();
     if (!supabase) return false;
 
-    const { error } = await supabase
-      .from('tenants')
-      .delete()
-      .eq('id', tenantId);
+    try {
+      // 1. Purge dependent child records
+      await this.clearTenantData(tenantId);
 
-    if (error) {
-      console.warn('Supabase deleteTenant error:', error.message);
+      // 2. Remove memberships
+      await supabase.from('memberships').delete().eq('tenant_id', tenantId);
+
+      // 3. Clear users active_tenant_id
+      await supabase.from('users').update({ active_tenant_id: null }).eq('active_tenant_id', tenantId);
+
+      // 4. Delete tenant from tenants table by id or slug
+      const { error } = await supabase
+        .from('tenants')
+        .delete()
+        .or(`id.eq.${tenantId},slug.eq.${tenantId}`);
+
+      if (error) {
+        console.warn('Supabase deleteTenant error:', error.message);
+        return false;
+      }
+      return true;
+    } catch (err) {
+      console.warn('Supabase deleteTenant exception:', err);
       return false;
     }
-    return true;
   }
 
   public static async clearTenantData(tenantId: string): Promise<boolean> {

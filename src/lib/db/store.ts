@@ -290,6 +290,10 @@ class HRMSDataStore {
     return [...this.tenants];
   }
 
+  public setTenants(tenants: Tenant[]): void {
+    this.tenants = [...tenants];
+  }
+
   public getTenantById(tenantId: string): Tenant | null {
     return this.tenants.find((t) => t.id === tenantId) || null;
   }

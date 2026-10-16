@@ -66,47 +66,6 @@ export const INITIAL_PLANS: SubscriptionPlan[] = [
 
 export const INITIAL_TENANTS: Tenant[] = [
   {
-    id: 'tenant-goodwin-batteries',
-    name: 'Goodwin Batteries Pvt Ltd',
-    slug: 'goodwin-batteries',
-    companyCode: 'GOODWIN-BAT',
-    logoUrl: 'https://images.unsplash.com/photo-1513836279014-a89f7a76ae86?w=128&auto=format&fit=crop&q=80',
-    industry: 'Clean Energy & Battery Pack Manufacturing',
-    businessEmail: 'rajnish.chauhan@goodwinbatteries.com',
-    businessPhone: '+91 9667724411',
-    registeredAddress: 'Second Floor, Shop No. 202, Samiksh Landmark, Tejpur Gadbadi, AB Road',
-    city: 'Indore',
-    state: 'Madhya Pradesh',
-    country: 'India',
-    postalCode: '452012',
-    website: 'https://goodwinbatteries.com',
-    timezone: 'Asia/Kolkata',
-    currency: 'INR',
-    financialYear: 'April - March',
-    primaryColor: '#D97706', // Amber / Battery Gold
-    status: 'ACTIVE',
-    planId: 'enterprise',
-    maxEmployees: 500,
-    domain: 'goodwin-batteries.goodwingrowai.com',
-    enabledModules: ['CORE_HR', 'ATTENDANCE', 'LEAVES', 'PAYROLL', 'RECRUITMENT', 'DOCUMENTS'],
-    subscriptionStart: '2026-04-01',
-    subscriptionRenewal: '2027-03-31',
-    billingContact: 'rajnish.chauhan@goodwinbatteries.com',
-    trialStatus: false,
-    onboardingChecklist: [
-      { id: 'step-1', title: 'Company Profile', description: 'Logo, registration, timezone & currency', completed: true, route: '/app/goodwin-batteries/setup' },
-      { id: 'step-2', title: 'Departments', description: 'Configure organization departments', completed: false, route: '/app/goodwin-batteries/setup' },
-      { id: 'step-3', title: 'Designations & Reporting', description: 'Technical & supervisory hierarchy', completed: false, route: '/app/goodwin-batteries/setup' },
-      { id: 'step-4', title: 'Attendance Policies', description: 'Working hours, grace period & weekly offs', completed: false, route: '/app/goodwin-batteries/setup' },
-      { id: 'step-5', title: 'Leave Policies', description: 'Casual, Sick & Earned leaves', completed: false, route: '/app/goodwin-batteries/setup' },
-      { id: 'step-6', title: 'Payroll Configuration', description: 'Salary components & statutory rules', completed: false, route: '/app/goodwin-batteries/setup' },
-      { id: 'step-7', title: 'Employee Data Import', description: 'Individual entry and bulk spreadsheet import', completed: false, route: '/app/goodwin-batteries/setup' },
-      { id: 'step-8', title: 'Invite Employees', description: 'Send activation links to workforce', completed: false, route: '/app/goodwin-batteries/setup' }
-    ],
-    createdAt: '2026-04-01T09:00:00Z',
-    updatedAt: '2026-10-16T12:00:00Z'
-  },
-  {
     id: 'tenant-goodwin-batteries-fleet',
     name: 'Goodwin Batteries Pvt Ltd',
     slug: 'goodwin-batteries-fleet',
@@ -241,7 +200,6 @@ export const INITIAL_USERS: User[] = [
     avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=80',
     isSuperAdmin: true,
     memberships: [
-      { id: 'm-sa-1', tenantId: 'tenant-goodwin-batteries', tenantName: 'Goodwin Batteries Pvt Ltd', tenantSlug: 'goodwin-batteries', role: 'COMPANY_ADMIN', status: 'ACTIVE' },
       { id: 'm-sa-2', tenantId: 'tenant-goodwin-batteries-fleet', tenantName: 'Goodwin Batteries Pvt Ltd', tenantSlug: 'goodwin-batteries-fleet', role: 'COMPANY_ADMIN', status: 'ACTIVE' },
       { id: 'm-sa-3', tenantId: 'tenant-goodwin', tenantName: 'Goodwin Technologies Pvt Ltd', tenantSlug: 'goodwin-tech', role: 'COMPANY_ADMIN', status: 'ACTIVE' }
     ],
@@ -257,7 +215,6 @@ export const INITIAL_USERS: User[] = [
     avatarUrl: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120&auto=format&fit=crop&q=80',
     isSuperAdmin: true,
     memberships: [
-      { id: 'm-bat-1', tenantId: 'tenant-goodwin-batteries', tenantName: 'Goodwin Batteries Pvt Ltd', tenantSlug: 'goodwin-batteries', role: 'COMPANY_ADMIN', status: 'ACTIVE' },
       { id: 'm-bat-2', tenantId: 'tenant-goodwin-batteries-fleet', tenantName: 'Goodwin Batteries Pvt Ltd', tenantSlug: 'goodwin-batteries-fleet', role: 'COMPANY_ADMIN', status: 'ACTIVE' }
     ],
     activeTenantId: 'tenant-goodwin-batteries-fleet',
@@ -428,7 +385,7 @@ export const INITIAL_AUDIT_LOGS: AuditLogEntry[] = [
     actorRole: 'SUPER_ADMIN',
     action: 'CLIENT_ONBOARDED',
     resource: 'Tenant',
-    resourceId: 'tenant-goodwin-batteries',
+    resourceId: 'tenant-goodwin-batteries-fleet',
     ipAddress: '127.0.0.1',
     timestamp: '2026-04-01T09:00:00Z',
     details: { name: 'Goodwin Batteries Pvt Ltd', code: 'GOODWIN-BAT', plan: 'enterprise' }

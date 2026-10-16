@@ -103,7 +103,7 @@ export default function EmployeeSelfServiceDashboard() {
 
           matchedEmp = {
             id: `emp-user-${user.id || 'current'}`,
-            tenantId: tenant?.id || 'tenant-goodwin-batteries',
+            tenantId: tenant?.id || 'tenant-goodwin-batteries-fleet',
             userId: user.id,
             employeeCode: isOwnerUser ? 'GB-OWNER' : 'GB-1001',
             firstName: fName,

@@ -24,14 +24,6 @@ export const OWNER_USER: User = {
   isSuperAdmin: true,
   memberships: [
     {
-      id: 'm-owner-1',
-      tenantId: 'tenant-goodwin-batteries',
-      tenantName: 'Goodwin Batteries Pvt Ltd',
-      tenantSlug: 'goodwin-batteries',
-      role: 'COMPANY_ADMIN',
-      status: 'ACTIVE'
-    },
-    {
       id: 'm-owner-2',
       tenantId: 'tenant-goodwin-batteries-fleet',
       tenantName: 'Goodwin Batteries Pvt Ltd',

@@ -5,20 +5,17 @@ import { Tenant } from '@/lib/types';
 
 export async function GET() {
   try {
-    const dbTenants = db.listTenants();
     const supabaseTenants = await SupabaseStore.getTenants();
 
-    const tenantMap = new Map<string, Tenant>();
-    for (const t of dbTenants) {
-      tenantMap.set(t.slug, t);
+    let tenants: Tenant[];
+    if (supabaseTenants !== null) {
+      // Supabase PostgreSQL is connected: It is the authoritative single source of truth.
+      tenants = supabaseTenants;
+      db.setTenants(supabaseTenants);
+    } else {
+      // Supabase is unreachable/unconfigured: fallback to local in-memory store
+      tenants = db.listTenants();
     }
-    if (supabaseTenants && supabaseTenants.length > 0) {
-      for (const st of supabaseTenants) {
-        tenantMap.set(st.slug, st);
-      }
-    }
-
-    const tenants = Array.from(tenantMap.values());
 
     let totalEmployees = 0;
     for (const t of tenants) {
@@ -181,18 +178,23 @@ export async function DELETE(req: Request) {
       return NextResponse.json({ success: false, error: 'Tenant ID is required for deletion' }, { status: 400 });
     }
 
-    let existing = db.getTenantById(tenantId);
+    let existing = db.getTenantById(tenantId) || db.getTenantBySlug(tenantId);
     if (!existing) {
       const allTenants = await SupabaseStore.getTenants();
       existing = allTenants?.find((t) => t.id === tenantId || t.slug === tenantId) || null;
     }
+    const targetId = existing ? existing.id : tenantId;
+    const targetSlug = existing ? existing.slug : tenantId;
     const companyName = existing ? existing.name : tenantId;
 
-    const deleted = db.deleteTenant(tenantId);
-    const supabaseDeleted = await SupabaseStore.deleteTenant(tenantId);
+    db.deleteTenant(targetId);
+    db.deleteTenant(targetSlug);
+    await SupabaseStore.deleteTenant(targetId);
 
-    if (!deleted && !supabaseDeleted) {
-      return NextResponse.json({ success: false, error: 'Tenant not found or could not be deleted' }, { status: 404 });
+    // Refresh memory store from live Supabase
+    const refreshedTenants = await SupabaseStore.getTenants();
+    if (refreshedTenants !== null) {
+      db.setTenants(refreshedTenants);
     }
 
     return NextResponse.json({
@@ -204,3 +206,4 @@ export async function DELETE(req: Request) {
     return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
 }
+
