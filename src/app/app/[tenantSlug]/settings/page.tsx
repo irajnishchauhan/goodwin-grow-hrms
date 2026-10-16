@@ -53,10 +53,27 @@ export default function TenantSettingsPage() {
     if (tenantSlug) fetchTenant();
   }, [tenantSlug]);
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    setSavedMsg(true);
-    setTimeout(() => setSavedMsg(false), 3000);
+    try {
+      const res = await fetch(`/api/tenants/${tenantSlug}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name,
+          primaryColor: selectedColor,
+          currency
+        })
+      });
+      const json = await res.json();
+      if (json.success) {
+        setTenant(json.data.tenant);
+        setSavedMsg(true);
+        setTimeout(() => setSavedMsg(false), 3500);
+      }
+    } catch (err) {
+      console.error('Failed to save tenant settings', err);
+    }
   };
 
   return (

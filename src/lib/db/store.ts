@@ -43,6 +43,7 @@ import {
   INITIAL_JOB_APPLICANTS,
   INITIAL_INVITATIONS
 } from './initialData';
+import { SupabaseStore } from './supabaseStore';
 
 class HRMSDataStore {
   private plans: SubscriptionPlan[] = [...INITIAL_PLANS];
@@ -501,6 +502,89 @@ class HRMSDataStore {
       tenant.updatedAt = new Date().toISOString();
     }
     return tenant;
+  }
+
+  public updateTenant(tenantId: string, updates: Partial<Tenant>): Tenant {
+    const tenant = this.getTenantById(tenantId);
+    if (!tenant) throw new Error('Tenant not found');
+
+    Object.assign(tenant, updates);
+    tenant.updatedAt = new Date().toISOString();
+
+    if (SupabaseStore.isConnected()) {
+      SupabaseStore.saveTenant(tenant).catch((err) =>
+        console.warn('Background Supabase saveTenant error:', err)
+      );
+    }
+    return tenant;
+  }
+
+  public addDepartment(tenantId: string, name: string, code?: string): Department {
+    const deptCode = code || name.replace(/[^a-zA-Z]/g, '').slice(0, 4).toUpperCase();
+    const existing = this.departments.find(
+      (d) => d.tenantId === tenantId && (d.name.toLowerCase() === name.toLowerCase() || d.code === deptCode)
+    );
+    if (existing) return existing;
+
+    const newDept: Department = {
+      id: `dept-${tenantId.replace('tenant-', '')}-${Date.now()}`,
+      tenantId,
+      name,
+      code: deptCode
+    };
+    this.departments.push(newDept);
+    return newDept;
+  }
+
+  public deleteDepartment(tenantId: string, deptId: string): boolean {
+    const idx = this.departments.findIndex((d) => d.tenantId === tenantId && d.id === deptId);
+    if (idx !== -1) {
+      this.departments.splice(idx, 1);
+      return true;
+    }
+    return false;
+  }
+
+  public updateShift(tenantId: string, shiftId: string, data: Partial<Shift>): Shift {
+    const shift = this.shifts.find((s) => s.tenantId === tenantId && s.id === shiftId);
+    if (!shift) throw new Error('Shift not found');
+    Object.assign(shift, data);
+    return shift;
+  }
+
+  public deleteShift(tenantId: string, shiftId: string): boolean {
+    const idx = this.shifts.findIndex((s) => s.tenantId === tenantId && s.id === shiftId);
+    if (idx !== -1) {
+      this.shifts.splice(idx, 1);
+      return true;
+    }
+    return false;
+  }
+
+  public createLeaveType(tenantId: string, data: Omit<LeaveType, 'id' | 'tenantId'>): LeaveType {
+    const newLt: LeaveType = {
+      id: `lt-${tenantId.replace('tenant-', '')}-${Date.now()}`,
+      tenantId,
+      ...data
+    };
+    this.leaveTypes.push(newLt);
+    return newLt;
+  }
+
+  public updateLeaveType(tenantId: string, leaveTypeId: string, data: Partial<LeaveType>): LeaveType {
+    const lt = this.leaveTypes.find((l) => l.tenantId === tenantId && l.id === leaveTypeId);
+    if (!lt) throw new Error('Leave type not found');
+    Object.assign(lt, data);
+    return lt;
+  }
+
+  public deleteLeaveType(tenantId: string, leaveTypeId: string): boolean {
+    const idx = this.leaveTypes.findIndex((l) => l.tenantId === tenantId && l.id === leaveTypeId);
+    if (idx !== -1) {
+      this.leaveTypes.splice(idx, 1);
+      return true;
+    }
+    return false;
   }
 
   // -------------------------------------------------------------
@@ -1097,6 +1181,10 @@ class HRMSDataStore {
   // -------------------------------------------------------------
   public getDepartments(tenantId: string): Department[] {
     return this.departments.filter((d) => d.tenantId === tenantId);
+  }
+
+  public getDesignations(tenantId: string): Designation[] {
+    return this.designations.filter((d) => d.tenantId === tenantId);
   }
 
   // -------------------------------------------------------------
