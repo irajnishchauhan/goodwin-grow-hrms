@@ -26,9 +26,23 @@ export async function GET(
       employees = db.getEmployees(tenant.id);
     }
 
-    const activatedCount = employees.filter((e) => e.loginStatus === 'ACCEPTED').length;
-    const pendingCount = employees.filter((e) => e.loginStatus === 'PENDING').length;
-    const notInvitedCount = employees.filter((e) => e.loginStatus === 'NOT_INVITED' || !e.loginStatus).length;
+    // Reliable stats calculation checking both invitations and employee loginStatus
+    const pendingInvEmpIds = new Set(
+      invitations.filter((i) => i.status === 'PENDING').map((i) => i.employeeId)
+    );
+    const acceptedInvEmpIds = new Set(
+      invitations.filter((i) => i.status === 'ACCEPTED').map((i) => i.employeeId)
+    );
+
+    const activatedCount = employees.filter(
+      (e) => e.loginStatus === 'ACCEPTED' || acceptedInvEmpIds.has(e.id)
+    ).length;
+
+    const pendingCount = employees.filter(
+      (e) => (e.loginStatus === 'PENDING' || pendingInvEmpIds.has(e.id)) && !acceptedInvEmpIds.has(e.id)
+    ).length;
+
+    const notInvitedCount = Math.max(0, employees.length - activatedCount - pendingCount);
 
     return NextResponse.json({
       success: true,
@@ -71,8 +85,19 @@ export async function POST(
       return NextResponse.json({ success: false, error: 'Employee ID is required' }, { status: 400 });
     }
 
+    // Ensure employee is in memory db
+    let emp = db.getEmployeeById(tenant.id, employeeId);
+    if (!emp) {
+      const emps = await SupabaseStore.getEmployees(tenant.id);
+      if (emps && emps.length > 0) {
+        db.syncEmployees(emps);
+        emp = db.getEmployeeById(tenant.id, employeeId);
+      }
+    }
+
     const invitation = db.sendInvitation(tenant.id, employeeId, role || 'EMPLOYEE');
     await SupabaseStore.saveInvitation(invitation);
+    await SupabaseStore.updateEmployeeLoginStatus(employeeId, 'PENDING');
 
     return NextResponse.json({
       success: true,
@@ -107,10 +132,16 @@ export async function PATCH(
       const inv = db.resendInvitation(tenant.id, invitationId);
       if (inv) {
         await SupabaseStore.saveInvitation(inv);
+        await SupabaseStore.updateEmployeeLoginStatus(inv.employeeId, 'PENDING');
       }
       return NextResponse.json({ success: true, message: 'Invitation resent successfully', data: inv });
     } else if (action === 'REVOKE') {
+      const inv = db.getInvitations(tenant.id).find((i) => i.id === invitationId);
       db.revokeInvitation(tenant.id, invitationId);
+      if (inv) {
+        await SupabaseStore.saveInvitation(inv);
+        await SupabaseStore.updateEmployeeLoginStatus(inv.employeeId, 'REVOKED');
+      }
       return NextResponse.json({ success: true, message: 'Invitation revoked successfully' });
     }
 

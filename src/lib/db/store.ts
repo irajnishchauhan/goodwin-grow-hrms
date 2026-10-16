@@ -193,7 +193,26 @@ class HRMSDataStore {
   }
 
   public getInvitationByToken(token: string): Invitation | null {
-    return this.invitations.find((i) => i.token === token) || null;
+    const trimmed = (token || '').trim();
+    if (!trimmed) return null;
+    let found = this.invitations.find((i) => i.token === trimmed);
+    if (!found) {
+      const alt1 = trimmed.replace(/1/g, 'l');
+      const alt2 = trimmed.replace(/l/g, '1');
+      found = this.invitations.find(
+        (i) => i.token === alt1 || i.token === alt2 || i.token.toLowerCase() === trimmed.toLowerCase()
+      );
+    }
+    return found || null;
+  }
+
+  public syncInvitation(inv: Invitation): void {
+    const idx = this.invitations.findIndex((i) => i.id === inv.id || i.token === inv.token);
+    if (idx >= 0) {
+      this.invitations[idx] = { ...this.invitations[idx], ...inv };
+    } else {
+      this.invitations.unshift(inv);
+    }
   }
 
   public sendInvitation(

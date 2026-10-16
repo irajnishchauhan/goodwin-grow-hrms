@@ -71,6 +71,55 @@ export class SupabaseStore {
     }));
   }
 
+  public static async getTenantById(id: string): Promise<Tenant | null> {
+    const supabase = getSupabaseAdmin();
+    if (!supabase) return null;
+
+    const { data, error } = await supabase
+      .from('tenants')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (error || !data) {
+      return null;
+    }
+
+    const t = data;
+    return {
+      id: t.id,
+      name: t.name,
+      slug: t.slug,
+      companyCode: t.company_code,
+      logoUrl: t.logo_url,
+      industry: t.industry,
+      businessEmail: t.business_email,
+      businessPhone: t.business_phone,
+      registeredAddress: t.registered_address,
+      city: t.city,
+      state: t.state,
+      country: t.country,
+      postalCode: t.postal_code,
+      website: t.website,
+      timezone: t.timezone,
+      currency: t.currency,
+      financialYear: t.financial_year,
+      primaryColor: t.primary_color,
+      status: t.status,
+      planId: t.plan_id,
+      maxEmployees: t.max_employees,
+      domain: t.domain,
+      enabledModules: t.enabled_modules || [],
+      subscriptionStart: t.subscription_start,
+      subscriptionRenewal: t.subscription_renewal,
+      billingContact: t.billing_contact,
+      trialStatus: t.trial_status,
+      onboardingChecklist: t.onboarding_checklist || [],
+      createdAt: t.created_at,
+      updatedAt: t.updated_at
+    };
+  }
+
   public static async getTenantBySlug(slug: string): Promise<Tenant | null> {
     const supabase = getSupabaseAdmin();
     if (!supabase) return null;
@@ -317,6 +366,29 @@ export class SupabaseStore {
 
     if (error) {
       console.warn('Supabase saveEmployee error:', error.message);
+      return false;
+    }
+    return true;
+  }
+
+  public static async updateEmployeeLoginStatus(
+    employeeId: string,
+    loginStatus: string,
+    userId?: string
+  ): Promise<boolean> {
+    const supabase = getSupabaseAdmin();
+    if (!supabase) return false;
+
+    const payload: Record<string, any> = { login_status: loginStatus };
+    if (userId) payload.user_id = userId;
+
+    const { error } = await supabase
+      .from('employees')
+      .update(payload)
+      .eq('id', employeeId);
+
+    if (error) {
+      console.warn('Supabase updateEmployeeLoginStatus error:', error.message);
       return false;
     }
     return true;
@@ -782,6 +854,52 @@ export class SupabaseStore {
       acceptedAt: i.accepted_at,
       createdAt: i.created_at || new Date().toISOString()
     }));
+  }
+
+  public static async getInvitationByToken(token: string): Promise<Invitation | null> {
+    const supabase = getSupabaseAdmin();
+    if (!supabase) return null;
+
+    const trimmed = token.trim();
+    // 1. Direct match
+    let { data, error } = await supabase
+      .from('invitations')
+      .select('*')
+      .eq('token', trimmed)
+      .maybeSingle();
+
+    // 2. Fuzzy match if visually ambiguous (e.g. '1' vs 'l') or case difference
+    if (!data) {
+      const alt1 = trimmed.replace(/1/g, 'l');
+      const alt2 = trimmed.replace(/l/g, '1');
+      const { data: altData } = await supabase
+        .from('invitations')
+        .select('*')
+        .or(`token.eq.${alt1},token.eq.${alt2},token.ilike.${trimmed}`)
+        .maybeSingle();
+      if (altData) {
+        data = altData;
+      }
+    }
+
+    if (error || !data) return null;
+
+    return {
+      id: data.id,
+      tenantId: data.tenant_id,
+      tenantName: data.tenant_name,
+      employeeId: data.employee_id,
+      employeeName: data.employee_name,
+      email: data.email,
+      role: data.role,
+      token: data.token,
+      tokenHash: data.token_hash,
+      status: data.status,
+      expiresAt: data.expires_at,
+      lastSentAt: data.last_sent_at,
+      acceptedAt: data.accepted_at,
+      createdAt: data.created_at || new Date().toISOString()
+    };
   }
 
   public static async saveInvitation(inv: Invitation): Promise<boolean> {
