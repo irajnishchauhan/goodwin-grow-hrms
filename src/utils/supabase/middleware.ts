@@ -6,33 +6,41 @@ export async function updateSession(request: NextRequest) {
     request
   });
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+  const supabaseUrl =
+    process.env.NEXT_PUBLIC_SUPABASE_URL ||
+    'https://eidgnglpmfqqsdcwuqib.supabase.co';
   const supabaseKey =
     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+    'sb_publishable_NGP3vs23VM0HstU6_CfCwA_fKY8NTa2';
 
-  const supabase = createServerClient(supabaseUrl, supabaseKey, {
-    cookies: {
-      getAll() {
-        return request.cookies.getAll();
-      },
-      setAll(cookiesToSet) {
-        cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
-        supabaseResponse = NextResponse.next({
-          request
-        });
-        cookiesToSet.forEach(({ name, value, options }) =>
-          supabaseResponse.cookies.set(name, value, options)
-        );
-      }
-    }
-  });
+  if (!supabaseUrl || !supabaseKey) {
+    return supabaseResponse;
+  }
 
-  // IMPORTANT: Do not remove auth.getUser() as this keeps the session refreshed
   try {
+    const supabase = createServerClient(supabaseUrl, supabaseKey, {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll();
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
+          supabaseResponse = NextResponse.next({
+            request
+          });
+          cookiesToSet.forEach(({ name, value, options }) =>
+            supabaseResponse.cookies.set(name, value, options)
+          );
+        }
+      }
+    });
+
+    // IMPORTANT: Do not remove auth.getUser() as this keeps the session refreshed
     await supabase.auth.getUser();
-  } catch {
-    // Ignore network or initialization errors in middleware
+  } catch (error) {
+    // Fail gracefully: Edge middleware must never break page routing
+    console.error('Middleware Supabase session refresh error:', error);
   }
 
   return supabaseResponse;
