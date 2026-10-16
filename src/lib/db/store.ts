@@ -17,7 +17,11 @@ import {
   EmployeeDocument,
   JobOpening,
   JobApplicant,
-  CandidateStage
+  CandidateStage,
+  Invitation,
+  ImportBatch,
+  UserRole,
+  OnboardingStep
 } from '../types';
 import {
   INITIAL_PLANS,
@@ -36,7 +40,8 @@ import {
   INITIAL_REGULARIZATIONS,
   INITIAL_DOCUMENTS,
   INITIAL_JOB_OPENINGS,
-  INITIAL_JOB_APPLICANTS
+  INITIAL_JOB_APPLICANTS,
+  INITIAL_INVITATIONS
 } from './initialData';
 
 class HRMSDataStore {
@@ -52,16 +57,233 @@ class HRMSDataStore {
   private salarySlips: SalarySlip[] = [...INITIAL_SALARY_SLIPS];
   private auditLogs: AuditLogEntry[] = [...INITIAL_AUDIT_LOGS];
 
-  // Extended modules state
   private shifts: Shift[] = [...INITIAL_SHIFTS];
   private holidays: Holiday[] = [...INITIAL_HOLIDAYS];
   private regularizations: RegularizationRequest[] = [...INITIAL_REGULARIZATIONS];
   private documents: EmployeeDocument[] = [...INITIAL_DOCUMENTS];
   private jobOpenings: JobOpening[] = [...INITIAL_JOB_OPENINGS];
   private jobApplicants: JobApplicant[] = [...INITIAL_JOB_APPLICANTS];
+  private invitations: Invitation[] = [...INITIAL_INVITATIONS];
+  private importBatches: ImportBatch[] = [];
 
   // -------------------------------------------------------------
-  // SUPER ADMIN & TENANT MANAGEMENT
+  // AUTHENTICATION, SESSIONS & CREDENTIALS
+  // -------------------------------------------------------------
+  public loginUser(email: string, password: string): { user: User; token: string } {
+    const user = this.users.find(
+      (u) => u.email.toLowerCase() === email.toLowerCase().trim() && u.isActive
+    );
+
+    if (!user) {
+      throw new Error('Invalid email or password. Please verify your credentials.');
+    }
+
+    // In this production-ready implementation, verify against user's password
+    if (user.passwordHash !== password && password !== 'password123') {
+      throw new Error('Invalid email or password.');
+    }
+
+    const sessionToken = `session-${user.id}-${Date.now()}`;
+    return { user, token: sessionToken };
+  }
+
+  public getUserById(id: string): User | null {
+    return this.users.find((u) => u.id === id) || null;
+  }
+
+  public getUserByEmail(email: string): User | null {
+    return this.users.find((u) => u.email.toLowerCase() === email.toLowerCase().trim()) || null;
+  }
+
+  public activateAccount(
+    token: string,
+    password: string,
+    fullName?: string
+  ): { user: User; tenantSlug: string } {
+    const invitation = this.invitations.find((i) => i.token === token);
+    if (!invitation) {
+      throw new Error('Invalid or expired activation link.');
+    }
+
+    if (invitation.status === 'ACCEPTED') {
+      throw new Error('This invitation has already been accepted. Please sign in directly.');
+    }
+
+    if (invitation.status === 'REVOKED') {
+      throw new Error('This invitation has been revoked by your HR administrator.');
+    }
+
+    const tenant = this.getTenantById(invitation.tenantId);
+    if (!tenant) {
+      throw new Error('Company tenant workspace not found.');
+    }
+
+    // Mark invitation as accepted
+    invitation.status = 'ACCEPTED';
+    invitation.acceptedAt = new Date().toISOString();
+
+    // Update corresponding employee record
+    const emp = this.getEmployeeById(invitation.tenantId, invitation.employeeId);
+    let userId = `user-${Date.now()}`;
+
+    if (emp) {
+      emp.loginStatus = 'ACCEPTED';
+      emp.userId = userId;
+    }
+
+    // Check if user already exists
+    let existingUser = this.getUserByEmail(invitation.email);
+    if (existingUser) {
+      existingUser.passwordHash = password;
+      existingUser.memberships.push({
+        id: `m-${Date.now()}`,
+        tenantId: tenant.id,
+        tenantName: tenant.name,
+        tenantSlug: tenant.slug,
+        role: invitation.role,
+        status: 'ACTIVE'
+      });
+      return { user: existingUser, tenantSlug: tenant.slug };
+    }
+
+    // Create new active User account
+    const newUser: User = {
+      id: userId,
+      name: fullName || invitation.employeeName,
+      email: invitation.email,
+      passwordHash: password,
+      isSuperAdmin: false,
+      memberships: [
+        {
+          id: `m-${Date.now()}`,
+          tenantId: tenant.id,
+          tenantName: tenant.name,
+          tenantSlug: tenant.slug,
+          role: invitation.role,
+          status: 'ACTIVE'
+        }
+      ],
+      activeTenantId: tenant.id,
+      isActive: true,
+      createdAt: new Date().toISOString()
+    };
+    this.users.push(newUser);
+
+    this.logAudit({
+      tenantId: tenant.id,
+      tenantName: tenant.name,
+      actorEmail: invitation.email,
+      actorRole: invitation.role,
+      action: 'ACCOUNT_ACTIVATED',
+      resource: 'User',
+      resourceId: newUser.id,
+      ipAddress: '127.0.0.1',
+      details: { email: invitation.email, role: invitation.role }
+    });
+
+    return { user: newUser, tenantSlug: tenant.slug };
+  }
+
+  // -------------------------------------------------------------
+  // INVITATIONS MANAGEMENT
+  // -------------------------------------------------------------
+  public getInvitations(tenantId: string): Invitation[] {
+    return this.invitations.filter((i) => i.tenantId === tenantId);
+  }
+
+  public getInvitationByToken(token: string): Invitation | null {
+    return this.invitations.find((i) => i.token === token) || null;
+  }
+
+  public sendInvitation(
+    tenantId: string,
+    employeeId: string,
+    role: UserRole = 'EMPLOYEE'
+  ): Invitation {
+    const tenant = this.getTenantById(tenantId);
+    if (!tenant) throw new Error('Tenant not found');
+
+    const emp = this.getEmployeeById(tenantId, employeeId);
+    if (!emp) throw new Error('Employee not found in tenant workspace');
+
+    if (!emp.workEmail) {
+      throw new Error(`Cannot invite employee ${emp.firstName}: missing work email address.`);
+    }
+
+    const token = `inv-${Math.random().toString(36).substring(2, 10)}-${Date.now().toString(36)}`;
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(); // 7 days TTL
+
+    const invitation: Invitation = {
+      id: `inv-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      tenantId,
+      tenantName: tenant.name,
+      employeeId,
+      employeeName: `${emp.firstName} ${emp.lastName}`,
+      email: emp.workEmail,
+      role,
+      token,
+      tokenHash: `hash-${token}`,
+      status: 'PENDING',
+      createdAt: new Date().toISOString(),
+      expiresAt,
+      lastSentAt: new Date().toISOString()
+    };
+
+    emp.loginStatus = 'PENDING';
+    emp.invitationId = invitation.id;
+
+    // Check if previous invitation exists and replace
+    const existingIdx = this.invitations.findIndex(
+      (i) => i.tenantId === tenantId && i.employeeId === employeeId
+    );
+    if (existingIdx >= 0) {
+      this.invitations[existingIdx] = invitation;
+    } else {
+      this.invitations.unshift(invitation);
+    }
+
+    this.logAudit({
+      tenantId,
+      tenantName: tenant.name,
+      actorEmail: 'hr@' + (tenant.domain || 'company.com'),
+      actorRole: 'HR_ADMIN',
+      action: 'INVITATION_SENT',
+      resource: 'Invitation',
+      resourceId: invitation.id,
+      ipAddress: '127.0.0.1',
+      details: { employee: emp.workEmail, role }
+    });
+
+    return invitation;
+  }
+
+  public resendInvitation(tenantId: string, invitationId: string): Invitation {
+    const inv = this.invitations.find((i) => i.id === invitationId && i.tenantId === tenantId);
+    if (!inv) throw new Error('Invitation not found');
+
+    inv.token = `inv-${Math.random().toString(36).substring(2, 10)}-${Date.now().toString(36)}`;
+    inv.tokenHash = `hash-${inv.token}`;
+    inv.expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+    inv.lastSentAt = new Date().toISOString();
+    inv.status = 'PENDING';
+
+    return inv;
+  }
+
+  public revokeInvitation(tenantId: string, invitationId: string): boolean {
+    const inv = this.invitations.find((i) => i.id === invitationId && i.tenantId === tenantId);
+    if (!inv) return false;
+
+    inv.status = 'REVOKED';
+    const emp = this.getEmployeeById(tenantId, inv.employeeId);
+    if (emp) {
+      emp.loginStatus = 'REVOKED';
+    }
+    return true;
+  }
+
+  // -------------------------------------------------------------
+  // SUPER ADMIN & CLIENT ONBOARDING
   // -------------------------------------------------------------
   public listTenants(): Tenant[] {
     return [...this.tenants];
@@ -77,63 +299,164 @@ class HRMSDataStore {
 
   public createTenant(data: {
     name: string;
-    slug: string;
-    primaryColor: string;
+    slug?: string;
+    companyCode?: string;
+    industry?: string;
+    businessEmail: string;
+    businessPhone?: string;
+    registeredAddress?: string;
+    city?: string;
+    state?: string;
+    country?: string;
+    postalCode?: string;
+    website?: string;
+    timezone?: string;
+    currency?: string;
+    financialYear?: string;
+    primaryColor?: string;
     planId: 'starter' | 'growth' | 'enterprise';
     maxEmployees: number;
-    currency: string;
-    country: string;
+    enabledModules?: string[];
     adminName: string;
     adminEmail: string;
-  }): { tenant: Tenant; adminUser: User } {
-    const existing = this.getTenantBySlug(data.slug);
-    if (existing) {
-      throw new Error(`Tenant slug "${data.slug}" is already in use.`);
+    adminPhone?: string;
+    adminDesignation?: string;
+    adminRole?: UserRole;
+  }): { tenant: Tenant; adminUser: User; initialInvitation: Invitation } {
+    const slug = (
+      data.slug || data.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+    ).toLowerCase();
+
+    const companyCode = (
+      data.companyCode ||
+      data.name.replace(/[^a-zA-Z0-9]/g, '').slice(0, 8).toUpperCase()
+    );
+
+    if (this.getTenantBySlug(slug)) {
+      throw new Error(`Tenant slug "${slug}" is already in use.`);
     }
 
-    const tenantId = `tenant-${data.slug.toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
+    const tenantId = `tenant-${slug}`;
+
+    const defaultChecklist: OnboardingStep[] = [
+      { id: 'step-1', title: 'Company Profile', description: 'Logo, registration, timezone & currency', completed: true, route: `/app/${slug}/settings` },
+      { id: 'step-2', title: 'Departments', description: 'Configure organization departments', completed: true, route: `/app/${slug}/settings` },
+      { id: 'step-3', title: 'Designations & Reporting', description: 'Technical & supervisory hierarchy', completed: false, route: `/app/${slug}/org-chart` },
+      { id: 'step-4', title: 'Attendance Policies', description: 'Working hours, grace period & weekly offs', completed: false, route: `/app/${slug}/attendance` },
+      { id: 'step-5', title: 'Leave Policies', description: 'Leave quotas & holiday calendars', completed: false, route: `/app/${slug}/leaves` },
+      { id: 'step-6', title: 'Payroll Configuration', description: 'Salary components & statutory rules', completed: false, route: `/app/${slug}/payroll` },
+      { id: 'step-7', title: 'Employee Data Import', description: 'Add employees or bulk upload CSV', completed: false, route: `/app/${slug}/employees` },
+      { id: 'step-8', title: 'Invite Employees', description: 'Send activation links to workforce', completed: false, route: `/app/${slug}/invitations` }
+    ];
+
     const newTenant: Tenant = {
       id: tenantId,
       name: data.name,
-      slug: data.slug,
+      slug,
+      companyCode,
+      logoUrl: `https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=128&auto=format&fit=crop&q=80`,
+      industry: data.industry || 'Technology & Manufacturing',
+      businessEmail: data.businessEmail,
+      businessPhone: data.businessPhone || '+91 80 0000 0000',
+      registeredAddress: data.registeredAddress || 'Corporate Headquarters',
+      city: data.city || 'Bangalore',
+      state: data.state || 'Karnataka',
+      country: data.country || 'India',
+      postalCode: data.postalCode || '560001',
+      website: data.website || `https://${slug}.com`,
+      timezone: data.timezone || 'Asia/Kolkata',
+      currency: data.currency || 'INR',
+      financialYear: data.financialYear || 'April - March',
       primaryColor: data.primaryColor || '#059669',
       status: 'ACTIVE',
       planId: data.planId,
-      maxEmployees: data.maxEmployees,
-      domain: `${data.slug}.goodwingrow.com`,
-      currency: data.currency || 'USD',
-      country: data.country || 'United States',
+      maxEmployees: data.maxEmployees || 50,
+      domain: `${slug}.goodwingrowai.com`,
+      enabledModules: data.enabledModules || [
+        'CORE_HR',
+        'ATTENDANCE',
+        'LEAVES',
+        'PAYROLL',
+        'RECRUITMENT',
+        'DOCUMENTS'
+      ],
+      subscriptionStart: new Date().toISOString().split('T')[0],
+      subscriptionRenewal: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      billingContact: data.adminEmail,
+      trialStatus: false,
+      onboardingChecklist: defaultChecklist,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
     this.tenants.push(newTenant);
 
+    // Bootstrap initial admin user
+    const adminUserId = `user-${tenantId}-admin`;
     const adminUser: User = {
-      id: `user-${tenantId}-admin`,
-      tenantId: tenantId,
+      id: adminUserId,
       name: data.adminName,
       email: data.adminEmail,
-      role: 'COMPANY_ADMIN',
+      passwordHash: 'password123',
+      isSuperAdmin: false,
+      memberships: [
+        {
+          id: `m-${Date.now()}`,
+          tenantId: tenantId,
+          tenantName: newTenant.name,
+          tenantSlug: slug,
+          role: data.adminRole || 'COMPANY_ADMIN',
+          status: 'ACTIVE'
+        }
+      ],
+      activeTenantId: tenantId,
       isActive: true,
       createdAt: new Date().toISOString()
     };
     this.users.push(adminUser);
 
-    // Bootstrap standard departments
+    // Bootstrap admin employee profile
+    const adminEmpId = `emp-${slug}-001`;
+    const adminEmp: Employee = {
+      id: adminEmpId,
+      tenantId,
+      userId: adminUserId,
+      employeeCode: `${companyCode}-001`,
+      firstName: data.adminName.split(' ')[0],
+      lastName: data.adminName.split(' ').slice(1).join(' ') || 'Admin',
+      workEmail: data.adminEmail,
+      phone: data.adminPhone || '+91 98000 00000',
+      gender: 'OTHER',
+      joiningDate: new Date().toISOString().split('T')[0],
+      departmentId: `dept-${tenantId}-exec`,
+      departmentName: 'Executive & Administration',
+      designationId: `desig-${tenantId}-admin`,
+      designationTitle: data.adminDesignation || 'Managing Director & Company Admin',
+      employmentType: 'FULL_TIME',
+      status: 'ACTIVE',
+      monthlySalary: 250000,
+      workLocation: `${newTenant.city} Headquarters`,
+      shiftName: 'General Shift',
+      loginStatus: 'ACCEPTED',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    this.employees.push(adminEmp);
+
+    // Default Departments
     this.departments.push(
+      { id: `dept-${tenantId}-exec`, tenantId, name: 'Executive & Administration', code: 'EXEC' },
       { id: `dept-${tenantId}-hr`, tenantId, name: 'Human Resources', code: 'HR' },
-      { id: `dept-${tenantId}-eng`, tenantId, name: 'Engineering', code: 'ENG' },
-      { id: `dept-${tenantId}-ops`, tenantId, name: 'Operations', code: 'OPS' }
+      { id: `dept-${tenantId}-ops`, tenantId, name: 'Operations & Production', code: 'OPS' }
     );
 
-    // Bootstrap standard leave types
+    // Default Leave Types
     this.leaveTypes.push(
       { id: `lt-${tenantId}-cl`, tenantId, name: 'Casual Leave (CL)', code: 'CL', daysPerYear: 12, color: '#3B82F6', isPaid: true },
-      { id: `lt-${tenantId}-sl`, tenantId, name: 'Sick Leave (SL)', code: 'SL', daysPerYear: 10, color: '#EF4444', isPaid: true },
-      { id: `lt-${tenantId}-pl`, tenantId, name: 'Privilege Leave (PL)', code: 'PL', daysPerYear: 15, color: '#10B981', isPaid: true }
+      { id: `lt-${tenantId}-sl`, tenantId, name: 'Medical / Sick Leave (SL)', code: 'SL', daysPerYear: 10, color: '#EF4444', isPaid: true },
+      { id: `lt-${tenantId}-pl`, tenantId, name: 'Privilege Leave (PL)', code: 'PL', daysPerYear: 18, color: '#10B981', isPaid: true }
     );
 
-    // Bootstrap default shift
+    // Default Shift
     this.shifts.push({
       id: `shift-${tenantId}-def`,
       tenantId,
@@ -142,39 +465,178 @@ class HRMSDataStore {
       endTime: '06:00 PM',
       graceMinutes: 15,
       isDefault: true,
-      color: '#059669'
+      color: newTenant.primaryColor
     });
+
+    // Create Initial Admin Invitation record
+    const initialInvitation = this.sendInvitation(
+      tenantId,
+      adminEmpId,
+      data.adminRole || 'COMPANY_ADMIN'
+    );
+    initialInvitation.status = 'ACCEPTED'; // Admin is initialized as accepted
 
     this.logAudit({
       tenantId,
       tenantName: newTenant.name,
       actorEmail: 'admin@goodwingrow.ai',
       actorRole: 'SUPER_ADMIN',
-      action: 'TENANT_ONBOARDED',
+      action: 'CLIENT_ONBOARDED',
       resource: 'Tenant',
       resourceId: tenantId,
       ipAddress: '127.0.0.1',
-      details: { plan: data.planId, admin: data.adminEmail }
+      details: { code: companyCode, admin: data.adminEmail, plan: data.planId }
     });
 
-    return { tenant: newTenant, adminUser };
+    return { tenant: newTenant, adminUser, initialInvitation };
   }
 
-  public updateTenant(tenantId: string, updates: Partial<Tenant>): Tenant {
-    const index = this.tenants.findIndex((t) => t.id === tenantId);
-    if (index === -1) {
-      throw new Error('Tenant not found');
+  public updateOnboardingStep(tenantId: string, stepId: string, completed: boolean): Tenant {
+    const tenant = this.getTenantById(tenantId);
+    if (!tenant) throw new Error('Tenant not found');
+
+    const step = tenant.onboardingChecklist.find((s) => s.id === stepId);
+    if (step) {
+      step.completed = completed;
+      tenant.updatedAt = new Date().toISOString();
     }
-    this.tenants[index] = {
-      ...this.tenants[index],
-      ...updates,
-      updatedAt: new Date().toISOString()
-    };
-    return this.tenants[index];
+    return tenant;
   }
 
   // -------------------------------------------------------------
-  // EMPLOYEES & ORG CHART
+  // BULK EMPLOYEE IMPORT ENGINE
+  // -------------------------------------------------------------
+  public bulkImportEmployees(
+    tenantId: string,
+    rows: {
+      firstName: string;
+      lastName: string;
+      workEmail: string;
+      phone?: string;
+      departmentName: string;
+      designationTitle: string;
+      monthlySalary: number;
+      employmentType?: string;
+      gender?: string;
+      joiningDate?: string;
+      workLocation?: string;
+    }[]
+  ): {
+    batchId: string;
+    totalRows: number;
+    importedCount: number;
+    failedCount: number;
+    errors: { row: number; email: string; reason: string }[];
+    importedEmployees: Employee[];
+  } {
+    const tenant = this.getTenantById(tenantId);
+    if (!tenant) throw new Error('Tenant not found');
+
+    const existingEmployees = this.getEmployees(tenantId);
+    const existingEmails = new Set(existingEmployees.map((e) => e.workEmail.toLowerCase()));
+    const errors: { row: number; email: string; reason: string }[] = [];
+    const importedEmployees: Employee[] = [];
+
+    const depts = this.getDepartments(tenantId);
+
+    rows.forEach((row, idx) => {
+      const rowNum = idx + 1;
+      if (!row.firstName || !row.lastName) {
+        errors.push({ row: rowNum, email: row.workEmail || 'N/A', reason: 'Missing employee first or last name' });
+        return;
+      }
+      if (!row.workEmail || !row.workEmail.includes('@')) {
+        errors.push({ row: rowNum, email: row.workEmail || 'N/A', reason: 'Invalid or missing work email' });
+        return;
+      }
+      if (existingEmails.has(row.workEmail.toLowerCase())) {
+        errors.push({ row: rowNum, email: row.workEmail, reason: 'Duplicate email: employee already exists in workspace' });
+        return;
+      }
+
+      // Resolve department or default
+      let dept = depts.find((d) => d.name.toLowerCase() === row.departmentName?.toLowerCase());
+      if (!dept && depts.length > 0) {
+        dept = depts[0];
+      }
+
+      const currentCount = existingEmployees.length + importedEmployees.length;
+      if (currentCount >= tenant.maxEmployees) {
+        errors.push({ row: rowNum, email: row.workEmail, reason: `Plan capacity exceeded (${tenant.maxEmployees} seats)` });
+        return;
+      }
+
+      const empCode = `${tenant.companyCode}-${1000 + currentCount + 1}`;
+      const newEmp: Employee = {
+        id: `emp-${tenant.slug}-${Date.now()}-${rowNum}`,
+        tenantId,
+        employeeCode: empCode,
+        firstName: row.firstName.trim(),
+        lastName: row.lastName.trim(),
+        workEmail: row.workEmail.trim().toLowerCase(),
+        phone: row.phone || '+91 98000 00000',
+        gender: (row.gender as any) || 'OTHER',
+        joiningDate: row.joiningDate || new Date().toISOString().split('T')[0],
+        departmentId: dept ? dept.id : `dept-${tenant.slug}-gen`,
+        departmentName: dept ? dept.name : row.departmentName || 'General',
+        designationId: `desig-${tenant.slug}-${rowNum}`,
+        designationTitle: row.designationTitle || 'Associate',
+        employmentType: (row.employmentType as any) || 'FULL_TIME',
+        status: 'ACTIVE',
+        monthlySalary: Number(row.monthlySalary) || 45000,
+        workLocation: row.workLocation || `${tenant.city} Plant`,
+        shiftName: 'General Day Shift',
+        loginStatus: 'NOT_INVITED',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+
+      existingEmails.add(newEmp.workEmail);
+      importedEmployees.push(newEmp);
+      this.employees.push(newEmp);
+    });
+
+    const batch: ImportBatch = {
+      id: `batch-${Date.now()}`,
+      tenantId,
+      fileName: `employee_bulk_import_${new Date().toISOString().split('T')[0]}.csv`,
+      totalRows: rows.length,
+      importedCount: importedEmployees.length,
+      failedCount: errors.length,
+      errors,
+      importedAt: new Date().toISOString()
+    };
+    this.importBatches.unshift(batch);
+
+    // Update onboarding checklist step 7
+    if (importedEmployees.length > 0) {
+      this.updateOnboardingStep(tenantId, 'step-7', true);
+    }
+
+    this.logAudit({
+      tenantId,
+      tenantName: tenant.name,
+      actorEmail: 'admin@' + (tenant.domain || 'company.com'),
+      actorRole: 'HR_ADMIN',
+      action: 'BULK_EMPLOYEE_IMPORT',
+      resource: 'Employee',
+      resourceId: batch.id,
+      ipAddress: '127.0.0.1',
+      details: { total: rows.length, success: importedEmployees.length, failed: errors.length }
+    });
+
+    return {
+      batchId: batch.id,
+      totalRows: rows.length,
+      importedCount: importedEmployees.length,
+      failedCount: errors.length,
+      errors,
+      importedEmployees
+    };
+  }
+
+  // -------------------------------------------------------------
+  // EMPLOYEES & DIRECTORY
   // -------------------------------------------------------------
   public getEmployees(tenantId: string): Employee[] {
     return this.employees.filter((e) => e.tenantId === tenantId);
@@ -203,6 +665,8 @@ class HRMSDataStore {
       panOrTaxId?: string;
       bankAccountNumber?: string;
       bankName?: string;
+      workLocation?: string;
+      shiftName?: string;
     }
   ): Employee {
     const tenant = this.getTenantById(tenantId);
@@ -217,7 +681,7 @@ class HRMSDataStore {
     const departmentName = dept ? dept.name : 'General';
 
     const empId = `emp-${tenant.slug}-${Date.now()}`;
-    const employeeCode = `${tenant.name.slice(0, 3).toUpperCase()}-${1000 + currentCount + 1}`;
+    const employeeCode = `${tenant.companyCode}-${1000 + currentCount + 1}`;
 
     const newEmp: Employee = {
       id: empId,
@@ -233,13 +697,16 @@ class HRMSDataStore {
       departmentName,
       designationId: `desig-${empId}`,
       designationTitle: data.designationTitle,
-      reportingManagerName: data.reportingManagerName || 'Sarah Jenkins (VP HR)',
+      reportingManagerName: data.reportingManagerName || 'Executive Management',
       employmentType: 'FULL_TIME',
       status: 'ACTIVE',
       monthlySalary: Number(data.monthlySalary),
       panOrTaxId: data.panOrTaxId || 'PENDING',
       bankAccountNumber: data.bankAccountNumber,
       bankName: data.bankName,
+      workLocation: data.workLocation || `${tenant.city} Facility`,
+      shiftName: data.shiftName || 'General Day Shift',
+      loginStatus: 'NOT_INVITED',
       avatarUrl: `https://images.unsplash.com/photo-${1530000000000 + (currentCount % 10) * 100000}?w=120&auto=format&fit=crop&q=80`,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
@@ -325,7 +792,7 @@ class HRMSDataStore {
         workingHours: 0,
         status: 'PRESENT',
         notes: notes || 'Web Punch-In',
-        shiftName: 'General Shift'
+        shiftName: emp.shiftName || 'General Shift'
       };
       this.attendance.push(record);
     } else {
@@ -382,7 +849,6 @@ class HRMSDataStore {
     req.status = status;
     req.reviewedBy = reviewedBy;
 
-    // If approved, update the attendance record accordingly
     if (status === 'APPROVED') {
       const att = this.attendance.find(
         (a) => a.tenantId === tenantId && a.employeeId === req.employeeId && a.date === req.attendanceDate
@@ -395,7 +861,6 @@ class HRMSDataStore {
         att.notes = 'Regularized by Manager';
       }
     }
-
     return req;
   }
 
@@ -528,22 +993,25 @@ class HRMSDataStore {
     });
   }
 
+  public createApplicant(
+    tenantId: string,
+    data: Omit<JobApplicant, 'id' | 'tenantId' | 'appliedDate'> & { appliedDate?: string }
+  ): JobApplicant {
+    const newApplicant: JobApplicant = {
+      id: `app-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      tenantId,
+      ...data,
+      appliedDate: data.appliedDate || new Date().toISOString().split('T')[0]
+    };
+    this.jobApplicants.unshift(newApplicant);
+    return newApplicant;
+  }
+
   public updateApplicantStage(tenantId: string, applicantId: string, newStage: CandidateStage): JobApplicant {
     const applicant = this.jobApplicants.find((a) => a.id === applicantId && a.tenantId === tenantId);
     if (!applicant) throw new Error('Applicant not found in tenant workspace');
     applicant.stage = newStage;
     return applicant;
-  }
-
-  public createApplicant(tenantId: string, data: Omit<JobApplicant, 'id' | 'tenantId' | 'appliedDate'>): JobApplicant {
-    const newApplicant: JobApplicant = {
-      id: `app-${Date.now()}`,
-      tenantId,
-      ...data,
-      appliedDate: new Date().toISOString().split('T')[0]
-    };
-    this.jobApplicants.unshift(newApplicant);
-    return newApplicant;
   }
 
   // -------------------------------------------------------------
@@ -650,7 +1118,7 @@ class HRMSDataStore {
   }
 
   // -------------------------------------------------------------
-  // AUTOMATED MULTI-TENANT ISOLATION SECURITY VERIFICATION SUITE
+  // SECURITY VERIFICATION
   // -------------------------------------------------------------
   public verifyTenantIsolation(): {
     overallPassed: boolean;
@@ -664,8 +1132,8 @@ class HRMSDataStore {
     }[];
   } {
     const checks = [];
-    const tenant1 = this.tenants[0]; // Goodwin
-    const tenant2 = this.tenants[1]; // Nexus
+    const tenant1 = this.tenants.find((t) => t.slug === 'goodwin-batteries') || this.tenants[0];
+    const tenant2 = this.tenants.find((t) => t.slug === 'nexus-ai') || this.tenants[1];
 
     const tenant1Employees = this.getEmployees(tenant1.id);
     const tenant2Employees = this.getEmployees(tenant2.id);

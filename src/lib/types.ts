@@ -1,8 +1,8 @@
 export type UserRole =
   | 'SUPER_ADMIN'
   | 'COMPANY_ADMIN'
-  | 'HR_MANAGER'
-  | 'DEPARTMENT_HEAD'
+  | 'HR_ADMIN'
+  | 'MANAGER'
   | 'EMPLOYEE';
 
 export type TenantStatus = 'ACTIVE' | 'TRIAL' | 'SUSPENDED';
@@ -18,31 +18,66 @@ export interface SubscriptionPlan {
   isPopular?: boolean;
 }
 
+export interface OnboardingStep {
+  id: string;
+  title: string;
+  description: string;
+  completed: boolean;
+  route: string;
+}
+
 export interface Tenant {
   id: string;
   name: string;
   slug: string;
+  companyCode: string;
   logoUrl?: string;
+  industry: string;
+  businessEmail: string;
+  businessPhone: string;
+  registeredAddress: string;
+  city: string;
+  state: string;
+  country: string;
+  postalCode: string;
+  website: string;
+  timezone: string;
+  currency: string;
+  financialYear: string;
   primaryColor: string;
   status: TenantStatus;
   planId: SubscriptionPlanId;
   maxEmployees: number;
   domain?: string;
-  currency: string;
-  country: string;
+  enabledModules: string[];
+  subscriptionStart: string;
+  subscriptionRenewal: string;
+  billingContact: string;
+  trialStatus: boolean;
+  onboardingChecklist: OnboardingStep[];
   createdAt: string;
   updatedAt: string;
 }
 
+export interface TenantMembership {
+  id: string;
+  tenantId: string;
+  tenantName: string;
+  tenantSlug: string;
+  role: UserRole;
+  status: 'ACTIVE' | 'SUSPENDED';
+}
+
 export interface User {
   id: string;
-  tenantId: string | null; // null for Super Admin
   name: string;
   email: string;
-  role: UserRole;
+  passwordHash: string;
   avatarUrl?: string;
-  departmentId?: string;
-  employeeId?: string;
+  phone?: string;
+  isSuperAdmin: boolean;
+  memberships: TenantMembership[];
+  activeTenantId?: string; // Currently selected company
   isActive: boolean;
   createdAt: string;
 }
@@ -64,11 +99,13 @@ export interface Designation {
 }
 
 export type EmploymentType = 'FULL_TIME' | 'PART_TIME' | 'CONTRACT' | 'INTERN';
-export type EmployeeStatus = 'ACTIVE' | 'PROBATION' | 'NOTICE_PERIOD' | 'TERMINATED';
+export type EmployeeStatus = 'ACTIVE' | 'PROBATION' | 'NOTICE_PERIOD' | 'TERMINATED' | 'EXITED' | 'ARCHIVED';
+export type LoginActivationStatus = 'NOT_INVITED' | 'PENDING' | 'ACCEPTED' | 'EXPIRED' | 'REVOKED';
 
 export interface Employee {
   id: string;
   tenantId: string;
+  userId?: string; // Linked when account is activated
   employeeCode: string;
   firstName: string;
   lastName: string;
@@ -90,9 +127,41 @@ export interface Employee {
   panOrTaxId?: string;
   bankAccountNumber?: string;
   bankName?: string;
+  workLocation?: string;
+  shiftName?: string;
   avatarUrl?: string;
+  loginStatus: LoginActivationStatus;
+  invitationId?: string;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface Invitation {
+  id: string;
+  tenantId: string;
+  tenantName: string;
+  employeeId: string;
+  employeeName: string;
+  email: string;
+  role: UserRole;
+  token: string;
+  tokenHash: string;
+  status: LoginActivationStatus;
+  createdAt: string;
+  expiresAt: string;
+  acceptedAt?: string;
+  lastSentAt?: string;
+}
+
+export interface ImportBatch {
+  id: string;
+  tenantId: string;
+  fileName: string;
+  totalRows: number;
+  importedCount: number;
+  failedCount: number;
+  errors: { row: number; email: string; reason: string }[];
+  importedAt: string;
 }
 
 export interface EmployeeDocument {

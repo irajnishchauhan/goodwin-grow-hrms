@@ -1,0 +1,99 @@
+import { NextResponse } from 'next/server';
+import { db } from '@/lib/db/store';
+
+export async function GET(
+  _req: Request,
+  context: { params: Promise<{ tenantSlug: string }> }
+) {
+  try {
+    const { tenantSlug } = await context.params;
+    const tenant = db.getTenantBySlug(tenantSlug);
+    if (!tenant) {
+      return NextResponse.json({ success: false, error: 'Tenant not found' }, { status: 404 });
+    }
+
+    const invitations = db.getInvitations(tenant.id);
+    const employees = db.getEmployees(tenant.id);
+
+    const activatedCount = employees.filter((e) => e.loginStatus === 'ACCEPTED').length;
+    const pendingCount = employees.filter((e) => e.loginStatus === 'PENDING').length;
+    const notInvitedCount = employees.filter((e) => e.loginStatus === 'NOT_INVITED' || !e.loginStatus).length;
+
+    return NextResponse.json({
+      success: true,
+      data: {
+        invitations,
+        stats: {
+          totalEmployees: employees.length,
+          activatedCount,
+          pendingCount,
+          notInvitedCount,
+          activationRate: employees.length > 0 ? Math.round((activatedCount / employees.length) * 100) : 0
+        }
+      }
+    });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Error fetching invitations';
+    return NextResponse.json({ success: false, error: message }, { status: 500 });
+  }
+}
+
+export async function POST(
+  req: Request,
+  context: { params: Promise<{ tenantSlug: string }> }
+) {
+  try {
+    const { tenantSlug } = await context.params;
+    const tenant = db.getTenantBySlug(tenantSlug);
+    if (!tenant) {
+      return NextResponse.json({ success: false, error: 'Tenant not found' }, { status: 404 });
+    }
+
+    const body = await req.json();
+    const { employeeId, role } = body;
+
+    if (!employeeId) {
+      return NextResponse.json({ success: false, error: 'Employee ID is required' }, { status: 400 });
+    }
+
+    const invitation = db.sendInvitation(tenant.id, employeeId, role || 'EMPLOYEE');
+
+    return NextResponse.json({
+      success: true,
+      message: `Invitation generated and dispatched to ${invitation.email}`,
+      data: invitation
+    });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Error sending invitation';
+    return NextResponse.json({ success: false, error: message }, { status: 400 });
+  }
+}
+
+export async function PATCH(
+  req: Request,
+  context: { params: Promise<{ tenantSlug: string }> }
+) {
+  try {
+    const { tenantSlug } = await context.params;
+    const tenant = db.getTenantBySlug(tenantSlug);
+    if (!tenant) {
+      return NextResponse.json({ success: false, error: 'Tenant not found' }, { status: 404 });
+    }
+
+    const body = await req.json();
+    const { invitationId, action } = body;
+
+    if (action === 'RESEND') {
+      const inv = db.resendInvitation(tenant.id, invitationId);
+      return NextResponse.json({ success: true, message: 'Invitation resent successfully', data: inv });
+    } else if (action === 'REVOKE') {
+      db.revokeInvitation(tenant.id, invitationId);
+      return NextResponse.json({ success: true, message: 'Invitation revoked successfully' });
+    }
+
+    return NextResponse.json({ success: false, error: 'Invalid action' }, { status: 400 });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Error modifying invitation';
+    return NextResponse.json({ success: false, error: message }, { status: 400 });
+  }
+}

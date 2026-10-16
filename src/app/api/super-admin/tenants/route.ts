@@ -37,7 +37,31 @@ export async function GET() {
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { name, slug, primaryColor, planId, maxEmployees, currency, country, adminName, adminEmail } = body;
+    const {
+      name,
+      slug,
+      companyCode,
+      industry,
+      businessEmail,
+      businessPhone,
+      registeredAddress,
+      city,
+      state,
+      country,
+      postalCode,
+      website,
+      timezone,
+      currency,
+      financialYear,
+      primaryColor,
+      planId,
+      maxEmployees,
+      adminName,
+      adminEmail,
+      adminPhone,
+      adminDesignation,
+      adminRole
+    } = body;
 
     if (!name || !slug || !adminEmail || !adminName) {
       return NextResponse.json(
@@ -49,13 +73,27 @@ export async function POST(req: Request) {
     const result = db.createTenant({
       name,
       slug: slug.trim().toLowerCase().replace(/\s+/g, '-'),
+      companyCode: companyCode?.trim().toUpperCase(),
+      industry,
+      businessEmail: businessEmail || adminEmail,
+      businessPhone,
+      registeredAddress,
+      city,
+      state,
+      country: country || 'India',
+      postalCode,
+      website,
+      timezone: timezone || 'Asia/Kolkata',
+      currency: currency || 'INR',
+      financialYear: financialYear || 'April - March',
       primaryColor: primaryColor || '#059669',
       planId: planId || 'growth',
-      maxEmployees: maxEmployees || 50,
-      currency: currency || 'USD',
-      country: country || 'United States',
+      maxEmployees: maxEmployees || 100,
       adminName,
-      adminEmail
+      adminEmail,
+      adminPhone,
+      adminDesignation: adminDesignation || 'Managing Director & Company Admin',
+      adminRole: adminRole || 'COMPANY_ADMIN'
     });
 
     return NextResponse.json({

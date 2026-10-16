@@ -17,7 +17,11 @@ import {
   Settings,
   ChevronRight,
   ExternalLink,
-  Layers
+  Layers,
+  Sparkles,
+  Mail,
+  UserCheck,
+  LogIn
 } from 'lucide-react';
 
 interface TenantLayoutProps {
@@ -37,6 +41,9 @@ export default async function TenantWorkspaceLayout({ children, params }: Tenant
 
   const navLinks = [
     { label: 'Overview', href: `/app/${tenantSlug}`, icon: LayoutDashboard },
+    { label: 'Setup Wizard', href: `/app/${tenantSlug}/setup`, icon: Sparkles },
+    { label: 'Invitations & Access', href: `/app/${tenantSlug}/invitations`, icon: Mail },
+    { label: 'Employee Self-Service', href: `/app/${tenantSlug}/my-dashboard`, icon: UserCheck },
     { label: 'Employees Directory', href: `/app/${tenantSlug}/employees`, icon: Users },
     { label: 'Organization Tree', href: `/app/${tenantSlug}/org-chart`, icon: GitFork },
     { label: 'Attendance & Shifts', href: `/app/${tenantSlug}/attendance`, icon: Clock },
@@ -131,11 +138,39 @@ export default async function TenantWorkspaceLayout({ children, params }: Tenant
             <span className="text-emerald-400 font-mono">Workspace</span>
           </div>
 
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-800 border border-slate-700 text-xs text-slate-300">
-              <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
-              <span className="font-medium">Company HR Admin</span>
-            </div>
+          <div className="flex items-center gap-2 sm:gap-3">
+            <Link
+              href={`/app/${tenantSlug}/setup`}
+              className="hidden lg:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-900 hover:bg-slate-800 border border-slate-700/80 text-[11px] font-semibold text-amber-400 hover:text-amber-300 transition-colors"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>Setup Wizard</span>
+            </Link>
+
+            <Link
+              href={`/app/${tenantSlug}/invitations`}
+              className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-900 hover:bg-slate-800 border border-slate-700/80 text-[11px] font-semibold text-emerald-400 hover:text-emerald-300 transition-colors"
+            >
+              <Mail className="w-3.5 h-3.5" />
+              <span>Invite Credentials</span>
+            </Link>
+
+            <Link
+              href={`/app/${tenantSlug}/my-dashboard`}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-[11px] font-semibold text-amber-300 transition-colors"
+            >
+              <UserCheck className="w-3.5 h-3.5" />
+              <span>My ESS Portal</span>
+            </Link>
+
+            <Link
+              href="/login"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs text-slate-300 hover:text-white transition-colors"
+              title="Switch user account or sign in to another role"
+            >
+              <LogIn className="w-3.5 h-3.5 text-slate-400" />
+              <span className="hidden sm:inline">Switch Account</span>
+            </Link>
           </div>
         </header>
 
