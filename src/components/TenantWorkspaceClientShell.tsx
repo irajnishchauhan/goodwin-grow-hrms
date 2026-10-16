@@ -317,49 +317,92 @@ export default function TenantWorkspaceClientShell({
 
               {personaDropdownOpen && (
                 <div
-                  className="absolute right-0 mt-2 w-72 rounded-2xl bg-slate-900 border border-slate-700 shadow-2xl py-2 z-50 text-xs space-y-1"
-                  onClick={() => setPersonaDropdownOpen(false)}
+                  className="absolute right-0 mt-2 w-72 rounded-2xl bg-slate-900 border border-slate-700 shadow-2xl p-3 z-50 text-xs space-y-2"
                 >
-                  <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-800">
-                    Switch Test Persona ({tenant.name})
-                  </div>
-
-                  {currentPersonas.map((p) => {
-                    const isSelected = user?.email.toLowerCase() === p.email.toLowerCase();
-                    return (
-                      <button
-                        key={p.email}
-                        onClick={() => switchUserByEmail(p.email)}
-                        className={`w-full text-left px-3 py-2 flex items-center justify-between hover:bg-slate-800 transition-colors ${
-                          isSelected ? 'bg-emerald-500/10' : ''
-                        }`}
-                      >
-                        <div className="min-w-0 pr-2">
-                          <div className="font-semibold text-white truncate text-[11px]">
-                            {p.name}
-                          </div>
-                          <div className="text-[10px] text-slate-400 truncate">{p.title}</div>
+                  {isEmployeeOnly ? (
+                    // Regular Employee Profile Card (Strictly NO privilege escalation or persona switching)
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-3 pb-2.5 border-b border-slate-800">
+                        <div className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center font-bold text-emerald-400 text-sm">
+                          {(user?.name || 'EM').split(' ').map((n) => n[0]).slice(0, 2).join('')}
                         </div>
-                        <span
-                          className={`text-[9px] font-mono px-1.5 py-0.5 rounded border uppercase shrink-0 ${getRoleBadgeStyle(
-                            p.role
-                          )}`}
-                        >
-                          {p.role}
-                        </span>
-                      </button>
-                    );
-                  })}
+                        <div className="min-w-0 flex-1">
+                          <div className="font-bold text-white truncate text-xs">{user?.name}</div>
+                          <div className="text-[10px] text-slate-400 truncate">{user?.email}</div>
+                          <span className="inline-block mt-1 text-[9px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                            EMPLOYEE (Self-Service)
+                          </span>
+                        </div>
+                      </div>
 
-                  <div className="border-t border-slate-800 pt-1 mt-1">
-                    <Link
-                      href="/login"
-                      className="w-full text-left px-3 py-2 flex items-center gap-2 text-slate-300 hover:text-white hover:bg-slate-800 text-[11px]"
-                    >
-                      <LogIn className="w-3.5 h-3.5 text-slate-400" />
-                      <span>Universal Login Portal</span>
-                    </Link>
-                  </div>
+                      <div className="space-y-1 text-[11px] text-slate-400">
+                        <div className="flex justify-between py-1 border-b border-slate-800/60">
+                          <span>Workspace</span>
+                          <span className="font-semibold text-slate-200">{tenant.name}</span>
+                        </div>
+                        <div className="flex justify-between py-1">
+                          <span>Access Guard</span>
+                          <span className="text-emerald-400 font-semibold">Self-Service Partitioned</span>
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={() => logout()}
+                        className="w-full mt-2 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 font-semibold text-xs flex items-center justify-center gap-2 border border-rose-500/30 transition-colors"
+                      >
+                        <LogOut className="w-3.5 h-3.5" />
+                        <span>Sign Out</span>
+                      </button>
+                    </div>
+                  ) : (
+                    // Admin & Manager Persona Switcher for Workspace Management
+                    <div className="space-y-1">
+                      <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-800 flex items-center justify-between">
+                        <span>Switch Persona</span>
+                        <span className="font-mono text-emerald-400">Admin Mode</span>
+                      </div>
+
+                      {currentPersonas.map((p) => {
+                        const isSelected = user?.email.toLowerCase() === p.email.toLowerCase();
+                        return (
+                          <button
+                            key={p.email}
+                            onClick={() => {
+                              switchUserByEmail(p.email);
+                              setPersonaDropdownOpen(false);
+                            }}
+                            className={`w-full text-left px-3 py-2 flex items-center justify-between hover:bg-slate-800 transition-colors rounded-lg ${
+                              isSelected ? 'bg-emerald-500/10' : ''
+                            }`}
+                          >
+                            <div className="min-w-0 pr-2">
+                              <div className="font-semibold text-white truncate text-[11px]">
+                                {p.name}
+                              </div>
+                              <div className="text-[10px] text-slate-400 truncate">{p.title}</div>
+                            </div>
+                            <span
+                              className={`text-[9px] font-mono px-1.5 py-0.5 rounded border uppercase shrink-0 ${getRoleBadgeStyle(
+                                p.role
+                              )}`}
+                            >
+                              {p.role}
+                            </span>
+                          </button>
+                        );
+                      })}
+
+                      <div className="border-t border-slate-800 pt-1 mt-1">
+                        <button
+                          onClick={() => logout()}
+                          className="w-full text-left px-3 py-2 flex items-center gap-2 text-rose-300 hover:text-rose-200 hover:bg-slate-800 text-[11px] rounded-lg"
+                        >
+                          <LogOut className="w-3.5 h-3.5 text-rose-400" />
+                          <span>Sign Out</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -405,18 +448,13 @@ export default function TenantWorkspaceClientShell({
                 Employee Self-Service Mode ({user?.name || 'Employee'})
               </span>
               <span className="text-slate-400 text-[11px] hidden sm:inline">
-                — Admin configuration, full company payroll, and candidate hiring pipelines are securely partitioned.
+                — Admin configuration, company-wide payroll, and candidate hiring pipelines are strictly partitioned under RBAC.
               </span>
             </div>
-            <button
-              onClick={() => {
-                const adminP = currentPersonas.find((p) => p.role === 'COMPANY_ADMIN');
-                if (adminP) switchUserByEmail(adminP.email);
-              }}
-              className="text-[10px] font-semibold underline text-amber-300 hover:text-amber-200 ml-2"
-            >
-              Switch to Admin View &rarr;
-            </button>
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-900/60 border border-emerald-500/30 text-[10px] text-emerald-400 font-mono">
+              <ShieldCheck className="w-3 h-3" />
+              <span>RBAC Enforced</span>
+            </div>
           </div>
         )}
 

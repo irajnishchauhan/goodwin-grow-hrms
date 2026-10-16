@@ -19,7 +19,7 @@ export default function RoleGuard({
   moduleName,
   children
 }: RoleGuardProps) {
-  const { user, role, isSuperAdmin, isCompanyAdmin, switchUserByEmail, currentPersonas } =
+  const { user, role, isSuperAdmin, isCompanyAdmin } =
     useCurrentUser(tenantSlug);
 
   // If super admin or company admin, allow everything
@@ -29,7 +29,6 @@ export default function RoleGuard({
     requiredRoles.includes(role);
 
   if (!hasAccess) {
-    const adminPersona = currentPersonas.find((p) => p.role === 'COMPANY_ADMIN');
 
     return (
       <div className="max-w-2xl mx-auto my-12 p-8 rounded-3xl bg-slate-900/90 border border-amber-500/30 shadow-2xl backdrop-blur-xl text-center space-y-6">
@@ -74,16 +73,6 @@ export default function RoleGuard({
             <UserCheck className="w-4 h-4" />
             <span>Go to My Self-Service Portal</span>
           </Link>
-
-          {adminPersona && (
-            <button
-              onClick={() => switchUserByEmail(adminPersona.email)}
-              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 font-semibold text-xs transition-all"
-            >
-              <Sparkles className="w-4 h-4 text-amber-400" />
-              <span>Switch to Admin ({adminPersona.name})</span>
-            </button>
-          )}
         </div>
       </div>
     );

@@ -56,6 +56,14 @@ export const DEMO_PERSONAS: Record<string, PersonaDemo[]> = {
       role: 'EMPLOYEE',
       title: 'BMS Testing Engineer',
       avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=80'
+    },
+    {
+      id: 'user-bat-rajnish',
+      name: 'Rajnish Singh Chauhan',
+      email: 'rajnish.chauhan@goodwinbatteries.com',
+      role: 'EMPLOYEE',
+      title: 'Battery Operations Specialist',
+      avatarUrl: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120&auto=format&fit=crop&q=80'
     }
   ]
 };
@@ -71,9 +79,9 @@ export function useCurrentUser(tenantSlug?: string) {
       if (stored) {
         setUser(JSON.parse(stored));
       } else {
-        // Default to Sunil Kumar (Employee) if in goodwin-batteries workspace or no session
+        // Default to Rajnish Singh Chauhan (Employee) if in goodwin-batteries workspace or no session
         const defaultUser =
-          INITIAL_USERS.find((u) => u.email === 'sunil.kumar@goodwinbatteries.com') ||
+          INITIAL_USERS.find((u) => u.email === 'rajnish.chauhan@goodwinbatteries.com') ||
           INITIAL_USERS[0];
         setUser(defaultUser);
         localStorage.setItem('currentUser', JSON.stringify(defaultUser));

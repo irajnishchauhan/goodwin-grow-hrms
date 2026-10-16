@@ -247,19 +247,27 @@ export default function UniversalLoginPage() {
             </button>
 
             <button
+              onClick={() => handleQuickDemoLogin('rajnish.chauhan@goodwinbatteries.com')}
+              className="p-2 rounded-lg bg-emerald-950/40 border border-emerald-500/40 hover:border-emerald-400 text-left transition-colors"
+            >
+              <div className="font-bold text-emerald-400">Rajnish (Employee ESS)</div>
+              <div className="text-[10px] text-slate-300">Rajnish Singh Chauhan</div>
+            </button>
+
+            <button
               onClick={() => handleQuickDemoLogin('sunil.kumar@goodwinbatteries.com')}
               className="p-2 rounded-lg bg-slate-950 border border-slate-800 hover:border-emerald-500/50 text-left transition-colors"
             >
-              <div className="font-bold text-emerald-400">Employee 1 (ESS)</div>
-              <div className="text-[10px] text-slate-400">Sunil Kumar (Assembly Tech)</div>
+              <div className="font-bold text-emerald-400">Sunil (Assembly Tech)</div>
+              <div className="text-[10px] text-slate-400">Sunil Kumar</div>
             </button>
 
             <button
               onClick={() => handleQuickDemoLogin('pooja.reddy@goodwinbatteries.com')}
               className="p-2 rounded-lg bg-slate-950 border border-slate-800 hover:border-emerald-500/50 text-left transition-colors"
             >
-              <div className="font-bold text-emerald-400">Employee 2 (ESS)</div>
-              <div className="text-[10px] text-slate-400">Pooja Reddy (BMS Engineer)</div>
+              <div className="font-bold text-emerald-400">Pooja (BMS Eng)</div>
+              <div className="text-[10px] text-slate-400">Pooja Reddy</div>
             </button>
           </div>
         </div>

@@ -140,6 +140,16 @@ VALUES
     false,
     'tenant-goodwin-batteries',
     true
+),
+(
+    'user-bat-rajnish',
+    'rajnish.chauhan@goodwinbatteries.com',
+    'password123',
+    'Rajnish Singh Chauhan',
+    'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120&auto=format&fit=crop&q=80',
+    false,
+    'tenant-goodwin-batteries',
+    true
 )
 ON CONFLICT (id) DO NOTHING;
 
@@ -151,7 +161,8 @@ VALUES
 ('m-bat-1', 'user-bat-owner', 'tenant-goodwin-batteries', 'COMPANY_ADMIN', 'ACTIVE'),
 ('m-bat-2', 'user-bat-hr', 'tenant-goodwin-batteries', 'HR_ADMIN', 'ACTIVE'),
 ('m-bat-3', 'user-bat-manager', 'tenant-goodwin-batteries', 'MANAGER', 'ACTIVE'),
-('m-bat-4', 'user-bat-emp1', 'tenant-goodwin-batteries', 'EMPLOYEE', 'ACTIVE')
+('m-bat-4', 'user-bat-emp1', 'tenant-goodwin-batteries', 'EMPLOYEE', 'ACTIVE'),
+('m-bat-rajnish', 'user-bat-rajnish', 'tenant-goodwin-batteries', 'EMPLOYEE', 'ACTIVE')
 ON CONFLICT (id) DO NOTHING;
 
 -- 4. Insert Departments for Goodwin Batteries
@@ -172,6 +183,13 @@ INSERT INTO public.employees (
     reporting_manager_name, employment_type, status, monthly_salary, pan_or_tax_id,
     bank_account_number, bank_name, work_location, shift_name, login_status
 ) VALUES
+(
+    'emp-bat-000', 'tenant-goodwin-batteries', 'user-bat-rajnish', 'GB-1000',
+    'Rajnish', 'Singh Chauhan', 'rajnish.chauhan@goodwinbatteries.com', '+91 98450 00100',
+    'MALE', '2024-01-15', 'dept-bat-prod', 'Production & Cell Assembly', 'Battery Operations Specialist',
+    'Amit Patel (Prod Mgr)', 'FULL_TIME', 'ACTIVE', 75000, 'RCHAU1234K', '987654321098',
+    'HDFC Bank', 'Bangalore Plant 1', 'Morning Shift (A)', 'ACCEPTED'
+),
 (
     'emp-bat-001', 'tenant-goodwin-batteries', 'user-bat-owner', 'GB-1001',
     'Rajesh', 'Sharma', 'rajesh.sharma@goodwinbatteries.com', '+91 98450 11001',
@@ -275,3 +293,74 @@ VALUES
 ('lt-bat-sl', 'tenant-goodwin-batteries', 'Medical / Sick Leave (SL)', 'SL', 10, '#EF4444', true),
 ('lt-bat-pl', 'tenant-goodwin-batteries', 'Privilege Leave (PL)', 'PL', 18, '#10B981', true)
 ON CONFLICT (id) DO NOTHING;
+
+-- 8. Insert Attendance Records
+INSERT INTO public.attendance (
+    id, tenant_id, employee_id, employee_name, date, clock_in_time, clock_out_time, working_hours, status, notes, shift_name
+) VALUES
+(
+    'att-bat-0', 'tenant-goodwin-batteries', 'emp-bat-000', 'Rajnish Singh Chauhan',
+    CURRENT_DATE, '06:00 AM', '02:30 PM', 8.5, 'PRESENT', 'Battery Operations Station', 'Morning Shift (A)'
+),
+(
+    'att-bat-1', 'tenant-goodwin-batteries', 'emp-bat-004', 'Sunil Kumar',
+    CURRENT_DATE, '06:05 AM', NULL, 7.8, 'PRESENT', 'Cell Welding Station 4', 'Morning Assembly Shift (A)'
+)
+ON CONFLICT (id) DO NOTHING;
+
+-- 9. Insert Leave Applications
+INSERT INTO public.leave_applications (
+    id, tenant_id, employee_id, employee_name, employee_code, department_name, leave_type_id, leave_type_name,
+    start_date, end_date, total_days, reason, status, applied_at
+) VALUES
+(
+    'leave-app-bat-1', 'tenant-goodwin-batteries', 'emp-bat-004', 'Sunil Kumar', 'GB-1004',
+    'Production & Cell Assembly', 'lt-bat-cl', 'Casual Leave (CL)',
+    '2026-10-22', '2026-10-23', 2, 'Village harvest festival family gathering', 'PENDING', NOW() - INTERVAL '2 days'
+),
+(
+    'leave-app-bat-0', 'tenant-goodwin-batteries', 'emp-bat-000', 'Rajnish Singh Chauhan', 'GB-1000',
+    'Production & Cell Assembly', 'lt-bat-cl', 'Casual Leave (CL)',
+    '2026-11-05', '2026-11-06', 2, 'Family function attendance', 'APPROVED', NOW() - INTERVAL '1 day'
+)
+ON CONFLICT (id) DO NOTHING;
+
+-- 10. Insert Salary Slips
+INSERT INTO public.salary_slips (
+    id, tenant_id, employee_id, employee_name, employee_code, department_name, month,
+    basic_pay, hra, special_allowance, gross_salary, provident_fund, esi, professional_tax,
+    tax_deduction, total_deductions, net_pay, payment_status, generated_date
+) VALUES
+(
+    'slip-bat-00', 'tenant-goodwin-batteries', 'emp-bat-000', 'Rajnish Singh Chauhan', 'GB-1000',
+    'Production & Cell Assembly', '2026-10', 37500, 18750, 18750, 75000, 1800, 0, 200, 2500, 4500, 70500, 'PAID', CURRENT_DATE
+),
+(
+    'slip-bat-01', 'tenant-goodwin-batteries', 'emp-bat-004', 'Sunil Kumar', 'GB-1004',
+    'Production & Cell Assembly', '2026-10', 21000, 10500, 10500, 42000, 1800, 315, 200, 0, 2315, 39685, 'PAID', CURRENT_DATE
+)
+ON CONFLICT (id) DO NOTHING;
+
+-- 11. Insert Employee Documents
+INSERT INTO public.documents (
+    id, tenant_id, employee_id, employee_name, title, document_type, file_name, file_size, uploaded_at
+) VALUES
+(
+    'doc-bat-00', 'tenant-goodwin-batteries', 'emp-bat-000', 'Rajnish Singh Chauhan',
+    'Signed Employment Agreement & Non-Disclosure Form', 'CONTRACT', 'Rajnish_Chauhan_Employment_Agreement.pdf', '1.8 MB', NOW() - INTERVAL '180 days'
+),
+(
+    'doc-bat-01', 'tenant-goodwin-batteries', 'emp-bat-004', 'Sunil Kumar',
+    'Cell Assembly Safety & Hazardous Materials Cert', 'POLICY', 'Sunil_Kumar_HazMat_Level2_Cert.pdf', '1.2 MB', NOW() - INTERVAL '90 days'
+)
+ON CONFLICT (id) DO NOTHING;
+
+-- 12. Insert Holidays
+INSERT INTO public.holidays (id, tenant_id, name, date, is_mandatory)
+VALUES
+('hol-bat-1', 'tenant-goodwin-batteries', 'Republic Day', '2026-01-26', true),
+('hol-bat-2', 'tenant-goodwin-batteries', 'Independence Day', '2026-08-15', true),
+('hol-bat-3', 'tenant-goodwin-batteries', 'Gandhi Jayanti', '2026-10-02', true),
+('hol-bat-4', 'tenant-goodwin-batteries', 'Diwali / Deepavali', '2026-11-08', true)
+ON CONFLICT (id) DO NOTHING;
+

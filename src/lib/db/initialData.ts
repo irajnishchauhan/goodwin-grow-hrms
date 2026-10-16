@@ -205,6 +205,20 @@ export const INITIAL_USERS: User[] = [
     isActive: true,
     createdAt: '2026-01-01T00:00:00Z'
   },
+  {
+    id: 'user-bat-rajnish',
+    name: 'Rajnish Singh Chauhan',
+    email: 'rajnish.chauhan@goodwinbatteries.com',
+    passwordHash: 'password123',
+    avatarUrl: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120&auto=format&fit=crop&q=80',
+    isSuperAdmin: false,
+    memberships: [
+      { id: 'm-bat-rajnish', tenantId: 'tenant-goodwin-batteries', tenantName: 'Goodwin Batteries Pvt Ltd', tenantSlug: 'goodwin-batteries', role: 'EMPLOYEE', status: 'ACTIVE' }
+    ],
+    activeTenantId: 'tenant-goodwin-batteries',
+    isActive: true,
+    createdAt: '2026-04-01T10:00:00Z'
+  },
   // Goodwin Batteries Credentials
   {
     id: 'user-bat-owner',
@@ -323,6 +337,35 @@ export const INITIAL_EMPLOYEES: Employee[] = [
   // -------------------------------------------------------------
   // GOODWIN BATTERIES EMPLOYEES (Fictional Example Client Company)
   // -------------------------------------------------------------
+  {
+    id: 'emp-bat-000',
+    tenantId: 'tenant-goodwin-batteries',
+    userId: 'user-bat-rajnish',
+    employeeCode: 'GB-1000',
+    firstName: 'Rajnish',
+    lastName: 'Singh Chauhan',
+    workEmail: 'rajnish.chauhan@goodwinbatteries.com',
+    personalEmail: 'rajnish@goodwingrow.ai',
+    phone: '+91 98450 00100',
+    gender: 'MALE',
+    joiningDate: '2024-01-15',
+    departmentId: 'dept-bat-prod',
+    departmentName: 'Production & Cell Assembly',
+    designationId: 'desig-bat-ops-lead',
+    designationTitle: 'Battery Operations Specialist',
+    reportingManagerName: 'Amit Patel (Prod Mgr)',
+    employmentType: 'FULL_TIME',
+    status: 'ACTIVE',
+    monthlySalary: 75000,
+    panOrTaxId: 'RCHAU1234K',
+    bankAccountNumber: '987654321098',
+    bankName: 'HDFC Bank',
+    workLocation: 'Bangalore Plant 1',
+    shiftName: 'Morning Shift (A)',
+    loginStatus: 'ACCEPTED',
+    createdAt: '2024-01-15T09:00:00Z',
+    updatedAt: '2026-10-16T12:00:00Z'
+  },
   {
     id: 'emp-bat-001',
     tenantId: 'tenant-goodwin-batteries',
@@ -689,6 +732,17 @@ export const INITIAL_REGULARIZATIONS: RegularizationRequest[] = [
 
 export const INITIAL_DOCUMENTS: EmployeeDocument[] = [
   {
+    id: 'doc-bat-00',
+    tenantId: 'tenant-goodwin-batteries',
+    employeeId: 'emp-bat-000',
+    employeeName: 'Rajnish Singh Chauhan',
+    title: 'Signed Employment Agreement & Non-Disclosure Form',
+    documentType: 'CONTRACT',
+    fileName: 'Rajnish_Chauhan_Employment_Agreement.pdf',
+    fileSize: '1.8 MB',
+    uploadedAt: '2024-01-15T09:00:00Z'
+  },
+  {
     id: 'doc-bat-01',
     tenantId: 'tenant-goodwin-batteries',
     employeeId: 'emp-bat-001',
@@ -776,10 +830,44 @@ export const INITIAL_ATTENDANCE: AttendanceRecord[] = [
     status: 'PRESENT',
     notes: 'Cell Welding Station 4',
     shiftName: 'Morning Assembly Shift (A)'
+  },
+  {
+    id: 'att-bat-0',
+    tenantId: 'tenant-goodwin-batteries',
+    employeeId: 'emp-bat-000',
+    employeeName: 'Rajnish Singh Chauhan',
+    date: '2026-10-16',
+    clockInTime: '06:00 AM',
+    clockOutTime: '02:30 PM',
+    workingHours: 8.5,
+    status: 'PRESENT',
+    notes: 'Battery Systems Terminal 1',
+    shiftName: 'Morning Shift (A)'
   }
 ];
 
 export const INITIAL_SALARY_SLIPS: SalarySlip[] = [
+  {
+    id: 'slip-bat-00',
+    tenantId: 'tenant-goodwin-batteries',
+    employeeId: 'emp-bat-000',
+    employeeName: 'Rajnish Singh Chauhan',
+    employeeCode: 'GB-1000',
+    departmentName: 'Production & Cell Assembly',
+    month: '2026-10',
+    basicPay: 37500,
+    hra: 18750,
+    specialAllowance: 18750,
+    grossSalary: 75000,
+    providentFund: 1800,
+    esi: 0,
+    professionalTax: 200,
+    taxDeduction: 2500,
+    totalDeductions: 4500,
+    netPay: 70500,
+    paymentStatus: 'PAID',
+    generatedDate: '2026-10-01'
+  },
   {
     id: 'slip-bat-01',
     tenantId: 'tenant-goodwin-batteries',
