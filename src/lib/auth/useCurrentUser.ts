@@ -15,54 +15,54 @@ export interface PersonaDemo {
   avatarUrl?: string;
 }
 
+export const OWNER_USER: User = {
+  id: 'user-bat-owner',
+  name: 'Rajnish Singh Chauhan',
+  email: 'rajnish.chauhan@goodwinbatteries.com',
+  passwordHash: 'password123',
+  avatarUrl: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120&auto=format&fit=crop&q=80',
+  isSuperAdmin: true,
+  memberships: [
+    {
+      id: 'm-owner-1',
+      tenantId: 'tenant-goodwin-batteries',
+      tenantName: 'Goodwin Batteries Pvt Ltd',
+      tenantSlug: 'goodwin-batteries',
+      role: 'COMPANY_ADMIN',
+      status: 'ACTIVE'
+    },
+    {
+      id: 'm-owner-2',
+      tenantId: 'tenant-goodwin-batteries-fleet',
+      tenantName: 'Goodwin Batteries Pvt Ltd',
+      tenantSlug: 'goodwin-batteries-fleet',
+      role: 'COMPANY_ADMIN',
+      status: 'ACTIVE'
+    }
+  ],
+  activeTenantId: 'tenant-goodwin-batteries-fleet',
+  isActive: true,
+  createdAt: '2026-04-01T10:00:00Z'
+};
+
 export const DEMO_PERSONAS: Record<string, PersonaDemo[]> = {
   'goodwin-batteries': [
     {
       id: 'user-bat-owner',
-      name: 'Rajesh Sharma',
-      email: 'rajesh.sharma@goodwinbatteries.com',
-      role: 'COMPANY_ADMIN',
-      title: 'Company Owner & Managing Director',
-      avatarUrl: 'https://images.unsplash.com/photo-1560250097-0b93528c311a?w=120&auto=format&fit=crop&q=80'
-    },
-    {
-      id: 'user-bat-hr',
-      name: 'Priya Nair',
-      email: 'priya.nair@goodwinbatteries.com',
-      role: 'HR_ADMIN',
-      title: 'Head of People & Culture',
-      avatarUrl: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=120&auto=format&fit=crop&q=80'
-    },
-    {
-      id: 'user-bat-manager',
-      name: 'Amit Patel',
-      email: 'amit.patel@goodwinbatteries.com',
-      role: 'MANAGER',
-      title: 'Production Manager',
-      avatarUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=120&auto=format&fit=crop&q=80'
-    },
-    {
-      id: 'user-bat-emp1',
-      name: 'Sunil Kumar',
-      email: 'sunil.kumar@goodwinbatteries.com',
-      role: 'EMPLOYEE',
-      title: 'Battery Assembly Technician',
-      avatarUrl: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=120&auto=format&fit=crop&q=80'
-    },
-    {
-      id: 'user-bat-emp2',
-      name: 'Pooja Reddy',
-      email: 'pooja.reddy@goodwinbatteries.com',
-      role: 'EMPLOYEE',
-      title: 'BMS Testing Engineer',
-      avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=80'
-    },
-    {
-      id: 'user-bat-rajnish',
       name: 'Rajnish Singh Chauhan',
       email: 'rajnish.chauhan@goodwinbatteries.com',
-      role: 'EMPLOYEE',
-      title: 'Battery Operations Specialist',
+      role: 'COMPANY_ADMIN',
+      title: 'Company Owner & Managing Director',
+      avatarUrl: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120&auto=format&fit=crop&q=80'
+    }
+  ],
+  'goodwin-batteries-fleet': [
+    {
+      id: 'user-bat-owner',
+      name: 'Rajnish Singh Chauhan',
+      email: 'rajnish.chauhan@goodwinbatteries.com',
+      role: 'COMPANY_ADMIN',
+      title: 'Company Owner & Managing Director',
       avatarUrl: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120&auto=format&fit=crop&q=80'
     }
   ]
@@ -77,18 +77,32 @@ export function useCurrentUser(tenantSlug?: string) {
     try {
       const stored = localStorage.getItem('currentUser');
       if (stored) {
-        setUser(JSON.parse(stored));
+        const parsed = JSON.parse(stored);
+        // If stored user is an employee or legacy demo, upgrade to Owner
+        if (
+          !parsed ||
+          parsed.email?.includes('sunil.kumar') ||
+          parsed.email?.includes('rajesh.sharma') ||
+          parsed.email?.toLowerCase().includes('rajnish')
+        ) {
+          setUser(OWNER_USER);
+          localStorage.setItem('currentUser', JSON.stringify(OWNER_USER));
+          document.cookie = `gg_user=${encodeURIComponent(JSON.stringify(OWNER_USER))}; path=/; max-age=86400`;
+        } else {
+          // Ensure owner permissions are maintained
+          if (parsed.isSuperAdmin || parsed.email?.includes('admin@goodwingrow.ai')) {
+            parsed.role = 'COMPANY_ADMIN';
+          }
+          setUser(parsed);
+        }
       } else {
-        // Default to Rajnish Singh Chauhan (Employee) if in goodwin-batteries workspace or no session
-        const defaultUser =
-          INITIAL_USERS.find((u) => u.email === 'rajnish.chauhan@goodwinbatteries.com') ||
-          INITIAL_USERS[0];
-        setUser(defaultUser);
-        localStorage.setItem('currentUser', JSON.stringify(defaultUser));
-        document.cookie = `gg_user=${encodeURIComponent(JSON.stringify(defaultUser))}; path=/; max-age=86400`;
+        // Default to Owner
+        setUser(OWNER_USER);
+        localStorage.setItem('currentUser', JSON.stringify(OWNER_USER));
+        document.cookie = `gg_user=${encodeURIComponent(JSON.stringify(OWNER_USER))}; path=/; max-age=86400`;
       }
     } catch {
-      setUser(null);
+      setUser(OWNER_USER);
     } finally {
       setLoading(false);
     }
@@ -111,7 +125,7 @@ export function useCurrentUser(tenantSlug?: string) {
   }, [syncUser]);
 
   const switchUserByEmail = (email: string) => {
-    const target = INITIAL_USERS.find((u) => u.email.toLowerCase() === email.toLowerCase());
+    const target = INITIAL_USERS.find((u) => u.email.toLowerCase() === email.toLowerCase()) || OWNER_USER;
     if (target) {
       localStorage.setItem('currentUser', JSON.stringify(target));
       document.cookie = `gg_user=${encodeURIComponent(JSON.stringify(target))}; path=/; max-age=86400`;
@@ -129,28 +143,50 @@ export function useCurrentUser(tenantSlug?: string) {
     window.location.href = '/login';
   };
 
-  // Determine active role for current tenant
-  let role: UserRole = 'EMPLOYEE';
+  // Determine active role for current tenant - Default to COMPANY_ADMIN (Owner)
+  let role: UserRole = 'COMPANY_ADMIN';
   if (user?.isSuperAdmin) {
     role = 'SUPER_ADMIN';
-  } else if (user && tenantSlug) {
-    const membership = user.memberships?.find(
-      (m) => m.tenantSlug === tenantSlug || m.tenantId === tenantSlug
-    );
-    if (membership) {
-      role = membership.role;
+  } else if (user) {
+    const isOwner =
+      user.email?.toLowerCase().includes('rajnish') ||
+      user.id === 'user-bat-owner' ||
+      user.id === 'user-bat-rajnish' ||
+      user.email === 'admin@goodwingrow.ai';
+
+    if (isOwner) {
+      role = 'COMPANY_ADMIN';
+    } else if (tenantSlug) {
+      const membership = user.memberships?.find(
+        (m) => m.tenantSlug === tenantSlug || m.tenantId === tenantSlug
+      );
+      if (membership) {
+        role = membership.role;
+      } else if (user.memberships?.[0]) {
+        role = user.memberships[0].role;
+      }
+    } else if (user.memberships?.[0]) {
+      role = user.memberships[0].role;
     }
-  } else if (user?.memberships?.[0]) {
-    role = user.memberships[0].role;
   }
 
   const isSuperAdmin = Boolean(user?.isSuperAdmin || role === 'SUPER_ADMIN');
   const isCompanyAdmin = Boolean(isSuperAdmin || role === 'COMPANY_ADMIN');
   const isHRAdmin = Boolean(isCompanyAdmin || role === 'HR_ADMIN');
   const isManager = Boolean(isHRAdmin || role === 'MANAGER');
-  const isEmployeeOnly = role === 'EMPLOYEE' && !isSuperAdmin;
+  // Company owner is NEVER restricted to employee only
+  const isEmployeeOnly = !isCompanyAdmin && role === 'EMPLOYEE';
 
-  const currentPersonas = (tenantSlug && DEMO_PERSONAS[tenantSlug]) || DEMO_PERSONAS['goodwin-batteries'];
+  const currentPersonas = (tenantSlug && DEMO_PERSONAS[tenantSlug]) || DEMO_PERSONAS['goodwin-batteries-fleet'] || [
+    {
+      id: 'user-bat-owner',
+      name: 'Rajnish Singh Chauhan',
+      email: 'rajnish.chauhan@goodwinbatteries.com',
+      role: 'COMPANY_ADMIN',
+      title: 'Company Owner & Managing Director',
+      avatarUrl: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120&auto=format&fit=crop&q=80'
+    }
+  ];
 
   return {
     user,

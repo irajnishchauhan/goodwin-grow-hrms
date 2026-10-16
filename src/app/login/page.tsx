@@ -215,59 +215,21 @@ export default function UniversalLoginPage() {
 
           <div className="grid grid-cols-2 gap-2 text-[11px]">
             <button
-              onClick={() => handleQuickDemoLogin('admin@goodwingrow.ai')}
-              className="p-2 rounded-lg bg-slate-950 border border-slate-800 hover:border-emerald-500/50 text-left transition-colors"
-            >
-              <div className="font-bold text-emerald-400">Super Admin</div>
-              <div className="text-[10px] text-slate-400">Goodwin Grow AI</div>
-            </button>
-
-            <button
-              onClick={() => handleQuickDemoLogin('rajesh.sharma@goodwinbatteries.com')}
-              className="p-2 rounded-lg bg-slate-950 border border-slate-800 hover:border-amber-500/50 text-left transition-colors"
-            >
-              <div className="font-bold text-amber-400">Company Owner</div>
-              <div className="text-[10px] text-slate-400">Goodwin Batteries</div>
-            </button>
-
-            <button
-              onClick={() => handleQuickDemoLogin('priya.nair@goodwinbatteries.com')}
-              className="p-2 rounded-lg bg-slate-950 border border-slate-800 hover:border-amber-500/50 text-left transition-colors"
-            >
-              <div className="font-bold text-amber-400">HR Admin</div>
-              <div className="text-[10px] text-slate-400">Priya Nair</div>
-            </button>
-
-            <button
-              onClick={() => handleQuickDemoLogin('amit.patel@goodwinbatteries.com')}
-              className="p-2 rounded-lg bg-slate-950 border border-slate-800 hover:border-amber-500/50 text-left transition-colors"
-            >
-              <div className="font-bold text-amber-400">Manager</div>
-              <div className="text-[10px] text-slate-400">Amit Patel</div>
-            </button>
-
-            <button
               onClick={() => handleQuickDemoLogin('rajnish.chauhan@goodwinbatteries.com')}
-              className="p-2 rounded-lg bg-emerald-950/40 border border-emerald-500/40 hover:border-emerald-400 text-left transition-colors"
+              className="p-3 rounded-xl bg-amber-950/40 border border-amber-500/40 hover:border-amber-400 text-left transition-colors col-span-2 sm:col-span-1 shadow-sm"
             >
-              <div className="font-bold text-emerald-400">Rajnish (Employee ESS)</div>
+              <div className="font-bold text-amber-400">Company Owner & MD</div>
               <div className="text-[10px] text-slate-300">Rajnish Singh Chauhan</div>
+              <div className="text-[9px] font-mono text-slate-400 mt-0.5">rajnish.chauhan@goodwinbatteries.com</div>
             </button>
 
             <button
-              onClick={() => handleQuickDemoLogin('sunil.kumar@goodwinbatteries.com')}
-              className="p-2 rounded-lg bg-slate-950 border border-slate-800 hover:border-emerald-500/50 text-left transition-colors"
+              onClick={() => handleQuickDemoLogin('admin@goodwingrow.ai')}
+              className="p-3 rounded-xl bg-slate-950 border border-slate-800 hover:border-emerald-500/50 text-left transition-colors col-span-2 sm:col-span-1 shadow-sm"
             >
-              <div className="font-bold text-emerald-400">Sunil (Assembly Tech)</div>
-              <div className="text-[10px] text-slate-400">Sunil Kumar</div>
-            </button>
-
-            <button
-              onClick={() => handleQuickDemoLogin('pooja.reddy@goodwinbatteries.com')}
-              className="p-2 rounded-lg bg-slate-950 border border-slate-800 hover:border-emerald-500/50 text-left transition-colors"
-            >
-              <div className="font-bold text-emerald-400">Pooja (BMS Eng)</div>
-              <div className="text-[10px] text-slate-400">Pooja Reddy</div>
+              <div className="font-bold text-emerald-400">Platform Super Admin</div>
+              <div className="text-[10px] text-slate-400">Goodwin Grow AI</div>
+              <div className="text-[9px] font-mono text-slate-400 mt-0.5">admin@goodwingrow.ai</div>
             </button>
           </div>
         </div>

@@ -91,36 +91,43 @@ export default function EmployeeSelfServiceDashboard() {
 
         if (!matchedEmp && user) {
           // Synthesize profile from authenticated user so no wrong name is ever displayed
-          const nameTokens = (user.name || 'Employee').trim().split(' ');
+          const nameTokens = (user.name || 'Owner').trim().split(' ');
           const fName = nameTokens[0];
           const lName = nameTokens.slice(1).join(' ') || '';
+          const isOwnerUser = Boolean(
+            user.isSuperAdmin ||
+            !isEmployeeOnly ||
+            user.email?.toLowerCase().includes('rajnish') ||
+            user.email?.toLowerCase().includes('admin')
+          );
+
           matchedEmp = {
             id: `emp-user-${user.id || 'current'}`,
             tenantId: tenant?.id || 'tenant-goodwin-batteries',
             userId: user.id,
-            employeeCode: 'GB-1000',
+            employeeCode: isOwnerUser ? 'GB-OWNER' : 'GB-1001',
             firstName: fName,
             lastName: lName,
-            workEmail: user.email || 'employee@goodwinbatteries.com',
+            workEmail: user.email || 'rajnish.chauhan@goodwinbatteries.com',
             personalEmail: user.email,
             phone: '+91 98450 00100',
             gender: 'MALE',
-            joiningDate: '2024-01-15',
-            departmentId: 'dept-bat-prod',
-            departmentName: 'Production & Cell Assembly',
-            designationId: 'desig-bat-ops-lead',
-            designationTitle: 'Battery Operations Specialist',
-            reportingManagerName: 'Amit Patel (Prod Mgr)',
+            joiningDate: '2024-01-01',
+            departmentId: 'dept-exec',
+            departmentName: isOwnerUser ? 'Executive & Operations' : 'General Operations',
+            designationId: 'desig-exec',
+            designationTitle: isOwnerUser ? 'Company Owner & Managing Director' : 'Team Member',
+            reportingManagerName: isOwnerUser ? 'Board of Directors' : 'Executive Lead',
             employmentType: 'FULL_TIME',
             status: 'ACTIVE',
-            monthlySalary: 75000,
-            workLocation: 'Bangalore Plant 1',
-            shiftName: 'Morning Shift (A)',
+            monthlySalary: isOwnerUser ? 350000 : 50000,
+            workLocation: 'Bangalore Headquarters',
+            shiftName: 'General Factory Shift',
             loginStatus: 'ACCEPTED',
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString()
           };
-        } else if (!matchedEmp) {
+        } else if (!matchedEmp && emps.length > 0) {
           matchedEmp = emps[0];
         }
 

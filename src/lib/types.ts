@@ -55,6 +55,7 @@ export interface Tenant {
   billingContact: string;
   trialStatus: boolean;
   onboardingChecklist: OnboardingStep[];
+  orgTreeRootId?: string;
   createdAt: string;
   updatedAt: string;
 }

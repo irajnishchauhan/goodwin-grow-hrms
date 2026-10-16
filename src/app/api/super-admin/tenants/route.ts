@@ -1,10 +1,35 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db/store';
+import { SupabaseStore } from '@/lib/db/supabaseStore';
+import { Tenant } from '@/lib/types';
 
 export async function GET() {
   try {
-    const tenants = db.listTenants();
-    const allEmployees = tenants.flatMap((t) => db.getEmployees(t.id));
+    const dbTenants = db.listTenants();
+    const supabaseTenants = await SupabaseStore.getTenants();
+
+    const tenantMap = new Map<string, Tenant>();
+    for (const t of dbTenants) {
+      tenantMap.set(t.slug, t);
+    }
+    if (supabaseTenants && supabaseTenants.length > 0) {
+      for (const st of supabaseTenants) {
+        tenantMap.set(st.slug, st);
+      }
+    }
+
+    const tenants = Array.from(tenantMap.values());
+
+    let totalEmployees = 0;
+    for (const t of tenants) {
+      if (SupabaseStore.isConnected()) {
+        const emps = await SupabaseStore.getEmployees(t.id);
+        totalEmployees += (emps ? emps.length : db.getEmployees(t.id).length);
+      } else {
+        totalEmployees += db.getEmployees(t.id).length;
+      }
+    }
+
     const auditLogs = db.getAuditLogs();
 
     const mrr = tenants.reduce((acc, t) => {
@@ -21,7 +46,7 @@ export async function GET() {
         stats: {
           totalTenants: tenants.length,
           activeTenants: tenants.filter((t) => t.status === 'ACTIVE').length,
-          totalEmployees: allEmployees.length,
+          totalEmployees,
           mrrUSD: mrr,
           arrUSD: mrr * 12
         },
@@ -96,6 +121,10 @@ export async function POST(req: Request) {
       adminRole: adminRole || 'COMPANY_ADMIN'
     });
 
+    if (result.tenant) {
+      await SupabaseStore.saveTenant(result.tenant);
+    }
+
     return NextResponse.json({
       success: true,
       message: `Tenant "${result.tenant.name}" successfully provisioned with isolated workspace.`,
@@ -104,5 +133,74 @@ export async function POST(req: Request) {
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Failed to provision tenant';
     return NextResponse.json({ success: false, error: message }, { status: 400 });
+  }
+}
+
+export async function PUT(req: Request) {
+  try {
+    const body = await req.json();
+    const { id, ...updates } = body;
+
+    if (!id) {
+      return NextResponse.json({ success: false, error: 'Tenant ID is required for editing' }, { status: 400 });
+    }
+
+    let existing = db.getTenantById(id);
+    if (!existing) {
+      const allTenants = await SupabaseStore.getTenants();
+      existing = allTenants?.find((t) => t.id === id) || null;
+      if (existing) {
+        db.upsertTenant(existing);
+      }
+    }
+
+    if (!existing) {
+      return NextResponse.json({ success: false, error: 'Tenant workspace not found' }, { status: 404 });
+    }
+
+    const updated = db.updateTenant(id, updates);
+    await SupabaseStore.saveTenant(updated);
+
+    return NextResponse.json({
+      success: true,
+      message: `Workspace "${updated.name}" updated successfully`,
+      data: { tenant: updated }
+    });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Error updating tenant';
+    return NextResponse.json({ success: false, error: message }, { status: 400 });
+  }
+}
+
+export async function DELETE(req: Request) {
+  try {
+    const { searchParams } = new URL(req.url);
+    const tenantId = searchParams.get('id');
+
+    if (!tenantId) {
+      return NextResponse.json({ success: false, error: 'Tenant ID is required for deletion' }, { status: 400 });
+    }
+
+    let existing = db.getTenantById(tenantId);
+    if (!existing) {
+      const allTenants = await SupabaseStore.getTenants();
+      existing = allTenants?.find((t) => t.id === tenantId || t.slug === tenantId) || null;
+    }
+    const companyName = existing ? existing.name : tenantId;
+
+    const deleted = db.deleteTenant(tenantId);
+    const supabaseDeleted = await SupabaseStore.deleteTenant(tenantId);
+
+    if (!deleted && !supabaseDeleted) {
+      return NextResponse.json({ success: false, error: 'Tenant not found or could not be deleted' }, { status: 404 });
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: `Workspace "${companyName}" and all associated data permanently deleted.`
+    });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Error deleting tenant';
+    return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
 }

@@ -24,12 +24,8 @@ import {
   Sparkles,
   Mail,
   UserCheck,
-  LogIn,
   ChevronDown,
-  User,
-  ShieldAlert,
-  LogOut,
-  Lock
+  LogOut
 } from 'lucide-react';
 
 interface TenantWorkspaceClientShellProps {
@@ -62,7 +58,6 @@ export default function TenantWorkspaceClientShell({
   const primaryColor = tenant.primaryColor || '#059669';
 
   // Role-Based Navigation Items Filter
-  // Employees only see their own self-service modules & directory
   interface NavItem {
     label: string;
     href: string;
@@ -157,28 +152,28 @@ export default function TenantWorkspaceClientShell({
   const getRoleBadgeStyle = (r: UserRole) => {
     switch (r) {
       case 'SUPER_ADMIN':
-        return 'bg-purple-500/20 text-purple-300 border-purple-500/40';
+        return 'bg-purple-50 text-purple-700 border-purple-200';
       case 'COMPANY_ADMIN':
-        return 'bg-amber-500/20 text-amber-300 border-amber-500/40';
+        return 'bg-amber-50 text-amber-700 border-amber-200';
       case 'HR_ADMIN':
-        return 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40';
+        return 'bg-cyan-50 text-cyan-700 border-cyan-200';
       case 'MANAGER':
-        return 'bg-blue-500/20 text-blue-300 border-blue-500/40';
+        return 'bg-blue-50 text-blue-700 border-blue-200';
       case 'EMPLOYEE':
       default:
-        return 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40';
+        return 'bg-emerald-50 text-emerald-700 border-emerald-200';
     }
   };
 
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-100 flex flex-col md:flex-row font-sans">
+    <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col md:flex-row font-sans">
       {/* Sidebar */}
-      <aside className="w-full md:w-64 bg-slate-950 border-r border-slate-800 flex flex-col shrink-0">
+      <aside className="w-full md:w-64 bg-white border-r border-slate-200 flex flex-col shrink-0 shadow-xs">
         {/* Company Header */}
-        <div className="p-5 border-b border-slate-800/90 space-y-3">
+        <div className="p-5 border-b border-slate-100 space-y-3">
           <Link
             href="/"
-            className="inline-flex items-center gap-1.5 text-[11px] font-medium text-slate-400 hover:text-emerald-400 transition-colors"
+            className="inline-flex items-center gap-1.5 text-[11px] font-medium text-slate-500 hover:text-emerald-600 transition-colors"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
             <span>Platform Gateway</span>
@@ -186,15 +181,15 @@ export default function TenantWorkspaceClientShell({
 
           <div className="flex items-center gap-3">
             <div
-              className="w-10 h-10 rounded-xl flex items-center justify-center font-bold text-white text-base shadow-lg shrink-0"
+              className="w-10 h-10 rounded-xl flex items-center justify-center font-bold text-white text-base shadow-sm shrink-0"
               style={{ backgroundColor: primaryColor }}
             >
               {tenant.name.slice(0, 1)}
             </div>
             <div className="min-w-0 flex-1">
-              <h2 className="text-sm font-bold text-white truncate">{tenant.name}</h2>
+              <h2 className="text-sm font-bold text-slate-900 truncate">{tenant.name}</h2>
               <div className="flex items-center gap-1.5 mt-0.5">
-                <span className="text-[10px] uppercase font-mono px-1.5 py-0.2 rounded bg-slate-800 text-slate-300">
+                <span className="text-[10px] uppercase font-mono px-1.5 py-0.2 rounded bg-slate-100 text-slate-600 border border-slate-200">
                   {tenant.planId}
                 </span>
                 <span className="text-[10px] text-slate-400 font-mono">({tenant.currency})</span>
@@ -204,14 +199,14 @@ export default function TenantWorkspaceClientShell({
         </div>
 
         {/* Current User Role Pill in Sidebar */}
-        <div className="px-4 py-2.5 bg-slate-900/60 border-b border-slate-800/80 flex items-center justify-between">
+        <div className="px-4 py-2.5 bg-slate-50/80 border-b border-slate-100 flex items-center justify-between">
           <div className="flex items-center gap-2 min-w-0">
-            <div className="w-7 h-7 rounded-lg bg-slate-800 flex items-center justify-center text-xs font-bold text-white shrink-0">
+            <div className="w-7 h-7 rounded-lg bg-slate-200 flex items-center justify-center text-xs font-bold text-slate-700 shrink-0">
               {user?.name ? user.name[0] : 'U'}
             </div>
             <div className="min-w-0">
-              <div className="text-xs font-bold text-white truncate">{user?.name || 'Guest'}</div>
-              <div className="text-[10px] text-slate-400 truncate">{user?.email}</div>
+              <div className="text-xs font-bold text-slate-800 truncate">{user?.name || 'Guest'}</div>
+              <div className="text-[10px] text-slate-500 truncate">{user?.email}</div>
             </div>
           </div>
           <span
@@ -225,9 +220,9 @@ export default function TenantWorkspaceClientShell({
 
         {/* Navigation items (Filtered strictly by role) */}
         <nav className="p-3 space-y-1 flex-1 overflow-y-auto">
-          <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500 flex items-center justify-between">
+          <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 flex items-center justify-between">
             <span>{isEmployeeOnly ? 'Employee Self-Service' : 'Workforce Enterprise'}</span>
-            <span className="text-[9px] text-emerald-400 font-mono">{visibleNavItems.length} Links</span>
+            <span className="text-[9px] text-emerald-600 font-mono font-bold">{visibleNavItems.length} Links</span>
           </div>
 
           {visibleNavItems.map((item) => {
@@ -239,20 +234,20 @@ export default function TenantWorkspaceClientShell({
                 href={item.href}
                 className={`flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all group ${
                   isActive
-                    ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30'
-                    : 'text-slate-300 hover:text-white hover:bg-slate-800/80'
+                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
                 }`}
               >
                 <div className="flex items-center gap-3 min-w-0">
                   <Icon
                     className={`w-4 h-4 shrink-0 transition-colors ${
-                      isActive ? 'text-emerald-400' : 'text-slate-400 group-hover:text-emerald-400'
+                      isActive ? 'text-emerald-600' : 'text-slate-400 group-hover:text-emerald-600'
                     }`}
                   />
                   <span className="truncate">{item.label}</span>
                 </div>
                 {item.badge && (
-                  <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300">
+                  <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800">
                     {item.badge}
                   </span>
                 )}
@@ -262,20 +257,20 @@ export default function TenantWorkspaceClientShell({
         </nav>
 
         {/* Multi-Tenant Security Scope Footer */}
-        <div className="p-4 border-t border-slate-800 bg-slate-950/60 space-y-2.5">
-          <div className="p-3 rounded-xl bg-slate-900 border border-slate-800 text-[11px] space-y-1">
-            <div className="flex items-center gap-1.5 text-emerald-400 font-semibold">
-              <ShieldCheck className="w-3.5 h-3.5" />
+        <div className="p-4 border-t border-slate-200 bg-slate-50/50 space-y-2.5">
+          <div className="p-3 rounded-xl bg-white border border-slate-200 text-[11px] space-y-1 shadow-xs">
+            <div className="flex items-center gap-1.5 text-emerald-700 font-semibold">
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
               <span>RBAC Isolation Enforced</span>
             </div>
-            <div className="font-mono text-[10px] text-slate-400 truncate">Role: {role}</div>
+            <div className="font-mono text-[10px] text-slate-500 truncate">Role: {role}</div>
           </div>
 
           {/* Super Admin Console is ONLY visible to Super Admins */}
           {isSuperAdmin && (
             <Link
               href="/super-admin"
-              className="flex items-center justify-between text-[11px] font-medium text-slate-400 hover:text-emerald-400 transition-colors pt-0.5"
+              className="flex items-center justify-between text-[11px] font-medium text-slate-500 hover:text-emerald-600 transition-colors pt-0.5"
             >
               <span>Super Admin Console</span>
               <ExternalLink className="w-3 h-3" />
@@ -285,13 +280,13 @@ export default function TenantWorkspaceClientShell({
       </aside>
 
       {/* Main Workspace Area */}
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 flex flex-col min-w-0 bg-slate-50">
         {/* Top Header */}
-        <header className="h-16 bg-slate-950/80 backdrop-blur-md border-b border-slate-800 px-6 flex items-center justify-between sticky top-0 z-40">
-          <div className="flex items-center gap-2 text-xs text-slate-400 truncate">
-            <span className="font-semibold text-white truncate">{tenant.name}</span>
-            <ChevronRight className="w-3.5 h-3.5 text-slate-600 shrink-0" />
-            <span className="text-emerald-400 font-mono">
+        <header className="h-16 bg-white/90 backdrop-blur-md border-b border-slate-200 px-6 flex items-center justify-between sticky top-0 z-40 shadow-xs">
+          <div className="flex items-center gap-2 text-xs text-slate-500 truncate">
+            <span className="font-semibold text-slate-900 truncate">{tenant.name}</span>
+            <ChevronRight className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+            <span className="text-emerald-700 font-mono font-medium">
               {isEmployeeOnly ? 'Employee Portal' : 'Workspace'}
             </span>
           </div>
@@ -301,10 +296,10 @@ export default function TenantWorkspaceClientShell({
             <div className="relative">
               <button
                 onClick={() => setPersonaDropdownOpen(!personaDropdownOpen)}
-                className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-900 hover:bg-slate-800 border border-slate-700/80 text-xs text-slate-200 transition-all shadow-sm"
+                className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white hover:bg-slate-50 border border-slate-200 text-xs text-slate-700 transition-all shadow-xs"
               >
-                <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></div>
-                <span className="font-bold text-white text-[11px]">{user?.name || 'Select Role'}</span>
+                <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
+                <span className="font-bold text-slate-900 text-[11px]">{user?.name || 'Select Role'}</span>
                 <span
                   className={`text-[9px] font-mono px-1.5 py-0.2 rounded-full border ${getRoleBadgeStyle(
                     role
@@ -317,49 +312,49 @@ export default function TenantWorkspaceClientShell({
 
               {personaDropdownOpen && (
                 <div
-                  className="absolute right-0 mt-2 w-72 rounded-2xl bg-slate-900 border border-slate-700 shadow-2xl p-3 z-50 text-xs space-y-2"
+                  className="absolute right-0 mt-2 w-72 rounded-2xl bg-white border border-slate-200 shadow-2xl p-3 z-50 text-xs space-y-2"
                 >
                   {isEmployeeOnly ? (
-                    // Regular Employee Profile Card (Strictly NO privilege escalation or persona switching)
+                    // Regular Employee Profile Card
                     <div className="space-y-3">
-                      <div className="flex items-center gap-3 pb-2.5 border-b border-slate-800">
-                        <div className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center font-bold text-emerald-400 text-sm">
+                      <div className="flex items-center gap-3 pb-2.5 border-b border-slate-100">
+                        <div className="w-10 h-10 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-center font-bold text-emerald-700 text-sm">
                           {(user?.name || 'EM').split(' ').map((n) => n[0]).slice(0, 2).join('')}
                         </div>
                         <div className="min-w-0 flex-1">
-                          <div className="font-bold text-white truncate text-xs">{user?.name}</div>
-                          <div className="text-[10px] text-slate-400 truncate">{user?.email}</div>
-                          <span className="inline-block mt-1 text-[9px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                          <div className="font-bold text-slate-900 truncate text-xs">{user?.name}</div>
+                          <div className="text-[10px] text-slate-500 truncate">{user?.email}</div>
+                          <span className="inline-block mt-1 text-[9px] font-mono px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
                             EMPLOYEE (Self-Service)
                           </span>
                         </div>
                       </div>
 
-                      <div className="space-y-1 text-[11px] text-slate-400">
-                        <div className="flex justify-between py-1 border-b border-slate-800/60">
+                      <div className="space-y-1 text-[11px] text-slate-600">
+                        <div className="flex justify-between py-1 border-b border-slate-100">
                           <span>Workspace</span>
-                          <span className="font-semibold text-slate-200">{tenant.name}</span>
+                          <span className="font-semibold text-slate-800">{tenant.name}</span>
                         </div>
                         <div className="flex justify-between py-1">
                           <span>Access Guard</span>
-                          <span className="text-emerald-400 font-semibold">Self-Service Partitioned</span>
+                          <span className="text-emerald-700 font-semibold">Self-Service Partitioned</span>
                         </div>
                       </div>
 
                       <button
                         onClick={() => logout()}
-                        className="w-full mt-2 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 font-semibold text-xs flex items-center justify-center gap-2 border border-rose-500/30 transition-colors"
+                        className="w-full mt-2 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 font-semibold text-xs flex items-center justify-center gap-2 border border-rose-200 transition-colors"
                       >
                         <LogOut className="w-3.5 h-3.5" />
                         <span>Sign Out</span>
                       </button>
                     </div>
                   ) : (
-                    // Admin & Manager Persona Switcher for Workspace Management
+                    // Admin & Manager Persona Switcher
                     <div className="space-y-1">
-                      <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-800 flex items-center justify-between">
+                      <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-100 flex items-center justify-between">
                         <span>Switch Persona</span>
-                        <span className="font-mono text-emerald-400">Admin Mode</span>
+                        <span className="font-mono text-emerald-700">Admin Mode</span>
                       </div>
 
                       {currentPersonas.map((p) => {
@@ -371,15 +366,15 @@ export default function TenantWorkspaceClientShell({
                               switchUserByEmail(p.email);
                               setPersonaDropdownOpen(false);
                             }}
-                            className={`w-full text-left px-3 py-2 flex items-center justify-between hover:bg-slate-800 transition-colors rounded-lg ${
-                              isSelected ? 'bg-emerald-500/10' : ''
+                            className={`w-full text-left px-3 py-2 flex items-center justify-between hover:bg-slate-50 transition-colors rounded-lg ${
+                              isSelected ? 'bg-emerald-50 text-emerald-900' : 'text-slate-700'
                             }`}
                           >
                             <div className="min-w-0 pr-2">
-                              <div className="font-semibold text-white truncate text-[11px]">
+                              <div className="font-semibold text-slate-900 truncate text-[11px]">
                                 {p.name}
                               </div>
-                              <div className="text-[10px] text-slate-400 truncate">{p.title}</div>
+                              <div className="text-[10px] text-slate-500 truncate">{p.title}</div>
                             </div>
                             <span
                               className={`text-[9px] font-mono px-1.5 py-0.5 rounded border uppercase shrink-0 ${getRoleBadgeStyle(
@@ -392,12 +387,12 @@ export default function TenantWorkspaceClientShell({
                         );
                       })}
 
-                      <div className="border-t border-slate-800 pt-1 mt-1">
+                      <div className="border-t border-slate-100 pt-1 mt-1">
                         <button
                           onClick={() => logout()}
-                          className="w-full text-left px-3 py-2 flex items-center gap-2 text-rose-300 hover:text-rose-200 hover:bg-slate-800 text-[11px] rounded-lg"
+                          className="w-full text-left px-3 py-2 flex items-center gap-2 text-rose-700 hover:bg-rose-50 text-[11px] rounded-lg transition-colors"
                         >
-                          <LogOut className="w-3.5 h-3.5 text-rose-400" />
+                          <LogOut className="w-3.5 h-3.5 text-rose-600" />
                           <span>Sign Out</span>
                         </button>
                       </div>
@@ -412,17 +407,17 @@ export default function TenantWorkspaceClientShell({
               <>
                 <Link
                   href={`/app/${tenantSlug}/setup`}
-                  className="hidden lg:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-900 hover:bg-slate-800 border border-slate-700/80 text-[11px] font-semibold text-amber-400 hover:text-amber-300 transition-colors"
+                  className="hidden lg:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-50 hover:bg-amber-100 border border-amber-200 text-[11px] font-semibold text-amber-800 transition-colors"
                 >
-                  <Sparkles className="w-3.5 h-3.5" />
+                  <Sparkles className="w-3.5 h-3.5 text-amber-600" />
                   <span>Setup Wizard</span>
                 </Link>
 
                 <Link
                   href={`/app/${tenantSlug}/invitations`}
-                  className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-900 hover:bg-slate-800 border border-slate-700/80 text-[11px] font-semibold text-emerald-400 hover:text-emerald-300 transition-colors"
+                  className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-[11px] font-semibold text-emerald-800 transition-colors"
                 >
-                  <Mail className="w-3.5 h-3.5" />
+                  <Mail className="w-3.5 h-3.5 text-emerald-600" />
                   <span>Invite Credentials</span>
                 </Link>
               </>
@@ -431,9 +426,9 @@ export default function TenantWorkspaceClientShell({
             {/* My ESS Portal button */}
             <Link
               href={`/app/${tenantSlug}/my-dashboard`}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-[11px] font-semibold text-emerald-300 transition-colors"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-[11px] font-semibold text-emerald-800 transition-colors"
             >
-              <UserCheck className="w-3.5 h-3.5" />
+              <UserCheck className="w-3.5 h-3.5 text-emerald-600" />
               <span>{isEmployeeOnly ? 'My Dashboard' : 'My ESS'}</span>
             </Link>
           </div>
@@ -441,25 +436,25 @@ export default function TenantWorkspaceClientShell({
 
         {/* Employee Role Notice Banner */}
         {isEmployeeOnly && (
-          <div className="bg-emerald-950/70 border-b border-emerald-500/30 px-6 py-2.5 flex items-center justify-between text-xs text-emerald-300">
+          <div className="bg-emerald-50 border-b border-emerald-200 px-6 py-2.5 flex items-center justify-between text-xs text-emerald-900">
             <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
               <span className="font-semibold">
                 Employee Self-Service Mode ({user?.name || 'Employee'})
               </span>
-              <span className="text-slate-400 text-[11px] hidden sm:inline">
+              <span className="text-slate-600 text-[11px] hidden sm:inline">
                 — Admin configuration, company-wide payroll, and candidate hiring pipelines are strictly partitioned under RBAC.
               </span>
             </div>
-            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-900/60 border border-emerald-500/30 text-[10px] text-emerald-400 font-mono">
-              <ShieldCheck className="w-3 h-3" />
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white border border-emerald-200 text-[10px] text-emerald-700 font-mono shadow-xs">
+              <ShieldCheck className="w-3 h-3 text-emerald-600" />
               <span>RBAC Enforced</span>
             </div>
           </div>
         )}
 
         {/* Page Content */}
-        <main className="flex-1 p-6 md:p-8 bg-slate-900 overflow-y-auto">{children}</main>
+        <main className="flex-1 p-6 md:p-8 bg-slate-50 text-slate-900 overflow-y-auto">{children}</main>
       </div>
     </div>
   );

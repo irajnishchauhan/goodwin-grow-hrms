@@ -298,6 +298,15 @@ class HRMSDataStore {
     return this.tenants.find((t) => t.slug === slug) || null;
   }
 
+  public upsertTenant(tenant: Tenant): void {
+    const idx = this.tenants.findIndex((t) => t.id === tenant.id || t.slug === tenant.slug);
+    if (idx >= 0) {
+      this.tenants[idx] = { ...this.tenants[idx], ...tenant };
+    } else {
+      this.tenants.push(tenant);
+    }
+  }
+
   public createTenant(data: {
     name: string;
     slug?: string;
@@ -519,6 +528,97 @@ class HRMSDataStore {
     return tenant;
   }
 
+  public deleteTenant(tenantId: string): boolean {
+    const tIdx = this.tenants.findIndex((t) => t.id === tenantId || t.slug === tenantId);
+    if (tIdx === -1) return false;
+    const [deletedTenant] = this.tenants.splice(tIdx, 1);
+    const targetId = deletedTenant.id;
+
+    // Cascade delete in-memory data associated with this tenant
+    this.employees = this.employees.filter((e) => e.tenantId !== targetId);
+    this.departments = this.departments.filter((d) => d.tenantId !== targetId);
+    this.designations = this.designations.filter((d) => d.tenantId !== targetId);
+    this.shifts = this.shifts.filter((s) => s.tenantId !== targetId);
+    this.holidays = this.holidays.filter((h) => h.tenantId !== targetId);
+    this.leaveTypes = this.leaveTypes.filter((l) => l.tenantId !== targetId);
+    this.leaveApplications = this.leaveApplications.filter((l) => l.tenantId !== targetId);
+    this.attendance = this.attendance.filter((a) => a.tenantId !== targetId);
+    this.salarySlips = this.salarySlips.filter((s) => s.tenantId !== targetId);
+    this.documents = this.documents.filter((d) => d.tenantId !== targetId);
+    this.jobOpenings = this.jobOpenings.filter((j) => j.tenantId !== targetId);
+    this.jobApplicants = this.jobApplicants.filter((j) => j.tenantId !== targetId);
+    this.invitations = this.invitations.filter((i) => i.tenantId !== targetId);
+
+    // Remove tenant memberships from users
+    for (const u of this.users) {
+      if (u.memberships) {
+        u.memberships = u.memberships.filter((m) => m.tenantId !== targetId && m.tenantSlug !== deletedTenant.slug);
+      }
+      if (u.activeTenantId === targetId) {
+        u.activeTenantId = u.memberships?.[0]?.tenantId;
+      }
+    }
+
+    if (SupabaseStore.isConnected()) {
+      SupabaseStore.deleteTenant(targetId).catch((err) =>
+        console.warn('Background Supabase deleteTenant error:', err)
+      );
+    }
+
+    this.logAudit({
+      tenantId: null,
+      tenantName: deletedTenant.name,
+      actorEmail: 'superadmin@goodwingrow.ai',
+      actorRole: 'SUPER_ADMIN',
+      action: 'TENANT_DELETED',
+      resource: 'Tenant',
+      resourceId: targetId,
+      ipAddress: '127.0.0.1',
+      details: { deletedCompany: deletedTenant.name, slug: deletedTenant.slug }
+    });
+
+    return true;
+  }
+
+  public clearWorkspaceData(slugOrId: string): void {
+    const t = this.getTenantById(slugOrId) || this.getTenantBySlug(slugOrId);
+    const targetId = t ? t.id : slugOrId;
+
+    this.employees = this.employees.filter((e) => e.tenantId !== targetId);
+    this.departments = this.departments.filter((d) => d.tenantId !== targetId);
+    this.designations = this.designations.filter((d) => d.tenantId !== targetId);
+    this.shifts = this.shifts.filter((s) => s.tenantId !== targetId);
+    this.holidays = this.holidays.filter((h) => h.tenantId !== targetId);
+    this.leaveTypes = this.leaveTypes.filter((l) => l.tenantId !== targetId);
+    this.leaveApplications = this.leaveApplications.filter((l) => l.tenantId !== targetId);
+    this.attendance = this.attendance.filter((a) => a.tenantId !== targetId);
+    this.salarySlips = this.salarySlips.filter((s) => s.tenantId !== targetId);
+    this.documents = this.documents.filter((d) => d.tenantId !== targetId);
+    this.jobOpenings = this.jobOpenings.filter((j) => j.tenantId !== targetId);
+    this.jobApplicants = this.jobApplicants.filter((j) => j.tenantId !== targetId);
+    this.invitations = this.invitations.filter((i) => i.tenantId !== targetId);
+    this.regularizations = this.regularizations.filter((r) => r.tenantId !== targetId);
+
+    if (t) {
+      t.onboardingChecklist = [
+        { id: 'step-1', title: 'Company Profile', description: 'Logo, registration, timezone & currency', completed: true, route: `/app/${t.slug}/setup` },
+        { id: 'step-2', title: 'Departments', description: 'Configure organization departments', completed: false, route: `/app/${t.slug}/setup` },
+        { id: 'step-3', title: 'Designations & Reporting', description: 'Technical & supervisory hierarchy', completed: false, route: `/app/${t.slug}/setup` },
+        { id: 'step-4', title: 'Attendance Policies', description: 'Working hours, grace period & weekly offs', completed: false, route: `/app/${t.slug}/setup` },
+        { id: 'step-5', title: 'Leave Policies', description: 'Casual, Sick & Earned leaves', completed: false, route: `/app/${t.slug}/setup` },
+        { id: 'step-6', title: 'Payroll Configuration', description: 'Salary components & statutory rules', completed: false, route: `/app/${t.slug}/setup` },
+        { id: 'step-7', title: 'Employee Data Import', description: 'Add employees or bulk upload CSV', completed: false, route: `/app/${t.slug}/setup` },
+        { id: 'step-8', title: 'Invite Employees', description: 'Send activation links to workforce', completed: false, route: `/app/${t.slug}/setup` }
+      ];
+    }
+
+    if (SupabaseStore.isConnected()) {
+      SupabaseStore.clearTenantData(targetId).catch((err) =>
+        console.warn('Background Supabase clearTenantData error:', err)
+      );
+    }
+  }
+
   public addDepartment(tenantId: string, name: string, code?: string): Department {
     const deptCode = code || name.replace(/[^a-zA-Z]/g, '').slice(0, 4).toUpperCase();
     const existing = this.departments.find(
@@ -734,6 +834,19 @@ class HRMSDataStore {
     return emp;
   }
 
+  public upsertEmployee(emp: Employee): void {
+    const idx = this.employees.findIndex((e) => e.id === emp.id);
+    if (idx >= 0) {
+      this.employees[idx] = { ...this.employees[idx], ...emp };
+    } else {
+      this.employees.push(emp);
+    }
+  }
+
+  public syncEmployees(employees: Employee[]): void {
+    employees.forEach((emp) => this.upsertEmployee(emp));
+  }
+
   public createEmployee(
     tenantId: string,
     data: {
@@ -818,6 +931,41 @@ class HRMSDataStore {
     if (index === -1) return false;
     this.employees.splice(index, 1);
     return true;
+  }
+
+  public updateEmployee(
+    tenantId: string,
+    employeeId: string,
+    updates: Partial<Employee>
+  ): Employee | null {
+    let emp = this.employees.find((e) => e.id === employeeId && e.tenantId === tenantId);
+    if (!emp) {
+      emp = {
+        id: employeeId,
+        tenantId,
+        employeeCode: 'EMP',
+        firstName: '',
+        lastName: '',
+        workEmail: '',
+        phone: '',
+        gender: 'OTHER',
+        joiningDate: new Date().toISOString().split('T')[0],
+        departmentId: '',
+        designationId: '',
+        employmentType: 'FULL_TIME',
+        status: 'ACTIVE',
+        monthlySalary: 0,
+        loginStatus: 'NOT_INVITED',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        ...updates
+      };
+      this.employees.push(emp);
+      return emp;
+    }
+
+    Object.assign(emp, updates, { updatedAt: new Date().toISOString() });
+    return emp;
   }
 
   // -------------------------------------------------------------

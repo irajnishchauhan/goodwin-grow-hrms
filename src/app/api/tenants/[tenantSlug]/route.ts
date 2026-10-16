@@ -64,7 +64,11 @@ export async function PUT(
 ) {
   try {
     const { tenantSlug } = await context.params;
-    const tenant = db.getTenantBySlug(tenantSlug);
+    let tenant = db.getTenantBySlug(tenantSlug);
+    if (!tenant) {
+      tenant = await SupabaseStore.getTenantBySlug(tenantSlug);
+      if (tenant) db.upsertTenant(tenant);
+    }
     if (!tenant) {
       return NextResponse.json({ success: false, error: 'Tenant workspace not found' }, { status: 404 });
     }
@@ -90,7 +94,11 @@ export async function POST(
 ) {
   try {
     const { tenantSlug } = await context.params;
-    const tenant = db.getTenantBySlug(tenantSlug);
+    let tenant = db.getTenantBySlug(tenantSlug);
+    if (!tenant) {
+      tenant = await SupabaseStore.getTenantBySlug(tenantSlug);
+      if (tenant) db.upsertTenant(tenant);
+    }
     if (!tenant) {
       return NextResponse.json({ success: false, error: 'Tenant workspace not found' }, { status: 404 });
     }
@@ -158,11 +166,54 @@ export async function POST(
         return NextResponse.json({ success: true, message: 'Step updated', data: { tenant: updatedTenant } });
       }
 
+      case 'clear-workspace': {
+        db.clearWorkspaceData(tenant.id);
+        await SupabaseStore.clearTenantData(tenant.id);
+        const updatedTenant = db.getTenantById(tenant.id) || tenant;
+        await SupabaseStore.saveTenant(updatedTenant);
+        return NextResponse.json({
+          success: true,
+          message: `Workspace "${tenant.name}" data completely cleared for fresh setup.`,
+          data: { tenant: updatedTenant }
+        });
+      }
+
       default:
         return NextResponse.json({ success: false, error: `Unknown action: ${action}` }, { status: 400 });
     }
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Operation failed';
     return NextResponse.json({ success: false, error: message }, { status: 400 });
+  }
+}
+
+export async function DELETE(
+  _req: Request,
+  context: { params: Promise<{ tenantSlug: string }> }
+) {
+  try {
+    const { tenantSlug } = await context.params;
+    let tenant = db.getTenantBySlug(tenantSlug);
+    if (!tenant) {
+      tenant = await SupabaseStore.getTenantBySlug(tenantSlug);
+    }
+    if (!tenant) {
+      return NextResponse.json({ success: false, error: 'Tenant workspace not found' }, { status: 404 });
+    }
+
+    const deleted = db.deleteTenant(tenant.id);
+    await SupabaseStore.deleteTenant(tenant.id);
+
+    if (!deleted) {
+      return NextResponse.json({ success: false, error: 'Failed to delete workspace' }, { status: 500 });
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: `Workspace "${tenant.name}" and all associated data permanently deleted.`
+    });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Error deleting workspace';
+    return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
 }

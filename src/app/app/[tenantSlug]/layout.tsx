@@ -1,6 +1,7 @@
 import React from 'react';
 import { notFound } from 'next/navigation';
 import { db } from '@/lib/db/store';
+import { SupabaseStore } from '@/lib/db/supabaseStore';
 import TenantWorkspaceClientShell from '@/components/TenantWorkspaceClientShell';
 
 interface TenantLayoutProps {
@@ -10,7 +11,13 @@ interface TenantLayoutProps {
 
 export default async function TenantWorkspaceLayout({ children, params }: TenantLayoutProps) {
   const { tenantSlug } = await params;
-  const tenant = db.getTenantBySlug(tenantSlug);
+  let tenant = db.getTenantBySlug(tenantSlug);
+  if (!tenant) {
+    tenant = await SupabaseStore.getTenantBySlug(tenantSlug);
+    if (tenant) {
+      db.upsertTenant(tenant);
+    }
+  }
 
   if (!tenant) {
     notFound();

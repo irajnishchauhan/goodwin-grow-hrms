@@ -319,17 +319,17 @@ Ritu,Chopra,ritu.chopra@goodwinbatteries.com,+91 98444 55667,Research & Battery 
                 setBulkModalOpen(true);
                 setImportResult(null);
               }}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white font-semibold text-xs transition-all border border-slate-700 shadow-sm"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white hover:bg-slate-50 text-slate-700 font-semibold text-xs transition-all border border-slate-200 shadow-xs"
             >
-              <Upload className="w-4 h-4 text-emerald-400" />
+              <Upload className="w-4 h-4 text-emerald-600" />
               <span>Bulk CSV Import</span>
             </button>
 
             <Link
               href={`/app/${tenantSlug}/invitations`}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-600/20 hover:bg-amber-600/30 text-amber-300 hover:text-amber-200 font-semibold text-xs transition-all border border-amber-500/30"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 font-semibold text-xs transition-all border border-amber-200 shadow-xs"
             >
-              <KeyRound className="w-4 h-4 text-amber-400" />
+              <KeyRound className="w-4 h-4 text-amber-600" />
               <span>Manage Invitations ({pendingInvitesCount})</span>
             </Link>
 
@@ -340,7 +340,7 @@ Ritu,Chopra,ritu.chopra@goodwinbatteries.com,+91 98444 55667,Research & Battery 
                 }
                 setModalOpen(true);
               }}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs transition-all shadow-md shadow-emerald-900/30"
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs transition-all shadow-sm"
             >
               <Plus className="w-4 h-4" />
               <span>Add Employee</span>
@@ -351,33 +351,33 @@ Ritu,Chopra,ritu.chopra@goodwinbatteries.com,+91 98444 55667,Research & Battery 
 
       {/* KPI Summary Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-        <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-1">
-          <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Total Workforce</div>
-          <div className="text-2xl font-black text-white">{employees.length}</div>
-          <p className="text-[10px] text-slate-500 font-mono">Capacity: {tenant?.maxEmployees || 100} seats</p>
+        <div className="p-4 rounded-2xl bg-white border border-slate-200/80 shadow-xs space-y-1">
+          <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Total Workforce</div>
+          <div className="text-2xl font-black text-slate-900">{employees.length}</div>
+          <p className="text-[10px] text-slate-400 font-mono">Capacity: {tenant?.maxEmployees || 100} seats</p>
         </div>
 
-        <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-1">
-          <div className="text-[11px] font-bold uppercase tracking-wider text-emerald-400">Active Login Users</div>
-          <div className="text-2xl font-black text-emerald-400">{activeAccountsCount}</div>
-          <p className="text-[10px] text-emerald-500/80">Can sign in to portal</p>
+        <div className="p-4 rounded-2xl bg-white border border-slate-200/80 shadow-xs space-y-1">
+          <div className="text-[11px] font-bold uppercase tracking-wider text-emerald-700">Active Login Users</div>
+          <div className="text-2xl font-black text-emerald-700">{activeAccountsCount}</div>
+          <p className="text-[10px] text-slate-500">Can sign in to portal</p>
         </div>
 
-        <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-1">
-          <div className="text-[11px] font-bold uppercase tracking-wider text-amber-400">Pending Activation</div>
-          <div className="text-2xl font-black text-amber-400">{pendingInvitesCount}</div>
-          <p className="text-[10px] text-amber-500/80">Invite dispatched</p>
+        <div className="p-4 rounded-2xl bg-white border border-slate-200/80 shadow-xs space-y-1">
+          <div className="text-[11px] font-bold uppercase tracking-wider text-amber-700">Pending Activation</div>
+          <div className="text-2xl font-black text-amber-700">{pendingInvitesCount}</div>
+          <p className="text-[10px] text-slate-500">Invite dispatched</p>
         </div>
 
-        <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-1">
-          <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Uninvited Staff</div>
-          <div className="text-2xl font-black text-slate-300">{uninvitedCount}</div>
-          <p className="text-[10px] text-slate-500">Record only, no user login</p>
+        <div className="p-4 rounded-2xl bg-white border border-slate-200/80 shadow-xs space-y-1">
+          <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Uninvited Staff</div>
+          <div className="text-2xl font-black text-slate-700">{uninvitedCount}</div>
+          <p className="text-[10px] text-slate-400">Record only, no user login</p>
         </div>
       </div>
 
       {/* Filter and Search Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-2xl bg-slate-950 border border-slate-800">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-2xl bg-white border border-slate-200/80 shadow-xs">
         <div className="relative flex-1 max-w-md">
           <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
           <input
@@ -385,20 +385,20 @@ Ritu,Chopra,ritu.chopra@goodwinbatteries.com,+91 98444 55667,Research & Battery 
             placeholder="Search employee by name, code, designation..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-9 pr-3 py-2 text-xs rounded-xl bg-slate-900 border border-slate-800 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+            className="w-full pl-9 pr-3 py-2 text-xs rounded-xl bg-slate-50 border border-slate-200 text-slate-900 placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
           />
         </div>
 
         <div className="flex items-center gap-2 overflow-x-auto pb-1 sm:pb-0">
-          <span className="text-xs text-slate-400 font-medium flex items-center gap-1">
+          <span className="text-xs text-slate-500 font-medium flex items-center gap-1">
             <Filter className="w-3.5 h-3.5" /> Dept:
           </span>
           <button
             onClick={() => setSelectedDept('ALL')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+            className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
               selectedDept === 'ALL'
-                ? 'bg-emerald-600 text-white'
-                : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+                ? 'bg-emerald-600 text-white shadow-xs'
+                : 'bg-slate-50 text-slate-600 hover:text-slate-900 border border-slate-200'
             }`}
           >
             All
@@ -407,10 +407,10 @@ Ritu,Chopra,ritu.chopra@goodwinbatteries.com,+91 98444 55667,Research & Battery 
             <button
               key={dept.id}
               onClick={() => setSelectedDept(dept.id)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
+              className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
                 selectedDept === dept.id
-                  ? 'bg-emerald-600 text-white'
-                  : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'bg-slate-50 text-slate-600 hover:text-slate-900 border border-slate-200'
               }`}
             >
               {dept.name}
@@ -420,10 +420,10 @@ Ritu,Chopra,ritu.chopra@goodwinbatteries.com,+91 98444 55667,Research & Battery 
       </div>
 
       {/* Employees Table */}
-      <div className="rounded-2xl bg-slate-950 border border-slate-800 overflow-hidden shadow-xl">
+      <div className="rounded-2xl bg-white border border-slate-200/80 overflow-hidden shadow-xs">
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs text-slate-300">
-            <thead className="bg-slate-900 uppercase font-semibold text-[10px] text-slate-400 tracking-wider border-b border-slate-800">
+          <table className="w-full text-left text-xs text-slate-600">
+            <thead className="bg-slate-50 uppercase font-semibold text-[10px] text-slate-500 tracking-wider border-b border-slate-200">
               <tr>
                 <th className="px-6 py-3.5">Employee</th>
                 <th className="px-6 py-3.5">Code</th>
@@ -444,10 +444,10 @@ Ritu,Chopra,ritu.chopra@goodwinbatteries.com,+91 98444 55667,Research & Battery 
                 )}
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-800/80">
+            <tbody className="divide-y divide-slate-100">
               {filteredEmployees.length === 0 ? (
                 <tr>
-                  <td colSpan={isEmployeeOnly ? 6 : 7} className="px-6 py-8 text-center text-slate-500 text-xs">
+                  <td colSpan={isEmployeeOnly ? 6 : 7} className="px-6 py-8 text-center text-slate-400 text-xs">
                     No colleagues matching the criteria found in this company workspace.
                   </td>
                 </tr>
@@ -456,71 +456,71 @@ Ritu,Chopra,ritu.chopra@goodwinbatteries.com,+91 98444 55667,Research & Battery 
                   <tr
                     key={emp.id}
                     onClick={() => setSelectedEmp(emp)}
-                    className="hover:bg-slate-900/60 cursor-pointer transition-colors"
+                    className="hover:bg-slate-50/70 cursor-pointer transition-colors"
                   >
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center font-bold text-amber-400 text-xs">
+                        <div className="w-9 h-9 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center font-bold text-slate-700 text-xs">
                           {emp.firstName.slice(0, 1)}
                           {emp.lastName.slice(0, 1)}
                         </div>
                         <div>
-                          <div className="font-bold text-white text-sm">
+                          <div className="font-bold text-slate-900 text-sm">
                             {emp.firstName} {emp.lastName}
                           </div>
-                          <div className="text-[11px] text-slate-400 flex items-center gap-1">
-                            <Mail className="w-3 h-3 text-slate-500" />
+                          <div className="text-[11px] text-slate-500 flex items-center gap-1">
+                            <Mail className="w-3 h-3 text-slate-400" />
                             {emp.workEmail}
                           </div>
                         </div>
                       </div>
                     </td>
-                    <td className="px-6 py-4 font-mono font-bold text-emerald-400">{emp.employeeCode}</td>
+                    <td className="px-6 py-4 font-mono font-bold text-emerald-700">{emp.employeeCode}</td>
                     <td className="px-6 py-4">
-                      <div className="font-semibold text-slate-200">{emp.designationTitle}</div>
-                      <div className="text-[11px] text-slate-400">{emp.departmentName}</div>
+                      <div className="font-semibold text-slate-800">{emp.designationTitle}</div>
+                      <div className="text-[11px] text-slate-500">{emp.departmentName}</div>
                     </td>
 
                     {isEmployeeOnly ? (
                       <>
-                        <td className="px-6 py-4 text-slate-300 font-mono">
+                        <td className="px-6 py-4 text-slate-600 font-mono">
                           {emp.phone || '+91 80 4912 8800'}
                         </td>
-                        <td className="px-6 py-4 text-slate-300">
-                          {emp.workLocation || 'Bangalore Facility'}
+                        <td className="px-6 py-4 text-slate-600">
+                          {emp.workLocation || 'Facility'}
                         </td>
                         <td className="px-6 py-4">
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
                             {emp.status}
                           </span>
                         </td>
                       </>
                     ) : (
                       <>
-                        <td className="px-6 py-4 font-semibold text-slate-200">
+                        <td className="px-6 py-4 font-semibold text-slate-800">
                           {tenant?.currency} {emp.monthlySalary.toLocaleString()} / mo
                         </td>
                         <td className="px-6 py-4">
                           {emp.loginStatus === 'ACCEPTED' ? (
-                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
-                              <CheckCircle2 className="w-3 h-3" />
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                              <CheckCircle2 className="w-3 h-3 text-emerald-600" />
                               <span>Active Account</span>
                             </span>
                           ) : emp.loginStatus === 'PENDING' ? (
-                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/30">
-                              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></span>
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
                               <span>Invite Pending</span>
                             </span>
                           ) : (
-                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-800 text-slate-400 border border-slate-700">
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
                               <span>Not Invited</span>
                             </span>
                           )}
                         </td>
                         <td className="px-6 py-4">
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
                             {emp.status}
                           </span>
                         </td>
@@ -530,7 +530,7 @@ Ritu,Chopra,ritu.chopra@goodwinbatteries.com,+91 98444 55667,Research & Battery 
                               e.stopPropagation();
                               handleDeleteEmployee(emp.id, `${emp.firstName} ${emp.lastName}`);
                             }}
-                            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
                             title="Remove Employee"
                           >
                             <Trash2 className="w-4 h-4" />
@@ -546,50 +546,51 @@ Ritu,Chopra,ritu.chopra@goodwinbatteries.com,+91 98444 55667,Research & Battery 
         </div>
       </div>
 
+
       {/* Bulk CSV Import Modal */}
       {bulkModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/75 backdrop-blur-sm animate-fade-in">
-          <div className="w-full max-w-3xl rounded-2xl bg-slate-900 border border-slate-800 shadow-2xl p-6 text-white space-y-4 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs animate-fade-in">
+          <div className="w-full max-w-3xl rounded-3xl bg-white border border-slate-200 shadow-2xl p-6 text-slate-900 space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+                <div className="w-9 h-9 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-600">
                   <FileSpreadsheet className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-white">Bulk Employee CSV / Spreadsheet Import</h3>
-                  <p className="text-xs text-slate-400">
+                  <h3 className="text-base font-bold text-slate-900">Bulk Employee CSV / Spreadsheet Import</h3>
+                  <p className="text-xs text-slate-500">
                     Import multiple workforce records transactionally into {tenant?.name}
                   </p>
                 </div>
               </div>
               <button
                 onClick={() => setBulkModalOpen(false)}
-                className="text-slate-400 hover:text-white p-1 rounded-lg"
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             {/* Quick Actions Bar */}
-            <div className="flex items-center justify-between gap-3 p-3 rounded-xl bg-slate-950 border border-slate-800 text-xs">
-              <span className="text-slate-400">
-                Format: <code className="text-emerald-400">firstName, lastName, workEmail, phone, departmentName, designationTitle, salary...</code>
+            <div className="flex items-center justify-between gap-3 p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs">
+              <span className="text-slate-600">
+                Format: <code className="text-emerald-700 font-mono font-medium">firstName, lastName, workEmail, phone, departmentName, designationTitle, salary...</code>
               </span>
               <div className="flex items-center gap-2">
                 <button
                   type="button"
                   onClick={downloadSampleCsv}
-                  className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition-colors"
+                  className="px-3 py-1.5 rounded-lg bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold flex items-center gap-1.5 transition-colors border border-slate-200 shadow-xs"
                 >
-                  <Download className="w-3.5 h-3.5 text-emerald-400" />
+                  <Download className="w-3.5 h-3.5 text-emerald-600" />
                   <span>Download Sample CSV</span>
                 </button>
                 <button
                   type="button"
                   onClick={loadSampleData}
-                  className="px-3 py-1.5 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 text-xs font-semibold flex items-center gap-1.5 border border-emerald-500/30 transition-colors"
+                  className="px-3 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-semibold flex items-center gap-1.5 border border-emerald-200 transition-colors"
                 >
-                  <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+                  <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
                   <span>Fill Goodwin Staff</span>
                 </button>
               </div>
@@ -597,7 +598,7 @@ Ritu,Chopra,ritu.chopra@goodwinbatteries.com,+91 98444 55667,Research & Battery 
 
             {/* CSV Raw Text Area */}
             <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
                 CSV Data Stream (Paste or edit spreadsheet rows)
               </label>
               <textarea
@@ -608,7 +609,7 @@ Ritu,Chopra,ritu.chopra@goodwinbatteries.com,+91 98444 55667,Research & Battery 
                   parseCsv(e.target.value);
                 }}
                 placeholder="firstName,lastName,workEmail,phone,departmentName,designationTitle,employmentType,monthlySalary,gender,workLocation"
-                className="w-full px-3 py-2 text-xs font-mono rounded-xl bg-slate-950 border border-slate-700 text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+                className="w-full px-3 py-2 text-xs font-mono rounded-xl bg-slate-50 border border-slate-200 text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
               ></textarea>
             </div>
 
@@ -616,18 +617,18 @@ Ritu,Chopra,ritu.chopra@goodwinbatteries.com,+91 98444 55667,Research & Battery 
             {parsedRows.length > 0 && (
               <div className="space-y-2">
                 <div className="flex items-center justify-between text-xs">
-                  <span className="font-bold text-slate-300">
+                  <span className="font-bold text-slate-800">
                     Parsed Records Preview ({parsedRows.length} rows)
                   </span>
-                  <span className="text-[11px] text-slate-400">
+                  <span className="text-[11px] text-slate-500">
                     {parsedRows.filter((r) => r._isValid).length} Valid &bull;{' '}
                     {parsedRows.filter((r) => !r._isValid).length} Flagged
                   </span>
                 </div>
 
-                <div className="rounded-xl border border-slate-800 bg-slate-950 overflow-x-auto max-h-48">
-                  <table className="w-full text-left text-[11px] text-slate-300">
-                    <thead className="bg-slate-900 uppercase font-semibold text-[9px] text-slate-400 tracking-wider sticky top-0">
+                <div className="rounded-xl border border-slate-200 bg-white overflow-x-auto max-h-48">
+                  <table className="w-full text-left text-[11px] text-slate-600">
+                    <thead className="bg-slate-50 uppercase font-semibold text-[9px] text-slate-500 tracking-wider sticky top-0 border-b border-slate-200">
                       <tr>
                         <th className="px-3 py-2">Row</th>
                         <th className="px-3 py-2">Name</th>
@@ -638,24 +639,24 @@ Ritu,Chopra,ritu.chopra@goodwinbatteries.com,+91 98444 55667,Research & Battery 
                         <th className="px-3 py-2">Status</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-800/60 font-mono text-[10px]">
+                    <tbody className="divide-y divide-slate-100 font-mono text-[10px]">
                       {parsedRows.map((r, i) => (
-                        <tr key={i} className={r._isValid ? '' : 'bg-rose-950/20'}>
+                        <tr key={i} className={r._isValid ? '' : 'bg-rose-50'}>
                           <td className="px-3 py-1.5">{r._rowNum}</td>
-                          <td className="px-3 py-1.5 font-sans font-semibold text-white">
+                          <td className="px-3 py-1.5 font-sans font-semibold text-slate-900">
                             {r.firstName} {r.lastName}
                           </td>
-                          <td className="px-3 py-1.5 text-slate-300">{r.workEmail}</td>
-                          <td className="px-3 py-1.5 text-slate-400">{r.departmentName}</td>
-                          <td className="px-3 py-1.5 text-slate-400">{r.designationTitle}</td>
-                          <td className="px-3 py-1.5 text-slate-300">₹{Number(r.monthlySalary || 0).toLocaleString()}</td>
+                          <td className="px-3 py-1.5 text-slate-600">{r.workEmail}</td>
+                          <td className="px-3 py-1.5 text-slate-600">{r.departmentName}</td>
+                          <td className="px-3 py-1.5 text-slate-600">{r.designationTitle}</td>
+                          <td className="px-3 py-1.5 text-slate-800">₹{Number(r.monthlySalary || 0).toLocaleString()}</td>
                           <td className="px-3 py-1.5">
                             {r._isValid ? (
-                              <span className="text-emerald-400 font-semibold">VALID</span>
+                              <span className="text-emerald-700 font-semibold">VALID</span>
                             ) : r._isDuplicate ? (
-                              <span className="text-amber-400 font-semibold">DUPLICATE EMAIL</span>
+                              <span className="text-amber-700 font-semibold">DUPLICATE EMAIL</span>
                             ) : (
-                              <span className="text-rose-400 font-semibold">MISSING FIELDS</span>
+                              <span className="text-rose-700 font-semibold">MISSING FIELDS</span>
                             )}
                           </td>
                         </tr>
@@ -671,23 +672,23 @@ Ritu,Chopra,ritu.chopra@goodwinbatteries.com,+91 98444 55667,Research & Battery 
               <div
                 className={`p-4 rounded-xl text-xs space-y-1.5 ${
                   importResult.success
-                    ? 'bg-emerald-950/40 border border-emerald-500/30 text-emerald-300'
-                    : 'bg-rose-950/40 border border-rose-500/30 text-rose-300'
+                    ? 'bg-emerald-50 border border-emerald-200 text-emerald-800'
+                    : 'bg-rose-50 border border-rose-200 text-rose-800'
                 }`}
               >
                 <div className="font-bold flex items-center gap-1.5">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
                   <span>
                     Successfully added {importResult.importedCount} new workforce records!
                   </span>
                 </div>
-                <p className="text-[11px] text-slate-400">
-                  New employees are in <code className="text-slate-300 font-bold">NOT_INVITED</code> state. You can now go to Invitations to dispatch activation links.
+                <p className="text-[11px] text-slate-600">
+                  New employees are in <code className="text-slate-800 font-bold">NOT_INVITED</code> state. You can now go to Invitations to dispatch activation links.
                 </p>
                 <div className="pt-2">
                   <Link
                     href={`/app/${tenantSlug}/invitations`}
-                    className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-emerald-600 text-white font-semibold text-xs"
+                    className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs"
                   >
                     <span>Proceed to Dispatch Invitations</span>
                     <ArrowRight className="w-3.5 h-3.5" />
@@ -697,11 +698,11 @@ Ritu,Chopra,ritu.chopra@goodwinbatteries.com,+91 98444 55667,Research & Battery 
             )}
 
             {/* Modal Footer */}
-            <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
+            <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
               <button
                 type="button"
                 onClick={() => setBulkModalOpen(false)}
-                className="px-4 py-2 text-xs text-slate-400 hover:text-white"
+                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-900"
               >
                 Close
               </button>
@@ -709,7 +710,7 @@ Ritu,Chopra,ritu.chopra@goodwinbatteries.com,+91 98444 55667,Research & Battery 
                 type="button"
                 disabled={parsedRows.length === 0 || importLoading}
                 onClick={handleExecuteImport}
-                className="px-5 py-2 text-xs font-semibold rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white transition-all shadow-md shadow-emerald-900/30 disabled:opacity-50 flex items-center gap-1.5"
+                className="px-5 py-2 text-xs font-semibold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white transition-all shadow-sm disabled:opacity-50 flex items-center gap-1.5"
               >
                 <Upload className="w-3.5 h-3.5" />
                 <span>{importLoading ? 'Importing Batch...' : `Import ${parsedRows.length} Employees`}</span>
@@ -891,55 +892,55 @@ Ritu,Chopra,ritu.chopra@goodwinbatteries.com,+91 98444 55667,Research & Battery 
 
       {/* Employee Detail Drawer */}
       {selectedEmp && (
-        <div className="fixed inset-y-0 right-0 z-50 w-full max-w-md bg-slate-950 border-l border-slate-800 shadow-2xl p-6 text-white overflow-y-auto space-y-6 animate-slide-left">
-          <div className="flex items-center justify-between pb-4 border-b border-slate-800">
-            <h3 className="font-bold text-base text-white">Employee Profile</h3>
+        <div className="fixed inset-y-0 right-0 z-50 w-full max-w-md bg-white border-l border-slate-200 shadow-2xl p-6 text-slate-900 overflow-y-auto space-y-6 animate-slide-left">
+          <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+            <h3 className="font-bold text-base text-slate-900">Employee Profile</h3>
             <button
               onClick={() => setSelectedEmp(null)}
-              className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
+              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
             >
               <X className="w-5 h-5" />
             </button>
           </div>
 
           <div className="flex items-center gap-4">
-            <div className="w-14 h-14 rounded-2xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center font-bold text-amber-400 text-xl shadow-lg">
+            <div className="w-14 h-14 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-center justify-center font-bold text-emerald-700 text-xl shadow-xs">
               {selectedEmp.firstName.slice(0, 1)}
               {selectedEmp.lastName.slice(0, 1)}
             </div>
             <div>
-              <h4 className="text-lg font-bold text-white">
+              <h4 className="text-lg font-bold text-slate-900">
                 {selectedEmp.firstName} {selectedEmp.lastName}
               </h4>
-              <p className="text-xs text-slate-400">{selectedEmp.designationTitle}</p>
-              <span className="inline-block font-mono text-[11px] text-emerald-400 font-semibold mt-0.5">
+              <p className="text-xs text-emerald-700 font-semibold">{selectedEmp.designationTitle}</p>
+              <span className="inline-block font-mono text-[11px] text-slate-500 font-semibold mt-0.5">
                 {selectedEmp.employeeCode}
               </span>
             </div>
           </div>
 
           <div className="space-y-3 text-xs">
-            <div className="p-3.5 rounded-xl bg-slate-900 border border-slate-800 space-y-2">
+            <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
               <div className="text-[10px] font-bold uppercase text-slate-500 tracking-wider">Employment Details</div>
-              <div className="flex justify-between py-1 border-b border-slate-800/60">
-                <span className="text-slate-400">Department</span>
-                <span className="font-semibold text-slate-200">{selectedEmp.departmentName}</span>
+              <div className="flex justify-between py-1 border-b border-slate-200/60">
+                <span className="text-slate-500">Department</span>
+                <span className="font-semibold text-slate-800">{selectedEmp.departmentName}</span>
               </div>
-              <div className="flex justify-between py-1 border-b border-slate-800/60">
-                <span className="text-slate-400">Employment Type</span>
-                <span className="font-semibold text-slate-200">{selectedEmp.employmentType}</span>
+              <div className="flex justify-between py-1 border-b border-slate-200/60">
+                <span className="text-slate-500">Employment Type</span>
+                <span className="font-semibold text-slate-800">{selectedEmp.employmentType}</span>
               </div>
-              <div className="flex justify-between py-1 border-b border-slate-800/60">
-                <span className="text-slate-400">Date of Joining</span>
-                <span className="font-semibold text-slate-200">{selectedEmp.joiningDate}</span>
+              <div className="flex justify-between py-1 border-b border-slate-200/60">
+                <span className="text-slate-500">Date of Joining</span>
+                <span className="font-semibold text-slate-800">{selectedEmp.joiningDate}</span>
               </div>
-              <div className="flex justify-between py-1 border-b border-slate-800/60">
-                <span className="text-slate-400">Login Account</span>
-                <span className="font-semibold text-amber-400">{selectedEmp.loginStatus || 'NOT_INVITED'}</span>
+              <div className="flex justify-between py-1 border-b border-slate-200/60">
+                <span className="text-slate-500">Login Account</span>
+                <span className="font-semibold text-amber-700">{selectedEmp.loginStatus || 'NOT_INVITED'}</span>
               </div>
               <div className="flex justify-between py-1">
-                <span className="text-slate-400">Status</span>
-                <span className="font-semibold text-emerald-400">{selectedEmp.status}</span>
+                <span className="text-slate-500">Status</span>
+                <span className="font-semibold text-emerald-700">{selectedEmp.status}</span>
               </div>
             </div>
 
@@ -949,41 +950,41 @@ Ritu,Chopra,ritu.chopra@goodwinbatteries.com,+91 98444 55667,Research & Battery 
               (selectedEmp.workEmail.toLowerCase() === user.email.toLowerCase() ||
                 selectedEmp.firstName.toLowerCase() === user.name.toLowerCase().split(' ')[0])
             ) ? (
-              <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 space-y-2 text-center py-4">
-                <div className="w-8 h-8 rounded-full bg-slate-800 text-amber-400 flex items-center justify-center mx-auto mb-1 border border-slate-700">
+              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-2 text-center py-4">
+                <div className="w-8 h-8 rounded-full bg-slate-100 text-amber-600 flex items-center justify-center mx-auto mb-1 border border-slate-200">
                   <Lock className="w-4 h-4" />
                 </div>
-                <div className="text-xs font-bold text-slate-200">Confidential HR Record</div>
+                <div className="text-xs font-bold text-slate-800">Confidential HR Record</div>
                 <p className="text-[11px] text-slate-500 leading-relaxed max-w-xs mx-auto">
                   Compensation, statutory tax identification, and bank account numbers are restricted to Company Administrators and HR Officers under Goodwin Grow RBAC policies.
                 </p>
               </div>
             ) : (
-              <div className="p-3.5 rounded-xl bg-slate-900 border border-slate-800 space-y-2">
+              <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
                 <div className="text-[10px] font-bold uppercase text-slate-500 tracking-wider">Payroll & Statutory</div>
-                <div className="flex justify-between py-1 border-b border-slate-800/60">
-                  <span className="text-slate-400">Monthly Compensation</span>
-                  <span className="font-bold text-emerald-400">
+                <div className="flex justify-between py-1 border-b border-slate-200/60">
+                  <span className="text-slate-500">Monthly Compensation</span>
+                  <span className="font-bold text-emerald-700">
                     {tenant?.currency} {selectedEmp.monthlySalary.toLocaleString()}
                   </span>
                 </div>
-                <div className="flex justify-between py-1 border-b border-slate-800/60">
-                  <span className="text-slate-400">PAN / Tax ID</span>
-                  <span className="font-mono text-slate-200">{selectedEmp.panOrTaxId || 'N/A'}</span>
+                <div className="flex justify-between py-1 border-b border-slate-200/60">
+                  <span className="text-slate-500">PAN / Tax ID</span>
+                  <span className="font-mono text-slate-800">{selectedEmp.panOrTaxId || 'N/A'}</span>
                 </div>
-                <div className="flex justify-between py-1 border-b border-slate-800/60">
-                  <span className="text-slate-400">Bank Name</span>
-                  <span className="text-slate-200">{selectedEmp.bankName || 'N/A'}</span>
+                <div className="flex justify-between py-1 border-b border-slate-200/60">
+                  <span className="text-slate-500">Bank Name</span>
+                  <span className="text-slate-800">{selectedEmp.bankName || 'N/A'}</span>
                 </div>
                 <div className="flex justify-between py-1">
-                  <span className="text-slate-400">Account No.</span>
-                  <span className="font-mono text-slate-200">{selectedEmp.bankAccountNumber || 'N/A'}</span>
+                  <span className="text-slate-500">Account No.</span>
+                  <span className="font-mono text-slate-800">{selectedEmp.bankAccountNumber || 'N/A'}</span>
                 </div>
               </div>
             )}
 
-            <div className="p-3 rounded-xl bg-emerald-950/40 border border-emerald-500/30 text-emerald-300 text-[11px] flex items-center gap-2">
-              <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+            <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] flex items-center gap-2">
+              <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
               <span>Isolated inside {tenant?.name}&apos;s security tenant boundary.</span>
             </div>
           </div>

@@ -18,7 +18,9 @@ export async function GET(
 
     // Attempt to pull live data from Supabase, seamlessly fallback to in-memory store
     let employees = await SupabaseStore.getEmployees(tenant.id);
-    if (!employees || employees.length === 0) {
+    if (employees && employees.length > 0) {
+      db.syncEmployees(employees);
+    } else {
       employees = db.getEmployees(tenant.id);
     }
 
@@ -49,7 +51,11 @@ export async function POST(
 ) {
   try {
     const { tenantSlug } = await context.params;
-    const tenant = db.getTenantBySlug(tenantSlug);
+    let tenant = db.getTenantBySlug(tenantSlug);
+    if (!tenant) {
+      tenant = await SupabaseStore.getTenantBySlug(tenantSlug);
+      if (tenant) db.upsertTenant(tenant);
+    }
     if (!tenant) {
       return NextResponse.json({ success: false, error: 'Tenant workspace not found' }, { status: 404 });
     }
@@ -98,7 +104,11 @@ export async function DELETE(
 ) {
   try {
     const { tenantSlug } = await context.params;
-    const tenant = db.getTenantBySlug(tenantSlug);
+    let tenant = db.getTenantBySlug(tenantSlug);
+    if (!tenant) {
+      tenant = await SupabaseStore.getTenantBySlug(tenantSlug);
+      if (tenant) db.upsertTenant(tenant);
+    }
     if (!tenant) {
       return NextResponse.json({ success: false, error: 'Tenant not found' }, { status: 404 });
     }
@@ -120,6 +130,88 @@ export async function DELETE(
     return NextResponse.json({ success: true, message: 'Employee removed successfully' });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Error deleting employee';
+    return NextResponse.json({ success: false, error: message }, { status: 500 });
+  }
+}
+
+export async function PATCH(
+  req: Request,
+  context: { params: Promise<{ tenantSlug: string }> }
+) {
+  try {
+    const { tenantSlug } = await context.params;
+    let tenant = db.getTenantBySlug(tenantSlug);
+    if (!tenant) {
+      tenant = await SupabaseStore.getTenantBySlug(tenantSlug);
+      if (tenant) db.upsertTenant(tenant);
+    }
+    if (!tenant) {
+      return NextResponse.json({ success: false, error: 'Tenant workspace not found' }, { status: 404 });
+    }
+
+    const body = await req.json();
+
+    // Batch update mode (e.g. from the Organization Hierarchy Assigner)
+    if (body.updates && Array.isArray(body.updates)) {
+      for (const item of body.updates) {
+        if (!item.id) continue;
+        db.updateEmployee(tenant.id, item.id, {
+          reportingManagerId: item.reportingManagerId ?? null,
+          reportingManagerName: item.reportingManagerName ?? 'Executive Management'
+        });
+        await SupabaseStore.updateEmployee(tenant.id, item.id, {
+          reportingManagerId: item.reportingManagerId ?? null,
+          reportingManagerName: item.reportingManagerName ?? 'Executive Management'
+        });
+      }
+
+      if (body.rootLeaderId !== undefined) {
+        tenant.orgTreeRootId = body.rootLeaderId;
+        db.upsertTenant(tenant);
+      }
+
+      const refreshedEmployees =
+        (await SupabaseStore.getEmployees(tenant.id)) || db.getEmployees(tenant.id);
+
+      return NextResponse.json({
+        success: true,
+        message: 'Organization hierarchy updated successfully',
+        data: {
+          employees: refreshedEmployees,
+          orgTreeRootId: tenant.orgTreeRootId
+        }
+      });
+    }
+
+    // Single employee update mode
+    const { employeeId, reportingManagerId, reportingManagerName, designationTitle, departmentId, departmentName } = body;
+    if (!employeeId) {
+      return NextResponse.json({ success: false, error: 'Employee ID is required' }, { status: 400 });
+    }
+
+    const updatedEmp = db.updateEmployee(tenant.id, employeeId, {
+      ...(reportingManagerId !== undefined && { reportingManagerId }),
+      ...(reportingManagerName !== undefined && { reportingManagerName }),
+      ...(designationTitle !== undefined && { designationTitle }),
+      ...(departmentId !== undefined && { departmentId }),
+      ...(departmentName !== undefined && { departmentName })
+    });
+
+    await SupabaseStore.updateEmployee(tenant.id, employeeId, {
+      ...(reportingManagerId !== undefined && { reportingManagerId }),
+      ...(reportingManagerName !== undefined && { reportingManagerName }),
+      ...(designationTitle !== undefined && { designationTitle }),
+      ...(departmentId !== undefined && { departmentId }),
+      ...(departmentName !== undefined && { departmentName })
+    });
+
+    return NextResponse.json({
+      success: true,
+      message: 'Employee updated successfully',
+      data: updatedEmp
+    });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Error updating employee';
     return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
 }

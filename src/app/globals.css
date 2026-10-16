@@ -56,17 +56,17 @@ body {
 
 /* Glassmorphism & Micro-animations */
 .glass-panel {
-  background: rgba(255, 255, 255, 0.85);
+  background: rgba(255, 255, 255, 0.95);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(226, 232, 240, 0.8);
+  border: 1px solid rgba(226, 232, 240, 0.9);
 }
 
 .glass-panel-dark {
-  background: rgba(15, 23, 42, 0.85);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(51, 65, 85, 0.5);
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(226, 232, 240, 0.9);
 }
 
 @keyframes pulse-subtle {
@@ -76,4 +76,213 @@ body {
 
 .animate-pulse-subtle {
   animation: pulse-subtle 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* ==============================================================================
+   EXECUTIVE LIGHT THEME ENGINE
+   Transforms legacy dark slate tokens into clean, crisp, premium light surfaces.
+   ============================================================================== */
+
+/* Background conversions */
+.bg-slate-950 {
+  background-color: #ffffff !important;
+}
+
+.bg-slate-900 {
+  background-color: #ffffff !important;
+}
+
+.bg-slate-950\/90,
+.bg-slate-950\/80,
+.bg-slate-950\/70,
+.bg-slate-950\/60,
+.bg-slate-900\/90,
+.bg-slate-900\/80,
+.bg-slate-900\/60,
+.bg-slate-900\/40 {
+  background-color: #f8fafc !important;
+}
+
+.bg-slate-800 {
+  background-color: #f1f5f9 !important;
+}
+
+.bg-slate-800\/80,
+.bg-slate-800\/60,
+.bg-slate-800\/40 {
+  background-color: #f8fafc !important;
+}
+
+/* Border conversions */
+.border-slate-800,
+.border-slate-800\/90,
+.border-slate-800\/80,
+.border-slate-800\/60,
+.border-slate-700,
+.border-slate-700\/80,
+.border-slate-700\/60 {
+  border-color: #e2e8f0 !important;
+}
+
+/* Typography conversions inside light surfaces */
+.bg-slate-950 .text-white,
+.bg-slate-900 .text-white,
+.bg-white .text-white,
+.bg-slate-50 .text-white,
+header .text-white,
+aside .text-white,
+main .text-white {
+  color: #0f172a !important;
+}
+
+.text-slate-400 {
+  color: #64748b !important;
+}
+
+.text-slate-300 {
+  color: #334155 !important;
+}
+
+.text-slate-200 {
+  color: #1e293b !important;
+}
+
+.text-slate-100 {
+  color: #0f172a !important;
+}
+
+/* Modals & Popups backdrop */
+.fixed.inset-0.bg-slate-950\/80,
+.fixed.inset-0.bg-slate-950\/70,
+.fixed.inset-0.bg-slate-950\/60,
+.fixed.inset-0.bg-slate-900\/80 {
+  background-color: rgba(15, 23, 42, 0.45) !important;
+  backdrop-filter: blur(6px) !important;
+  -webkit-backdrop-filter: blur(6px) !important;
+}
+
+/* Inputs, textareas, selects */
+input:not([type="checkbox"]):not([type="radio"]):not([type="submit"]):not([type="button"]),
+select,
+textarea {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+  border-color: #cbd5e1 !important;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: #94a3b8 !important;
+}
+
+/* Tables styling */
+table thead th {
+  background-color: #f8fafc !important;
+  color: #475569 !important;
+  border-bottom: 1px solid #e2e8f0 !important;
+}
+
+table tbody tr {
+  border-bottom: 1px solid #f1f5f9 !important;
+}
+
+table tbody tr:hover {
+  background-color: #f8fafc !important;
+}
+
+/* Primary, Action & Badge Buttons: Ensure high contrast text */
+a.bg-emerald-600,
+button.bg-emerald-600,
+a.bg-emerald-700,
+button.bg-emerald-700,
+a.bg-amber-600,
+button.bg-amber-600,
+a.bg-indigo-600,
+button.bg-indigo-600,
+a.bg-blue-600,
+button.bg-blue-600,
+a.bg-rose-600,
+button.bg-rose-600,
+.btn-primary {
+  color: #ffffff !important;
+}
+
+a.bg-emerald-600 *,
+button.bg-emerald-600 *,
+a.bg-emerald-700 *,
+button.bg-emerald-700 *,
+a.bg-amber-600 *,
+button.bg-amber-600 *,
+a.bg-indigo-600 *,
+button.bg-indigo-600 *,
+a.bg-blue-600 *,
+button.bg-blue-600 *,
+a.bg-rose-600 *,
+button.bg-rose-600 *,
+.btn-primary * {
+  color: #ffffff !important;
+  fill: currentColor;
+}
+
+/* Saturated colored badges and alerts */
+.bg-emerald-950,
+.bg-emerald-950\/80,
+.bg-emerald-950\/70,
+.bg-emerald-950\/60,
+.bg-emerald-900\/60,
+.bg-emerald-500\/20,
+.bg-emerald-500\/10 {
+  background-color: #ecfdf5 !important;
+  border-color: #a7f3d0 !important;
+  color: #065f46 !important;
+}
+
+.bg-emerald-950 span,
+.bg-emerald-950 p,
+.bg-emerald-500\/20 span {
+  color: #065f46 !important;
+}
+
+.bg-amber-950,
+.bg-amber-950\/80,
+.bg-amber-950\/40,
+.bg-amber-500\/20,
+.bg-amber-500\/10 {
+  background-color: #fffbeb !important;
+  border-color: #fde68a !important;
+  color: #92400e !important;
+}
+
+.bg-amber-950 span,
+.bg-amber-950 p,
+.bg-amber-500\/20 span {
+  color: #92400e !important;
+}
+
+.bg-rose-950,
+.bg-rose-950\/80,
+.bg-rose-600\/20,
+.bg-rose-500\/20,
+.bg-rose-500\/10 {
+  background-color: #fff1f2 !important;
+  border-color: #fecdd3 !important;
+  color: #9f1239 !important;
+}
+
+.bg-blue-950,
+.bg-blue-950\/80,
+.bg-blue-500\/20,
+.bg-blue-500\/10 {
+  background-color: #eff6ff !important;
+  border-color: #bfdbfe !important;
+  color: #1e40af !important;
+}
+
+/* Code blocks & tags */
+code {
+  background-color: #f1f5f9;
+  color: #0f172a;
+  padding: 0.15rem 0.35rem;
+  border-radius: 0.375rem;
+  border: 1px solid #e2e8f0;
 }

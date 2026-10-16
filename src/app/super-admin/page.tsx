@@ -5,6 +5,8 @@ import Link from 'next/link';
 import Navbar from '@/components/Navbar';
 import TenantSecurityVerification from '@/components/TenantSecurityVerification';
 import OnboardTenantModal from '@/components/OnboardTenantModal';
+import EditTenantModal from '@/components/EditTenantModal';
+import DeleteTenantModal from '@/components/DeleteTenantModal';
 import {
   Building2,
   Users,
@@ -19,12 +21,16 @@ import {
   ExternalLink,
   Lock,
   Clock,
-  Key
+  Key,
+  Edit3,
+  Trash2
 } from 'lucide-react';
 import { Tenant, AuditLogEntry } from '@/lib/types';
 
 export default function SuperAdminPage() {
   const [tenants, setTenants] = useState<Tenant[]>([]);
+  const [editingTenant, setEditingTenant] = useState<Tenant | null>(null);
+  const [deletingTenant, setDeletingTenant] = useState<Tenant | null>(null);
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
   const [stats, setStats] = useState({
     totalTenants: 2,
@@ -192,13 +198,29 @@ export default function SuperAdminPage() {
                       </span>
                     </td>
                     <td className="px-6 py-4 text-right">
-                      <Link
-                        href={`/app/${t.slug}`}
-                        className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 text-xs font-semibold transition-all hover:scale-105"
-                      >
-                        <span>Access Workspace</span>
-                        <ArrowRight className="w-3.5 h-3.5" />
-                      </Link>
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          onClick={() => setEditingTenant(t)}
+                          className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition"
+                          title="Edit Workspace"
+                        >
+                          <Edit3 className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => setDeletingTenant(t)}
+                          className="p-1.5 rounded-lg bg-red-950/40 hover:bg-red-900/60 text-red-400 hover:text-red-300 border border-red-800/40 transition"
+                          title="Delete Workspace"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                        <Link
+                          href={`/app/${t.slug}`}
+                          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 text-xs font-semibold transition-all hover:scale-105"
+                        >
+                          <span>Access</span>
+                          <ArrowRight className="w-3.5 h-3.5" />
+                        </Link>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -254,6 +276,20 @@ export default function SuperAdminPage() {
       <OnboardTenantModal
         isOpen={modalOpen}
         onClose={() => setModalOpen(false)}
+        onSuccess={fetchPlatformData}
+      />
+
+      <EditTenantModal
+        tenant={editingTenant}
+        isOpen={!!editingTenant}
+        onClose={() => setEditingTenant(null)}
+        onSuccess={fetchPlatformData}
+      />
+
+      <DeleteTenantModal
+        tenant={deletingTenant}
+        isOpen={!!deletingTenant}
+        onClose={() => setDeletingTenant(null)}
         onSuccess={fetchPlatformData}
       />
     </div>

@@ -163,6 +163,57 @@ export class SupabaseStore {
     return true;
   }
 
+  public static async deleteTenant(tenantId: string): Promise<boolean> {
+    const supabase = getSupabaseAdmin();
+    if (!supabase) return false;
+
+    const { error } = await supabase
+      .from('tenants')
+      .delete()
+      .eq('id', tenantId);
+
+    if (error) {
+      console.warn('Supabase deleteTenant error:', error.message);
+      return false;
+    }
+    return true;
+  }
+
+  public static async clearTenantData(tenantId: string): Promise<boolean> {
+    const supabase = getSupabaseAdmin();
+    if (!supabase) return false;
+
+    try {
+      // 1. Delete dependent leaf records first
+      await Promise.allSettled([
+        supabase.from('documents').delete().eq('tenant_id', tenantId),
+        supabase.from('employee_documents').delete().eq('tenant_id', tenantId),
+        supabase.from('salary_slips').delete().eq('tenant_id', tenantId),
+        supabase.from('leave_applications').delete().eq('tenant_id', tenantId),
+        supabase.from('attendance').delete().eq('tenant_id', tenantId),
+        supabase.from('attendance_records').delete().eq('tenant_id', tenantId),
+        supabase.from('invitations').delete().eq('tenant_id', tenantId),
+        supabase.from('job_applicants').delete().eq('tenant_id', tenantId),
+        supabase.from('job_openings').delete().eq('tenant_id', tenantId)
+      ]);
+
+      // 2. Delete parent records: employees, designations, leave types, shifts, departments
+      await Promise.allSettled([
+        supabase.from('employees').delete().eq('tenant_id', tenantId),
+        supabase.from('designations').delete().eq('tenant_id', tenantId),
+        supabase.from('leave_types').delete().eq('tenant_id', tenantId),
+        supabase.from('shifts').delete().eq('tenant_id', tenantId),
+        supabase.from('departments').delete().eq('tenant_id', tenantId),
+        supabase.from('holidays').delete().eq('tenant_id', tenantId)
+      ]);
+
+      return true;
+    } catch (err) {
+      console.warn('Supabase clearTenantData error:', err);
+      return false;
+    }
+  }
+
   // --------------------------------------------------------------------------
   // EMPLOYEES
   // --------------------------------------------------------------------------
@@ -267,6 +318,46 @@ export class SupabaseStore {
       .eq('id', employeeId);
 
     return !error;
+  }
+
+  public static async updateEmployee(
+    tenantId: string,
+    employeeId: string,
+    updates: Partial<Employee>
+  ): Promise<boolean> {
+    const supabase = getSupabaseAdmin();
+    if (!supabase) return false;
+
+    const payload: Record<string, unknown> = {
+      updated_at: new Date().toISOString()
+    };
+    if (updates.reportingManagerId !== undefined) {
+      payload.reporting_manager_id = updates.reportingManagerId;
+    }
+    if (updates.reportingManagerName !== undefined) {
+      payload.reporting_manager_name = updates.reportingManagerName;
+    }
+    if (updates.designationTitle !== undefined) {
+      payload.designation_title = updates.designationTitle;
+    }
+    if (updates.departmentId !== undefined) {
+      payload.department_id = updates.departmentId;
+    }
+    if (updates.departmentName !== undefined) {
+      payload.department_name = updates.departmentName;
+    }
+
+    const { error } = await supabase
+      .from('employees')
+      .update(payload)
+      .eq('tenant_id', tenantId)
+      .eq('id', employeeId);
+
+    if (error) {
+      console.warn('Supabase updateEmployee error:', error.message);
+      return false;
+    }
+    return true;
   }
 
   // --------------------------------------------------------------------------
