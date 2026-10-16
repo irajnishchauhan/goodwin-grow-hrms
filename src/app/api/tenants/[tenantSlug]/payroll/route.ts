@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db/store';
+import { SupabaseStore } from '@/lib/db/supabaseStore';
 
 export async function GET(
   req: Request,
@@ -7,7 +8,10 @@ export async function GET(
 ) {
   try {
     const { tenantSlug } = await context.params;
-    const tenant = db.getTenantBySlug(tenantSlug);
+    let tenant = db.getTenantBySlug(tenantSlug);
+    if (!tenant) {
+      tenant = await SupabaseStore.getTenantBySlug(tenantSlug);
+    }
     if (!tenant) {
       return NextResponse.json({ success: false, error: 'Tenant not found' }, { status: 404 });
     }
@@ -15,7 +19,13 @@ export async function GET(
     const { searchParams } = new URL(req.url);
     const month = searchParams.get('month') || undefined;
 
-    const slips = db.getSalarySlips(tenant.id, month);
+    let slips = await SupabaseStore.getSalarySlips(tenant.id);
+    if (!slips || slips.length === 0) {
+      slips = db.getSalarySlips(tenant.id, month);
+    } else if (month) {
+      slips = slips.filter((s) => s.month === month);
+    }
+
     const totalDisbursed = slips.reduce((sum, s) => sum + s.netPay, 0);
 
     return NextResponse.json({
@@ -48,6 +58,11 @@ export async function POST(
     const { month } = body;
 
     const slips = db.generatePayrollRun(tenant.id, month || '2026-10');
+    // Save to Supabase
+    for (const slip of slips) {
+      await SupabaseStore.saveSalarySlip(slip);
+    }
+
     return NextResponse.json({
       success: true,
       message: `Payroll executed successfully for ${slips.length} employees for ${month || '2026-10'}.`,

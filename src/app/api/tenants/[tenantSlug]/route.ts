@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db/store';
+import { SupabaseStore } from '@/lib/db/supabaseStore';
 
 export async function GET(
   _req: Request,
@@ -7,16 +8,38 @@ export async function GET(
 ) {
   try {
     const { tenantSlug } = await context.params;
-    const tenant = db.getTenantBySlug(tenantSlug);
+    let tenant = db.getTenantBySlug(tenantSlug);
+    if (!tenant) {
+      tenant = await SupabaseStore.getTenantBySlug(tenantSlug);
+    }
     if (!tenant) {
       return NextResponse.json({ success: false, error: 'Tenant workspace not found' }, { status: 404 });
     }
 
-    const departments = db.getDepartments(tenant.id);
-    const designations = db.getDesignations(tenant.id);
-    const shifts = db.getShifts(tenant.id);
-    const leaveTypes = db.getLeaveTypes(tenant.id);
-    const employees = db.getEmployees(tenant.id);
+    let departments = await SupabaseStore.getDepartments(tenant.id);
+    if (!departments || departments.length === 0) {
+      departments = db.getDepartments(tenant.id);
+    }
+
+    let designations = await SupabaseStore.getDesignations(tenant.id);
+    if (!designations || designations.length === 0) {
+      designations = db.getDesignations(tenant.id);
+    }
+
+    let shifts = await SupabaseStore.getShifts(tenant.id);
+    if (!shifts || shifts.length === 0) {
+      shifts = db.getShifts(tenant.id);
+    }
+
+    let leaveTypes = await SupabaseStore.getLeaveTypes(tenant.id);
+    if (!leaveTypes || leaveTypes.length === 0) {
+      leaveTypes = db.getLeaveTypes(tenant.id);
+    }
+
+    let employees = await SupabaseStore.getEmployees(tenant.id);
+    if (!employees || employees.length === 0) {
+      employees = db.getEmployees(tenant.id);
+    }
 
     return NextResponse.json({
       success: true,
@@ -48,6 +71,7 @@ export async function PUT(
 
     const body = await req.json();
     const updatedTenant = db.updateTenant(tenant.id, body);
+    await SupabaseStore.saveTenant(updatedTenant);
 
     return NextResponse.json({
       success: true,
@@ -79,6 +103,7 @@ export async function POST(
         const { name, code } = body;
         if (!name) return NextResponse.json({ success: false, error: 'Department name is required' }, { status: 400 });
         const dept = db.addDepartment(tenant.id, name, code);
+        await SupabaseStore.saveDepartment(dept);
         return NextResponse.json({ success: true, message: 'Department added', data: dept });
       }
 
@@ -129,6 +154,7 @@ export async function POST(
       case 'toggle-step': {
         const { stepId, completed } = body;
         const updatedTenant = db.updateOnboardingStep(tenant.id, stepId, completed);
+        await SupabaseStore.saveTenant(updatedTenant);
         return NextResponse.json({ success: true, message: 'Step updated', data: { tenant: updatedTenant } });
       }
 

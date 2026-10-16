@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db/store';
+import { SupabaseStore } from '@/lib/db/supabaseStore';
 
 export async function GET(
   _req: Request,
@@ -7,13 +8,24 @@ export async function GET(
 ) {
   try {
     const { tenantSlug } = await context.params;
-    const tenant = db.getTenantBySlug(tenantSlug);
+    let tenant = db.getTenantBySlug(tenantSlug);
+    if (!tenant) {
+      tenant = await SupabaseStore.getTenantBySlug(tenantSlug);
+    }
     if (!tenant) {
       return NextResponse.json({ success: false, error: 'Tenant workspace not found' }, { status: 404 });
     }
 
-    const shifts = db.getShifts(tenant.id);
-    const holidays = db.getHolidays(tenant.id);
+    let shifts = await SupabaseStore.getShifts(tenant.id);
+    if (!shifts || shifts.length === 0) {
+      shifts = db.getShifts(tenant.id);
+    }
+
+    let holidays = await SupabaseStore.getHolidays(tenant.id);
+    if (!holidays || holidays.length === 0) {
+      holidays = db.getHolidays(tenant.id);
+    }
+
     const regularizations = db.getRegularizations(tenant.id);
 
     return NextResponse.json({

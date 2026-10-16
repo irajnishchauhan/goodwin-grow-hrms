@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db/store';
+import { SupabaseStore } from '@/lib/db/supabaseStore';
 
 export async function GET(
   _req: Request,
@@ -7,13 +8,24 @@ export async function GET(
 ) {
   try {
     const { tenantSlug } = await context.params;
-    const tenant = db.getTenantBySlug(tenantSlug);
+    let tenant = db.getTenantBySlug(tenantSlug);
+    if (!tenant) {
+      tenant = await SupabaseStore.getTenantBySlug(tenantSlug);
+    }
     if (!tenant) {
       return NextResponse.json({ success: false, error: 'Tenant workspace not found' }, { status: 404 });
     }
 
-    const employees = db.getEmployees(tenant.id);
-    const departments = db.getDepartments(tenant.id);
+    // Attempt to pull live data from Supabase, seamlessly fallback to in-memory store
+    let employees = await SupabaseStore.getEmployees(tenant.id);
+    if (!employees || employees.length === 0) {
+      employees = db.getEmployees(tenant.id);
+    }
+
+    let departments = await SupabaseStore.getDepartments(tenant.id);
+    if (!departments || departments.length === 0) {
+      departments = db.getDepartments(tenant.id);
+    }
 
     return NextResponse.json({
       success: true,
@@ -66,6 +78,9 @@ export async function POST(
       bankName
     });
 
+    // Save to Supabase PostgreSQL asynchronously
+    await SupabaseStore.saveEmployee(newEmp);
+
     return NextResponse.json({
       success: true,
       message: `Employee ${newEmp.firstName} ${newEmp.lastName} added successfully to ${tenant.name}.`,
@@ -96,6 +111,8 @@ export async function DELETE(
     }
 
     const deleted = db.deleteEmployee(tenant.id, employeeId);
+    await SupabaseStore.deleteEmployee(tenant.id, employeeId);
+
     if (!deleted) {
       return NextResponse.json({ success: false, error: 'Employee not found in this tenant workspace' }, { status: 404 });
     }

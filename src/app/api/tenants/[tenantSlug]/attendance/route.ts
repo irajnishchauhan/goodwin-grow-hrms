@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db/store';
+import { SupabaseStore } from '@/lib/db/supabaseStore';
 
 export async function GET(
   req: Request,
@@ -7,7 +8,10 @@ export async function GET(
 ) {
   try {
     const { tenantSlug } = await context.params;
-    const tenant = db.getTenantBySlug(tenantSlug);
+    let tenant = db.getTenantBySlug(tenantSlug);
+    if (!tenant) {
+      tenant = await SupabaseStore.getTenantBySlug(tenantSlug);
+    }
     if (!tenant) {
       return NextResponse.json({ success: false, error: 'Tenant not found' }, { status: 404 });
     }
@@ -15,8 +19,17 @@ export async function GET(
     const { searchParams } = new URL(req.url);
     const date = searchParams.get('date') || undefined;
 
-    const records = db.getAttendance(tenant.id, date);
-    const employees = db.getEmployees(tenant.id);
+    let records = await SupabaseStore.getAttendance(tenant.id);
+    if (!records || records.length === 0) {
+      records = db.getAttendance(tenant.id, date);
+    } else if (date) {
+      records = records.filter((r) => r.date === date);
+    }
+
+    let employees = await SupabaseStore.getEmployees(tenant.id);
+    if (!employees || employees.length === 0) {
+      employees = db.getEmployees(tenant.id);
+    }
 
     return NextResponse.json({
       success: true,
@@ -51,6 +64,8 @@ export async function POST(
     }
 
     const record = db.recordPunch(tenant.id, employeeId, action, notes);
+    await SupabaseStore.saveAttendance(record);
+
     return NextResponse.json({
       success: true,
       message: `Punch ${action === 'IN' ? 'In' : 'Out'} logged at ${new Date().toLocaleTimeString()}`,

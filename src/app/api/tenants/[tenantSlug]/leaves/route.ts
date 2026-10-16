@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db/store';
+import { SupabaseStore } from '@/lib/db/supabaseStore';
 
 export async function GET(
   _req: Request,
@@ -7,13 +8,23 @@ export async function GET(
 ) {
   try {
     const { tenantSlug } = await context.params;
-    const tenant = db.getTenantBySlug(tenantSlug);
+    let tenant = db.getTenantBySlug(tenantSlug);
+    if (!tenant) {
+      tenant = await SupabaseStore.getTenantBySlug(tenantSlug);
+    }
     if (!tenant) {
       return NextResponse.json({ success: false, error: 'Tenant not found' }, { status: 404 });
     }
 
-    const leaveTypes = db.getLeaveTypes(tenant.id);
-    const applications = db.getLeaveApplications(tenant.id);
+    let leaveTypes = await SupabaseStore.getLeaveTypes(tenant.id);
+    if (!leaveTypes || leaveTypes.length === 0) {
+      leaveTypes = db.getLeaveTypes(tenant.id);
+    }
+
+    let applications = await SupabaseStore.getLeaveApplications(tenant.id);
+    if (!applications || applications.length === 0) {
+      applications = db.getLeaveApplications(tenant.id);
+    }
 
     return NextResponse.json({
       success: true,
@@ -57,6 +68,8 @@ export async function POST(
       reason
     });
 
+    await SupabaseStore.saveLeaveApplication(newApp);
+
     return NextResponse.json({
       success: true,
       message: 'Leave application submitted successfully for HR approval',
@@ -87,6 +100,10 @@ export async function PATCH(
     }
 
     const updated = db.updateLeaveStatus(tenant.id, leaveId, status, reviewedBy || 'HR Admin', comment);
+    if (updated) {
+      await SupabaseStore.saveLeaveApplication(updated);
+    }
+
     return NextResponse.json({
       success: true,
       message: `Leave status updated to ${status}`,

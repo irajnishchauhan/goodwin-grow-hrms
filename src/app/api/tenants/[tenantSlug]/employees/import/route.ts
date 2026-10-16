@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db/store';
+import { SupabaseStore } from '@/lib/db/supabaseStore';
 
 export async function POST(
   req: Request,
@@ -7,7 +8,10 @@ export async function POST(
 ) {
   try {
     const { tenantSlug } = await context.params;
-    const tenant = db.getTenantBySlug(tenantSlug);
+    let tenant = db.getTenantBySlug(tenantSlug);
+    if (!tenant) {
+      tenant = await SupabaseStore.getTenantBySlug(tenantSlug);
+    }
     if (!tenant) {
       return NextResponse.json({ success: false, error: 'Tenant not found' }, { status: 404 });
     }
@@ -20,6 +24,13 @@ export async function POST(
     }
 
     const result = db.bulkImportEmployees(tenant.id, rows);
+
+    // Persist all imported employees to Supabase asynchronously
+    if (result.importedEmployees && result.importedEmployees.length > 0) {
+      for (const emp of result.importedEmployees) {
+        await SupabaseStore.saveEmployee(emp);
+      }
+    }
 
     return NextResponse.json({
       success: true,

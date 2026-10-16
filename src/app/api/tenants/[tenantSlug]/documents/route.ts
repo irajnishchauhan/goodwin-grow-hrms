@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db/store';
+import { SupabaseStore } from '@/lib/db/supabaseStore';
 
 export async function GET(
   req: Request,
@@ -7,7 +8,10 @@ export async function GET(
 ) {
   try {
     const { tenantSlug } = await context.params;
-    const tenant = db.getTenantBySlug(tenantSlug);
+    let tenant = db.getTenantBySlug(tenantSlug);
+    if (!tenant) {
+      tenant = await SupabaseStore.getTenantBySlug(tenantSlug);
+    }
     if (!tenant) {
       return NextResponse.json({ success: false, error: 'Tenant workspace not found' }, { status: 404 });
     }
@@ -15,7 +19,11 @@ export async function GET(
     const { searchParams } = new URL(req.url);
     const employeeId = searchParams.get('employeeId') || undefined;
 
-    const documents = db.getDocuments(tenant.id, employeeId);
+    let documents = await SupabaseStore.getDocuments(tenant.id, employeeId);
+    if (!documents || documents.length === 0) {
+      documents = db.getDocuments(tenant.id, employeeId);
+    }
+
     return NextResponse.json({ success: true, data: { documents } });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Error fetching documents';
@@ -44,6 +52,8 @@ export async function POST(
       fileName,
       fileSize: fileSize || '1.2 MB'
     });
+
+    await SupabaseStore.saveDocument(doc);
 
     return NextResponse.json({ success: true, data: doc, message: 'Document added to employee vault' });
   } catch (error: unknown) {
