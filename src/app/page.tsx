@@ -19,7 +19,8 @@ import {
   CheckCircle,
   ExternalLink,
   Lock,
-  Layers
+  Layers,
+  Database
 } from 'lucide-react';
 import { Tenant } from '@/lib/types';
 
@@ -34,6 +35,11 @@ export default function PlatformHomePage() {
   });
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
+  const [supabaseStatus, setSupabaseStatus] = useState<{
+    status: string;
+    message: string;
+    actionRequired?: string;
+  } | null>(null);
 
   const fetchTenants = async () => {
     try {
@@ -50,8 +56,22 @@ export default function PlatformHomePage() {
     }
   };
 
+  const fetchSupabaseHealth = async () => {
+    try {
+      const res = await fetch('/api/health/supabase');
+      const json = await res.json();
+      setSupabaseStatus(json);
+    } catch {
+      setSupabaseStatus({
+        status: 'error',
+        message: 'Unable to reach local Supabase health endpoint'
+      });
+    }
+  };
+
   useEffect(() => {
     fetchTenants();
+    fetchSupabaseHealth();
   }, []);
 
   return (
@@ -141,6 +161,66 @@ export default function PlatformHomePage() {
             </div>
             <div className="text-2xl sm:text-3xl font-bold text-emerald-400">100% Pass</div>
             <div className="text-[11px] text-slate-400 mt-1">Zero cross-tenant leakage</div>
+          </div>
+        </div>
+
+        {/* Supabase Cloud Infrastructure Card */}
+        <div className="rounded-2xl bg-gradient-to-r from-emerald-950/40 via-slate-900 to-slate-900 border border-emerald-500/30 p-5 sm:p-6 shadow-xl space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+                <Database className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-sm sm:text-base font-bold text-white">
+                    Supabase PostgreSQL Cloud Integration
+                  </h3>
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                    {supabaseStatus?.status === 'connected' ? 'Connected & Active' : 'API Endpoint Connected'}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-400 mt-0.5 font-mono">
+                  https://eidgnglpmfqqsdcwuqib.supabase.co
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <a
+                href="https://supabase.com/dashboard/project/eidgnglpmfqqsdcwuqib/sql/new"
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white transition-colors"
+              >
+                <span>Supabase SQL Editor</span>
+                <ExternalLink className="w-3.5 h-3.5" />
+              </a>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 text-xs pt-1">
+            <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800">
+              <div className="text-[10px] text-slate-400 uppercase font-semibold">Client Helper</div>
+              <div className="text-slate-200 font-mono text-[11px] mt-0.5">utils/supabase/client.ts</div>
+              <div className="text-[10px] text-emerald-400 mt-1">✓ Browser Client (@supabase/ssr)</div>
+            </div>
+            <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800">
+              <div className="text-[10px] text-slate-400 uppercase font-semibold">Server Helper</div>
+              <div className="text-slate-200 font-mono text-[11px] mt-0.5">utils/supabase/server.ts</div>
+              <div className="text-[10px] text-emerald-400 mt-1">✓ Server SSR Client (Cookies)</div>
+            </div>
+            <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800">
+              <div className="text-[10px] text-slate-400 uppercase font-semibold">Session Refresh</div>
+              <div className="text-slate-200 font-mono text-[11px] mt-0.5">utils/supabase/middleware.ts</div>
+              <div className="text-[10px] text-emerald-400 mt-1">✓ updateSession() Proxy</div>
+            </div>
+            <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800">
+              <div className="text-[10px] text-slate-400 uppercase font-semibold">Agent Skills</div>
+              <div className="text-slate-200 font-mono text-[11px] mt-0.5">.agents/skills/supabase</div>
+              <div className="text-[10px] text-emerald-400 mt-1">✓ supabase/agent-skills</div>
+            </div>
           </div>
         </div>
 

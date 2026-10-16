@@ -6,7 +6,10 @@ export function getSupabaseAdmin(): SupabaseClient | null {
   if (adminClient) return adminClient;
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const serviceRoleKey =
+    process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
   if (!supabaseUrl || !serviceRoleKey) {
     return null;
@@ -25,6 +28,8 @@ export function getSupabaseAdmin(): SupabaseClient | null {
 export function isSupabaseConfigured(): boolean {
   return Boolean(
     process.env.NEXT_PUBLIC_SUPABASE_URL &&
-    (process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)
+    (process.env.SUPABASE_SERVICE_ROLE_KEY ||
+     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
+     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)
   );
 }
