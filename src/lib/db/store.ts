@@ -1335,6 +1335,9 @@ class HRMSDataStore {
     date?: string
   ): boolean {
     const beforeLen = this.attendance.length;
+    if (employeeId && date) {
+      this.excludeAttendanceKey(tenantId, employeeId, date);
+    }
     this.attendance = this.attendance.filter((a) => {
       if (a.tenantId !== tenantId) return true;
       if (recordId && a.id === recordId) return false;
@@ -1342,6 +1345,32 @@ class HRMSDataStore {
       return true;
     });
     return this.attendance.length < beforeLen;
+  }
+
+  private excludedAttendanceKeys: Set<string> = new Set();
+
+  public excludeAttendanceKey(tenantId: string, employeeId: string, date: string): void {
+    this.excludedAttendanceKeys.add(`${tenantId}::${employeeId}::${date}`);
+  }
+
+  public isAttendanceKeyExcluded(tenantId: string, employeeId: string, date: string): boolean {
+    return this.excludedAttendanceKeys.has(`${tenantId}::${employeeId}::${date}`);
+  }
+
+  public clearExcludedAttendanceKeys(tenantId: string, date?: string): void {
+    if (date) {
+      for (const key of this.excludedAttendanceKeys) {
+        if (key.startsWith(`${tenantId}::`) && key.endsWith(`::${date}`)) {
+          this.excludedAttendanceKeys.delete(key);
+        }
+      }
+    } else {
+      for (const key of this.excludedAttendanceKeys) {
+        if (key.startsWith(`${tenantId}::`)) {
+          this.excludedAttendanceKeys.delete(key);
+        }
+      }
+    }
   }
 
   public deleteAttendanceRecords(
@@ -1354,6 +1383,8 @@ class HRMSDataStore {
       this.attendance = this.attendance.filter(
         (a) => !(a.tenantId === tenantId && a.date === deleteAllForDate)
       );
+      const allEmps = this.getEmployees(tenantId);
+      allEmps.forEach((e) => this.excludeAttendanceKey(tenantId, e.id, deleteAllForDate));
       return beforeLen - this.attendance.length;
     }
 
@@ -1377,6 +1408,12 @@ class HRMSDataStore {
         .filter((i) => i.employeeId && i.date)
         .map((i) => `${i.employeeId}::${i.date}`)
     );
+
+    items.forEach((item) => {
+      if (item.employeeId && item.date) {
+        this.excludeAttendanceKey(tenantId, item.employeeId, item.date);
+      }
+    });
 
     this.attendance = this.attendance.filter((a) => {
       if (a.tenantId !== tenantId) return true;

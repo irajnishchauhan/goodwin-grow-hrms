@@ -110,6 +110,26 @@ export default function TenantAttendancePage() {
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [isBulkDeleteModalOpen, setIsBulkDeleteModalOpen] = useState(false);
 
+  // Track locally deleted attendance entries for date (empId::date)
+  const [deletedRosterKeys, setDeletedRosterKeys] = useState<string[]>(() => {
+    if (typeof window === 'undefined') return [];
+    try {
+      const stored = localStorage.getItem(`hrms_deleted_att_${tenantSlug}`);
+      return stored ? JSON.parse(stored) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const saveDeletedKeys = (keys: string[]) => {
+    setDeletedRosterKeys(keys);
+    try {
+      localStorage.setItem(`hrms_deleted_att_${tenantSlug}`, JSON.stringify(keys));
+    } catch (e) {
+      console.warn('Failed to save deleted keys to localStorage', e);
+    }
+  };
+
   // Super Admin Attendance Edit State
   const [editingRecord, setEditingRecord] = useState<AttendanceRecord | null>(null);
   const [editClockIn, setEditClockIn] = useState('');
@@ -456,21 +476,31 @@ export default function TenantAttendancePage() {
     if (!deletingRecord) return;
     setDeleteSubmitting(true);
 
+    const empId = deletingRecord.employeeId;
+    const attDate = deletingRecord.date;
+    const recId = deletingRecord.id;
+    const delKey = `${empId}::${attDate}`;
+
+    // Optimistically remove immediately from table
+    const updatedKeys = [...new Set([...deletedRosterKeys, delKey])];
+    saveDeletedKeys(updatedKeys);
+    setRecords((prev) => prev.filter((r) => r.id !== recId && !(r.employeeId === empId && r.date === attDate)));
+    setSelectedRecordIds((prev) => prev.filter((id) => id !== recId));
+
     try {
       const res = await fetch(`/api/tenants/${tenantSlug}/attendance`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          recordId: deletingRecord.id,
-          employeeId: deletingRecord.employeeId,
-          date: deletingRecord.date
+          recordId: recId,
+          employeeId: empId,
+          date: attDate
         })
       });
 
       const json = await res.json();
       if (json.success) {
-        setStatusMsg(`Attendance record for ${deletingRecord.employeeName} deleted and reset to Unpunched.`);
-        setSelectedRecordIds((prev) => prev.filter((id) => id !== deletingRecord.id));
+        setStatusMsg(`Attendance record for ${deletingRecord.employeeName} deleted successfully.`);
         setDeletingRecord(null);
         fetchAttendance(selectedDate);
       } else {
@@ -489,14 +519,28 @@ export default function TenantAttendancePage() {
     if (selectedRecordIds.length === 0) return;
     setBulkDeleting(true);
 
-    try {
-      const selectedRecords = records.filter((r) => selectedRecordIds.includes(r.id));
-      const items = selectedRecords.map((r) => ({
-        recordId: r.id,
-        employeeId: r.employeeId,
-        date: r.date
-      }));
+    const selectedRecords = records.filter((r) => selectedRecordIds.includes(r.id));
+    const items = selectedRecords.map((r) => ({
+      recordId: r.id,
+      employeeId: r.employeeId,
+      date: r.date
+    }));
 
+    const newKeys = items.map((i) => `${i.employeeId}::${i.date}`);
+    const updatedKeys = [...new Set([...deletedRosterKeys, ...newKeys])];
+
+    // Optimistically remove all selected records from table immediately
+    saveDeletedKeys(updatedKeys);
+    setRecords((prev) =>
+      prev.filter(
+        (r) =>
+          !selectedRecordIds.includes(r.id) &&
+          !items.some((i) => i.employeeId === r.employeeId && i.date === r.date)
+      )
+    );
+    setSelectedRecordIds([]);
+
+    try {
       const res = await fetch(`/api/tenants/${tenantSlug}/attendance`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
@@ -510,9 +554,8 @@ export default function TenantAttendancePage() {
       const json = await res.json();
       if (json.success) {
         setStatusMsg(
-          `Successfully deleted ${items.length} attendance record(s). All marked Unpunched (Absent).`
+          `Successfully deleted ${items.length} attendance record(s).`
         );
-        setSelectedRecordIds([]);
         setIsBulkDeleteModalOpen(false);
         fetchAttendance(selectedDate);
       } else {
@@ -620,8 +663,12 @@ export default function TenantAttendancePage() {
     }
   };
 
-  // Filter records by status and role
+  // Filter records by status, deleted exclusions, and role
   const visibleRecords = records.filter((r) => {
+    if (deletedRosterKeys.includes(`${r.employeeId}::${r.date}`)) {
+      return false;
+    }
+
     if (isEmployeeOnly) {
       if (!currentEmp) return true;
       if (r.employeeId !== currentEmp.id) return false;
@@ -1060,8 +1107,27 @@ export default function TenantAttendancePage() {
                   <tbody className="divide-y divide-slate-200 bg-white">
                     {visibleRecords.length === 0 ? (
                       <tr>
-                        <td colSpan={canManageAttendance ? 9 : 8} className="px-6 py-10 text-center text-slate-400 text-xs">
-                          No attendance records found matching this filter for {selectedDate}.
+                        <td colSpan={canManageAttendance ? 9 : 8} className="px-6 py-12 text-center text-slate-400 text-xs">
+                          <div className="flex flex-col items-center justify-center gap-2 max-w-sm mx-auto">
+                            <CheckCircle2 className="w-8 h-8 text-emerald-500/80" />
+                            <span className="font-bold text-slate-700 text-sm">No Attendance Records for {selectedDate}</span>
+                            <p className="text-slate-500 text-xs leading-relaxed">
+                              All attendance records for this date have been deleted or no employees have clocked in yet.
+                            </p>
+                            {canManageAttendance && (
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  saveDeletedKeys([]);
+                                  await fetch(`/api/tenants/${tenantSlug}/attendance?date=${selectedDate}&reset=true&t=${Date.now()}`);
+                                  fetchAttendance(selectedDate);
+                                }}
+                                className="mt-2 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold border border-slate-300 transition-colors cursor-pointer"
+                              >
+                                Restore Workforce Roster
+                              </button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     ) : (

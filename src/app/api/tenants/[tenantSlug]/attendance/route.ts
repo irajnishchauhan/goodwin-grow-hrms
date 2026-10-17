@@ -56,6 +56,18 @@ export async function GET(
       return !noteLower.includes('benchmark') && !noteLower.includes('test punch');
     });
 
+    if (searchParams.get('reset') === 'true') {
+      db.clearExcludedAttendanceKeys(tenant.id, targetDate);
+    }
+
+    // Collect excluded deleted employees for this date
+    const excludedEmployeeIds = new Set<string>();
+    employees.forEach((emp) => {
+      if (db.isAttendanceKeyExcluded(tenant.id, emp.id, targetDate)) {
+        excludedEmployeeIds.add(emp.id);
+      }
+    });
+
     // Build the complete daily attendance roster for all workforce members as per industry standards
     const { roster, stats } = buildDailyWorkforceRoster({
       date: targetDate,
@@ -63,7 +75,8 @@ export async function GET(
       punchRecords: realPunchRecords,
       leaveApplications: leaves,
       shifts,
-      tenantId: tenant.id
+      tenantId: tenant.id,
+      excludedEmployeeIds
     });
 
     const payload = {

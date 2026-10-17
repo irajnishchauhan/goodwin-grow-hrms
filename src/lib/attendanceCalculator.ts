@@ -189,7 +189,8 @@ export function buildDailyWorkforceRoster({
   punchRecords,
   leaveApplications,
   shifts,
-  tenantId
+  tenantId,
+  excludedEmployeeIds
 }: {
   date: string;
   employees: Employee[];
@@ -197,6 +198,7 @@ export function buildDailyWorkforceRoster({
   leaveApplications: LeaveApplication[];
   shifts: Shift[];
   tenantId: string;
+  excludedEmployeeIds?: Set<string>;
 }): {
   roster: AttendanceRecord[];
   stats: {
@@ -260,6 +262,9 @@ export function buildDailyWorkforceRoster({
   const isSunday = targetDateObj.getUTCDay() === 0;
 
   activeEmployees.forEach((emp) => {
+    if (excludedEmployeeIds && excludedEmployeeIds.has(emp.id)) {
+      return;
+    }
     const shift = emp.shiftName ? shiftMap.get(emp.shiftName.toLowerCase().trim()) || defaultShift : defaultShift;
     const policy: ShiftPolicy = shift
       ? {
