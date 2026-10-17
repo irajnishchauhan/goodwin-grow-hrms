@@ -89,25 +89,37 @@ export default function TenantOrgChartPage() {
         }
       });
       const json = await res.json();
-      if (json.success) {
-        setEmployees(json.data.employees || []);
+        const fetchedEmployees: Employee[] = json.data.employees || [];
+        setEmployees(fetchedEmployees);
         setDepartments(json.data.departments || []);
         setTenant(json.data.tenant || null);
 
+        // Find natural executive head (CEO / top unassigned leader, e.g. Aman Rajarwal)
+        const ceoOrTopExec =
+          fetchedEmployees.find((e) => e.designationTitle?.toUpperCase().includes('CEO')) ||
+          fetchedEmployees.find((e) => !e.reportingManagerId) ||
+          fetchedEmployees[0];
+
+        const activeRootId =
+          (json.data.tenant?.orgTreeRootId &&
+            json.data.tenant.orgTreeRootId !== 'OWNER' &&
+            fetchedEmployees.some((e) => e.id === json.data.tenant.orgTreeRootId))
+            ? json.data.tenant.orgTreeRootId
+            : ceoOrTopExec?.id || '';
+
         // Initialize draft assignments
         const draft: Record<string, string> = {};
-        (json.data.employees || []).forEach((emp: Employee) => {
-          draft[emp.id] = emp.reportingManagerId || 'OWNER';
+        fetchedEmployees.forEach((emp: Employee) => {
+          draft[emp.id] = emp.reportingManagerId || (activeRootId && emp.id !== activeRootId ? activeRootId : 'OWNER');
         });
         setReportingDraft(draft);
 
-        if (json.data.tenant?.orgTreeRootId && json.data.tenant.orgTreeRootId !== 'OWNER') {
+        if (activeRootId) {
           setRootType('EMPLOYEE');
-          setDesignatedRootEmpId(json.data.tenant.orgTreeRootId);
+          setDesignatedRootEmpId(activeRootId);
         } else {
           setRootType('OWNER');
         }
-      }
     } catch (e) {
       console.error('Error fetching org chart data:', e);
     } finally {
@@ -127,20 +139,24 @@ export default function TenantOrgChartPage() {
     fetchEmployees();
   };
 
-  // Company Owner / Founder Fallback Head
+  // Company Executive Board Fallback Head (only if 0 employees exist)
   const ownerHeadNode: HierarchyNode = useMemo(() => {
     return {
       id: 'OWNER',
       isOwnerNode: true,
-      name: user?.name || 'Rajnish Singh Chauhan',
-      designation: 'Managing Director & Founder',
+      name: tenant?.name ? `${tenant.name} Executive Board` : 'Executive Board',
+      designation: 'Board of Directors & Management',
       department: 'Executive Board',
-      code: `${tenant?.companyCode || 'GOODWIN'}-MD-001`,
-      email: user?.email || 'rajnish.chauhan@goodwinbatteries.com',
-      avatarUrl: user?.avatarUrl,
+      code: `${tenant?.companyCode || 'GOODWIN'}-EXEC-001`,
+      email: tenant?.businessEmail || 'executive.board@goodwinbatteries.com',
+      avatarUrl: undefined,
       directReports: []
     };
-  }, [user, tenant]);
+  }, [tenant]);
+
+  const designatedRootEmployee = useMemo(() => {
+    return employees.find((e) => e.id === designatedRootEmpId);
+  }, [employees, designatedRootEmpId]);
 
   // Construct Hierarchical Tree Structure
   const { rootNode, unassignedNodes } = useMemo(() => {
@@ -179,8 +195,16 @@ export default function TenantOrgChartPage() {
     let currentRoot: HierarchyNode;
     const unassigned: HierarchyNode[] = [];
 
-    if (rootType === 'EMPLOYEE' && designatedRootEmpId && nodeMap.has(designatedRootEmpId)) {
-      currentRoot = nodeMap.get(designatedRootEmpId)!;
+    // Auto-detect CEO / top leader if rootType is not explicitly set or invalid
+    const effectiveRootEmpId =
+      rootType === 'EMPLOYEE' && designatedRootEmpId && nodeMap.has(designatedRootEmpId)
+        ? designatedRootEmpId
+        : (employees.find((e) => e.designationTitle?.toUpperCase().includes('CEO'))?.id ||
+           employees.find((e) => !e.reportingManagerId)?.id ||
+           '');
+
+    if (effectiveRootEmpId && nodeMap.has(effectiveRootEmpId)) {
+      currentRoot = nodeMap.get(effectiveRootEmpId)!;
     } else {
       currentRoot = { ...ownerHeadNode, directReports: [] };
     }
@@ -213,12 +237,10 @@ export default function TenantOrgChartPage() {
     try {
       const updates = employees.map((emp) => {
         const isCurrentRoot = rootType === 'EMPLOYEE' && emp.id === designatedRootEmpId;
-        const targetManagerId = isCurrentRoot ? 'OWNER' : (reportingDraft[emp.id] || 'OWNER');
-        let targetManagerName = 'Managing Director Office';
+        const targetManagerId = isCurrentRoot ? null : (reportingDraft[emp.id] === 'OWNER' ? null : reportingDraft[emp.id]);
+        let targetManagerName = 'Board of Directors';
 
-        if (targetManagerId === 'OWNER') {
-          targetManagerName = `${ownerHeadNode.name} (MD)`;
-        } else {
+        if (targetManagerId) {
           const mgr = employees.find((e) => e.id === targetManagerId);
           if (mgr) {
             targetManagerName = `${mgr.firstName} ${mgr.lastName} (${mgr.designationTitle})`;
@@ -227,7 +249,7 @@ export default function TenantOrgChartPage() {
 
         return {
           id: emp.id,
-          reportingManagerId: targetManagerId === 'OWNER' ? null : targetManagerId,
+          reportingManagerId: targetManagerId,
           reportingManagerName: targetManagerName
         };
       });
@@ -282,7 +304,7 @@ export default function TenantOrgChartPage() {
     if (!editingEmployee) return;
 
     try {
-      let managerName = `${ownerHeadNode.name} (MD)`;
+      let managerName = 'Board of Directors';
       let managerId: string | null = null;
 
       if (selectedNewManagerId !== 'OWNER') {
@@ -443,9 +465,7 @@ export default function TenantOrgChartPage() {
         <div className="text-xs text-slate-500 flex items-center gap-2">
           <span>Executive Root:</span>
           <span className="font-semibold text-slate-800">
-            {rootType === 'OWNER'
-              ? `${ownerHeadNode.name} (MD & Founder)`
-              : rootNode.name}
+            {rootNode.name} ({rootNode.designation})
           </span>
         </div>
       </div>
@@ -701,13 +721,13 @@ export default function TenantOrgChartPage() {
                     />
                     <div>
                       <h5 className="font-bold text-slate-900 text-xs">
-                        Company Owner / Managing Director
+                        Executive Board / Founder Office
                       </h5>
                       <p className="text-xs text-emerald-700 font-semibold mt-0.5">
                         {ownerHeadNode.name}
                       </p>
                       <p className="text-[11px] text-slate-500 mt-1">
-                        Sits at the top of the organization tree as Managing Director & Founder.
+                        Sits at the top of the organization tree as Executive Board.
                       </p>
                     </div>
                   </label>
@@ -809,7 +829,7 @@ export default function TenantOrgChartPage() {
                                   Reports To:
                                 </label>
                                 <select
-                                  value={reportingDraft[emp.id] || 'OWNER'}
+                                  value={reportingDraft[emp.id] || (designatedRootEmpId || 'OWNER')}
                                   onChange={(e) => {
                                     setReportingDraft((prev) => ({
                                       ...prev,
@@ -818,11 +838,17 @@ export default function TenantOrgChartPage() {
                                   }}
                                   className="w-full px-2.5 py-1.5 text-xs rounded-xl bg-white border border-slate-200 text-slate-800 font-medium focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 cursor-pointer"
                                 >
-                                  <option value="OWNER">
-                                    👑 Executive Head ({ownerHeadNode.name} - MD)
-                                  </option>
+                                  {rootType === 'EMPLOYEE' && designatedRootEmployee ? (
+                                    <option value={designatedRootEmpId}>
+                                      👑 Executive Head ({designatedRootEmployee.firstName} {designatedRootEmployee.lastName} - {designatedRootEmployee.designationTitle})
+                                    </option>
+                                  ) : (
+                                    <option value="OWNER">
+                                      👑 Executive Board
+                                    </option>
+                                  )}
                                   {employees
-                                    .filter((other) => other.id !== emp.id)
+                                    .filter((other) => other.id !== emp.id && other.id !== designatedRootEmpId)
                                     .map((other) => (
                                       <option key={other.id} value={other.id}>
                                         {other.firstName} {other.lastName} ({other.designationTitle})
@@ -920,8 +946,8 @@ export default function TenantOrgChartPage() {
                 onChange={(e) => setSelectedNewManagerId(e.target.value)}
                 className="w-full px-3 py-2 text-xs rounded-xl bg-white border border-slate-200 text-slate-800 focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 cursor-pointer"
               >
-                <option value="OWNER">
-                  👑 Executive Head ({ownerHeadNode.name} - MD & Founder)
+                <option value={designatedRootEmpId || "OWNER"}>
+                  👑 {designatedRootEmployee ? `Executive Head (${designatedRootEmployee.firstName} ${designatedRootEmployee.lastName} - ${designatedRootEmployee.designationTitle})` : 'Executive Board'}
                 </option>
                 {employees
                   .filter((e) => e.id !== editingEmployee.id)
