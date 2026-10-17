@@ -168,3 +168,40 @@ export async function PATCH(
     return NextResponse.json({ success: false, error: message }, { status: 400 });
   }
 }
+
+export async function DELETE(
+  req: Request,
+  context: { params: Promise<{ tenantSlug: string }> }
+) {
+  try {
+    const { tenantSlug } = await context.params;
+    const tenant = (await SupabaseStore.getTenantBySlug(tenantSlug)) || (await db.getResolvedTenant(tenantSlug, true));
+    if (!tenant) {
+      return NextResponse.json({ success: false, error: 'Tenant not found' }, { status: 404 });
+    }
+
+    const { searchParams } = new URL(req.url);
+    const body = await req.json().catch(() => ({}));
+    const shiftId = searchParams.get('shiftId') || searchParams.get('id') || body.shiftId;
+    const shiftName = searchParams.get('shiftName') || searchParams.get('name') || body.shiftName;
+
+    if (!shiftId && !shiftName) {
+      return NextResponse.json({ success: false, error: 'Shift ID or Name required' }, { status: 400 });
+    }
+
+    db.invalidateCache(tenant.id);
+    db.invalidateCache(tenantSlug);
+
+    if (shiftId) db.deleteShift(tenant.id, shiftId);
+    if (shiftName) db.deleteShift(tenant.id, shiftName);
+    await SupabaseStore.deleteShift(tenant.id, shiftId || '', shiftName || undefined);
+
+    return NextResponse.json(
+      { success: true, message: 'Shift deleted successfully' },
+      { headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate' } }
+    );
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Error deleting shift';
+    return NextResponse.json({ success: false, error: message }, { status: 400 });
+  }
+}

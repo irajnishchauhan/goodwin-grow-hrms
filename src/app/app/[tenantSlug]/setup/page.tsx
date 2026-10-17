@@ -378,16 +378,26 @@ export default function CompanySetupWizardPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'delete-shift',
-          shiftId
+          shiftId,
+          shiftName
         })
       });
       const json = await res.json();
       if (json.success) {
-        setShifts(shifts.filter((s) => s.id !== shiftId));
+        setShifts((prev) => {
+          const updated = prev.filter((s) => s.id !== shiftId && s.name !== shiftName);
+          if (updated.length > 0 && !updated.some((s) => s.isDefault)) {
+            updated[0] = { ...updated[0], isDefault: true };
+          }
+          return updated;
+        });
         showToast(`Shift "${shiftName}" removed`);
+      } else {
+        showToast(json.error || `Could not remove shift "${shiftName}"`);
       }
     } catch (err) {
       console.error(err);
+      showToast('Error removing shift');
     }
   };
 
@@ -919,10 +929,10 @@ export default function CompanySetupWizardPage() {
                             <button
                               type="button"
                               onClick={() => handleDeleteShift(s.id, s.name)}
-                              className="text-slate-500 hover:text-rose-400 p-1 rounded-lg hover:bg-slate-800 transition-colors"
-                              title="Delete shift"
+                              className="text-slate-400 hover:text-rose-400 p-1.5 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+                              title={`Delete shift ${s.name}`}
                             >
-                              <Trash2 className="w-3.5 h-3.5" />
+                              <Trash2 className="w-4 h-4" />
                             </button>
                           )}
                         </div>

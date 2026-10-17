@@ -766,15 +766,44 @@ class HRMSDataStore {
     return false;
   }
 
+  public syncShifts(shifts: Shift[]): void {
+    shifts.forEach((s) => {
+      const idx = this.shifts.findIndex((item) => item.id === s.id);
+      if (idx >= 0) {
+        this.shifts[idx] = { ...this.shifts[idx], ...s };
+      } else {
+        this.shifts.push(s);
+      }
+    });
+  }
+
   public updateShift(tenantId: string, shiftId: string, data: Partial<Shift>): Shift {
-    const shift = this.shifts.find((s) => s.tenantId === tenantId && s.id === shiftId);
-    if (!shift) throw new Error('Shift not found');
-    Object.assign(shift, data);
+    let shift = this.shifts.find(
+      (s) => (s.tenantId === tenantId || !s.tenantId) && (s.id === shiftId || s.name === shiftId)
+    );
+    if (!shift) {
+      shift = {
+        id: shiftId,
+        tenantId,
+        name: data.name || 'Custom Shift',
+        startTime: data.startTime || '09:00',
+        endTime: data.endTime || '18:00',
+        graceMinutes: data.graceMinutes ?? 15,
+        isDefault: Boolean(data.isDefault),
+        color: data.color || '#3B82F6',
+        ...data
+      };
+      this.shifts.push(shift);
+    } else {
+      Object.assign(shift, data);
+    }
     return shift;
   }
 
   public deleteShift(tenantId: string, shiftId: string): boolean {
-    const idx = this.shifts.findIndex((s) => s.tenantId === tenantId && s.id === shiftId);
+    const idx = this.shifts.findIndex(
+      (s) => (s.tenantId === tenantId || !s.tenantId) && (s.id === shiftId || s.name === shiftId)
+    );
     if (idx !== -1) {
       this.shifts.splice(idx, 1);
       return true;

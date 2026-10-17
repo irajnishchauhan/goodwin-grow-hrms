@@ -596,21 +596,33 @@ export class SupabaseStore {
     return true;
   }
 
-  public static async deleteShift(tenantId: string, shiftId: string): Promise<boolean> {
+  public static async deleteShift(tenantId: string, shiftId: string, shiftName?: string): Promise<boolean> {
     const supabase = getSupabaseAdmin();
     if (!supabase) return false;
 
-    const { error } = await supabase
-      .from('shifts')
-      .delete()
-      .eq('tenant_id', tenantId)
-      .eq('id', shiftId);
+    try {
+      // 1. Try deleting by shiftId
+      if (shiftId) {
+        await supabase
+          .from('shifts')
+          .delete()
+          .eq('id', shiftId);
+      }
 
-    if (error) {
-      console.warn('Supabase deleteShift error:', error.message);
+      // 2. Also delete by name if provided
+      if (shiftName) {
+        await supabase
+          .from('shifts')
+          .delete()
+          .eq('tenant_id', tenantId)
+          .eq('name', shiftName);
+      }
+
+      return true;
+    } catch (e) {
+      console.warn('Supabase deleteShift exception:', e);
       return false;
     }
-    return true;
   }
 
   public static async getHolidays(tenantId: string): Promise<Holiday[] | null> {

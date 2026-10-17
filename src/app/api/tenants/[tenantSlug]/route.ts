@@ -24,6 +24,10 @@ export async function GET(
       SupabaseStore.getEmployees(tenant.id)
     ]);
 
+    if (shiftsRes && shiftsRes.length > 0) {
+      db.syncShifts(shiftsRes);
+    }
+
     const departments = departmentsRes !== null ? departmentsRes : db.getDepartments(tenant.id);
     const designations = designationsRes !== null ? designationsRes : db.getDesignations(tenant.id);
     const shifts = shiftsRes !== null ? shiftsRes : db.getShifts(tenant.id);
@@ -111,9 +115,9 @@ export async function POST(
       case 'delete-department': {
         const { departmentId } = body;
         if (!departmentId) return NextResponse.json({ success: false, error: 'Department ID is required' }, { status: 400 });
-        const success = db.deleteDepartment(tenant.id, departmentId);
+        db.deleteDepartment(tenant.id, departmentId);
         await SupabaseStore.deleteDepartment(tenant.id, departmentId);
-        return NextResponse.json({ success, message: success ? 'Department deleted' : 'Department not found' }, noStoreHeader);
+        return NextResponse.json({ success: true, message: 'Department deleted' }, noStoreHeader);
       }
 
       case 'update-shift': {
@@ -138,11 +142,12 @@ export async function POST(
       }
 
       case 'delete-shift': {
-        const { shiftId } = body;
-        if (!shiftId) return NextResponse.json({ success: false, error: 'Shift ID is required' }, { status: 400 });
-        const success = db.deleteShift(tenant.id, shiftId);
-        await SupabaseStore.deleteShift(tenant.id, shiftId);
-        return NextResponse.json({ success, message: 'Shift deleted' }, noStoreHeader);
+        const { shiftId, shiftName } = body;
+        if (!shiftId && !shiftName) return NextResponse.json({ success: false, error: 'Shift ID or Name is required' }, { status: 400 });
+        if (shiftId) db.deleteShift(tenant.id, shiftId);
+        if (shiftName) db.deleteShift(tenant.id, shiftName);
+        await SupabaseStore.deleteShift(tenant.id, shiftId || '', shiftName || undefined);
+        return NextResponse.json({ success: true, message: 'Shift deleted' }, noStoreHeader);
       }
 
       case 'update-leave-type': {
@@ -168,9 +173,9 @@ export async function POST(
       case 'delete-leave-type': {
         const { leaveTypeId } = body;
         if (!leaveTypeId) return NextResponse.json({ success: false, error: 'Leave Type ID is required' }, { status: 400 });
-        const success = db.deleteLeaveType(tenant.id, leaveTypeId);
+        db.deleteLeaveType(tenant.id, leaveTypeId);
         await SupabaseStore.deleteLeaveType(tenant.id, leaveTypeId);
-        return NextResponse.json({ success, message: 'Leave type deleted' }, noStoreHeader);
+        return NextResponse.json({ success: true, message: 'Leave type deleted' }, noStoreHeader);
       }
 
       case 'toggle-step': {
