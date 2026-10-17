@@ -1187,6 +1187,17 @@ class HRMSDataStore {
     return this.regularizations.filter((r) => r.tenantId === tenantId);
   }
 
+  public syncRegularizations(regs: RegularizationRequest[]): void {
+    regs.forEach((r) => {
+      const idx = this.regularizations.findIndex((item) => item.id === r.id);
+      if (idx >= 0) {
+        this.regularizations[idx] = { ...this.regularizations[idx], ...r };
+      } else {
+        this.regularizations.unshift(r);
+      }
+    });
+  }
+
   public createRegularization(
     tenantId: string,
     data: {
@@ -1195,22 +1206,26 @@ class HRMSDataStore {
       requestedClockIn: string;
       requestedClockOut: string;
       reason: string;
+      managerId?: string;
+      managerName?: string;
+      employeeName?: string;
     }
   ): RegularizationRequest {
     const emp = this.getEmployeeById(tenantId, data.employeeId);
-    if (!emp) throw new Error('Employee not found');
 
     const newReq: RegularizationRequest = {
       id: `reg-${Date.now()}`,
       tenantId,
       employeeId: data.employeeId,
-      employeeName: `${emp.firstName} ${emp.lastName}`,
+      employeeName: data.employeeName || (emp ? `${emp.firstName} ${emp.lastName}` : 'Team Member'),
       attendanceDate: data.attendanceDate,
       requestedClockIn: data.requestedClockIn,
       requestedClockOut: data.requestedClockOut,
       reason: data.reason,
       status: 'PENDING',
-      requestedAt: new Date().toISOString()
+      requestedAt: new Date().toISOString(),
+      managerId: data.managerId || emp?.reportingManagerId || undefined,
+      managerName: data.managerName || emp?.reportingManagerName || undefined
     };
     this.regularizations.unshift(newReq);
     return newReq;
@@ -1220,24 +1235,56 @@ class HRMSDataStore {
     tenantId: string,
     id: string,
     status: 'APPROVED' | 'REJECTED',
-    reviewedBy: string
+    reviewedBy: string,
+    comment?: string
   ): RegularizationRequest {
     const req = this.regularizations.find((r) => r.id === id && r.tenantId === tenantId);
     if (!req) throw new Error('Regularization request not found');
 
     req.status = status;
     req.reviewedBy = reviewedBy;
+    if (comment) req.comment = comment;
 
     if (status === 'APPROVED') {
+      let workingHours = 8.5;
+      try {
+        const [inH, inM] = req.requestedClockIn.split(':').map(Number);
+        const [outH, outM] = req.requestedClockOut.split(':').map(Number);
+        if (!isNaN(inH) && !isNaN(outH)) {
+          const diffMin = (outH * 60 + outM) - (inH * 60 + inM);
+          if (diffMin > 0) {
+            workingHours = Math.round((diffMin / 60) * 10) / 10;
+          }
+        }
+      } catch {
+        workingHours = 8.5;
+      }
+
       const att = this.attendance.find(
         (a) => a.tenantId === tenantId && a.employeeId === req.employeeId && a.date === req.attendanceDate
       );
       if (att) {
         att.clockInTime = req.requestedClockIn;
         att.clockOutTime = req.requestedClockOut;
-        att.workingHours = 8.5;
+        att.workingHours = workingHours;
         att.status = 'PRESENT';
-        att.notes = 'Regularized by Manager';
+        att.notes = `Regularized by ${reviewedBy}${comment ? `: ${comment}` : ''}`;
+      } else {
+        const emp = this.getEmployeeById(tenantId, req.employeeId);
+        const newAtt: AttendanceRecord = {
+          id: `att-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+          tenantId,
+          employeeId: req.employeeId,
+          employeeName: req.employeeName || (emp ? `${emp.firstName} ${emp.lastName}` : 'Employee'),
+          date: req.attendanceDate,
+          clockInTime: req.requestedClockIn,
+          clockOutTime: req.requestedClockOut,
+          workingHours: workingHours,
+          status: 'PRESENT',
+          notes: `Regularized by ${reviewedBy}${comment ? `: ${comment}` : ''}`,
+          shiftName: emp?.shiftName || 'General Day Shift'
+        };
+        this.attendance.unshift(newAtt);
       }
     }
     return req;

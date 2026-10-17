@@ -223,6 +223,9 @@ export interface RegularizationRequest {
   status: 'PENDING' | 'APPROVED' | 'REJECTED';
   requestedAt: string;
   reviewedBy?: string;
+  managerId?: string;
+  managerName?: string;
+  comment?: string;
 }
 
 export interface Holiday {

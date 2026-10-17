@@ -14,7 +14,8 @@ import {
   Holiday,
   EmployeeDocument,
   LeaveStatus,
-  TenantMembership
+  TenantMembership,
+  RegularizationRequest
 } from '@/lib/types';
 
 /**
@@ -686,6 +687,98 @@ export class SupabaseStore {
       return false;
     }
     return true;
+  }
+
+  // --------------------------------------------------------------------------
+  // REGULARIZATION REQUESTS
+  // --------------------------------------------------------------------------
+  public static async getRegularizations(tenantId: string): Promise<RegularizationRequest[] | null> {
+    const supabase = getSupabaseAdmin();
+    if (!supabase) return null;
+
+    try {
+      const { data, error } = await supabase
+        .from('audit_logs')
+        .select('*')
+        .eq('tenant_id', tenantId)
+        .eq('resource', 'regularization')
+        .order('timestamp', { ascending: false });
+
+      if (error || !data) {
+        return null;
+      }
+
+      return data.map((row: any) => {
+        const d = row.details || {};
+        return {
+          id: row.id,
+          tenantId: row.tenant_id,
+          employeeId: d.employeeId || '',
+          employeeName: d.employeeName || 'Employee',
+          attendanceDate: d.attendanceDate || '',
+          requestedClockIn: d.requestedClockIn || '09:00',
+          requestedClockOut: d.requestedClockOut || '18:00',
+          reason: d.reason || '',
+          status: (d.status as 'PENDING' | 'APPROVED' | 'REJECTED') || 'PENDING',
+          requestedAt: d.requestedAt || row.timestamp,
+          reviewedBy: d.reviewedBy,
+          managerId: d.managerId,
+          managerName: d.managerName,
+          comment: d.comment
+        };
+      });
+    } catch (e) {
+      console.warn('Supabase getRegularizations error:', e);
+      return null;
+    }
+  }
+
+  public static async saveRegularization(reg: RegularizationRequest): Promise<boolean> {
+    const supabase = getSupabaseAdmin();
+    if (!supabase) return false;
+
+    try {
+      const { error } = await supabase.from('audit_logs').upsert({
+        id: reg.id,
+        tenant_id: reg.tenantId,
+        actor_email: `${reg.employeeId}@goodwin.local`,
+        actor_role: 'EMPLOYEE',
+        action:
+          reg.status === 'APPROVED'
+            ? 'REGULARIZATION_APPROVED'
+            : reg.status === 'REJECTED'
+            ? 'REGULARIZATION_REJECTED'
+            : 'REGULARIZATION_REQUEST',
+        resource: 'regularization',
+        resource_id: reg.id,
+        details: {
+          id: reg.id,
+          tenantId: reg.tenantId,
+          employeeId: reg.employeeId,
+          employeeName: reg.employeeName,
+          attendanceDate: reg.attendanceDate,
+          requestedClockIn: reg.requestedClockIn,
+          requestedClockOut: reg.requestedClockOut,
+          reason: reg.reason,
+          status: reg.status,
+          requestedAt: reg.requestedAt,
+          reviewedBy: reg.reviewedBy,
+          managerId: reg.managerId,
+          managerName: reg.managerName,
+          comment: reg.comment
+        },
+        timestamp: new Date().toISOString()
+      });
+
+      if (error) {
+        console.warn('Supabase saveRegularization error:', error.message);
+        return false;
+      }
+      return true;
+    } catch (e) {
+      console.warn('Supabase saveRegularization exception:', e);
+      return false;
+    }
   }
 
   // --------------------------------------------------------------------------

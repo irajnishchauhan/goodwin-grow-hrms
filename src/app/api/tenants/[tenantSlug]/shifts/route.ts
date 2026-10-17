@@ -26,7 +26,14 @@ export async function GET(
       holidays = db.getHolidays(tenant.id);
     }
 
-    const regularizations = db.getRegularizations(tenant.id);
+    const [supaRegs] = await Promise.all([
+      SupabaseStore.getRegularizations(tenant.id)
+    ]);
+    if (supaRegs && supaRegs.length > 0) {
+      db.syncRegularizations(supaRegs);
+    }
+
+    const regularizations = supaRegs !== null ? supaRegs : db.getRegularizations(tenant.id);
 
     const payload = {
       shifts,
@@ -61,14 +68,29 @@ export async function POST(
     db.invalidateCache(tenantSlug);
 
     if (type === 'REGULARIZATION') {
-      const { employeeId, attendanceDate, requestedClockIn, requestedClockOut, reason } = body;
+      const {
+        employeeId,
+        attendanceDate,
+        requestedClockIn,
+        requestedClockOut,
+        reason,
+        managerId,
+        managerName,
+        employeeName
+      } = body;
+
       const reg = db.createRegularization(tenant.id, {
         employeeId,
         attendanceDate,
         requestedClockIn,
         requestedClockOut,
-        reason
+        reason,
+        managerId,
+        managerName,
+        employeeName
       });
+      await SupabaseStore.saveRegularization(reg);
+
       return NextResponse.json(
         { success: true, data: reg, message: 'Regularization request submitted' },
         { headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate' } }
@@ -108,11 +130,31 @@ export async function PATCH(
     }
 
     const body = await req.json();
-    const { regularizationId, status, reviewedBy } = body;
+    const { regularizationId, status, reviewedBy, comment } = body;
     db.invalidateCache(tenant.id);
     db.invalidateCache(tenantSlug);
 
-    const updated = db.updateRegularizationStatus(tenant.id, regularizationId, status, reviewedBy || 'Manager');
+    const supaRegs = await SupabaseStore.getRegularizations(tenant.id);
+    if (supaRegs && supaRegs.length > 0) {
+      db.syncRegularizations(supaRegs);
+    }
+
+    const updated = db.updateRegularizationStatus(
+      tenant.id,
+      regularizationId,
+      status,
+      reviewedBy || 'Manager',
+      comment
+    );
+    await SupabaseStore.saveRegularization(updated);
+
+    if (status === 'APPROVED') {
+      const att = db.getAttendance(tenant.id, updated.attendanceDate).find((a) => a.employeeId === updated.employeeId);
+      if (att) {
+        await SupabaseStore.saveAttendance(att);
+      }
+    }
+
     return NextResponse.json(
       {
         success: true,

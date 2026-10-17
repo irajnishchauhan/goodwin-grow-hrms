@@ -522,6 +522,16 @@ export default function EmployeeSelfServiceDashboard() {
             <div className="text-[11px] text-slate-500 text-center font-medium">
               Shift: 09:00 AM – 06:00 PM &bull; Grace Period: 15 min &bull; Biometric auto-synced
             </div>
+
+            <div className="pt-2 text-center border-t border-slate-100">
+              <Link
+                href={`/app/${tenantSlug}/attendance?tab=regularizations&action=request`}
+                className="inline-flex items-center gap-1.5 text-xs text-emerald-600 hover:text-emerald-700 font-bold hover:underline"
+              >
+                <Clock className="w-3.5 h-3.5" />
+                <span>Missed punch? Request Regularization</span>
+              </Link>
+            </div>
           </div>
         </div>
 
