@@ -219,15 +219,22 @@ export async function POST(
 
     const action: 'IN' | 'OUT' = rawAction === 'PUNCH_IN' || rawAction === 'IN' ? 'IN' : 'OUT';
 
-    let emp = db.getEmployeeById(tenant.id, employeeId);
-    if (!emp) {
-      const emps = await SupabaseStore.getEmployees(tenant.id);
-      if (emps && emps.length > 0) {
-        db.syncEmployees(emps);
-        emp = db.getEmployeeById(tenant.id, employeeId);
-      }
+    const [supaRecords, supaEmployees, supaShifts] = await Promise.all([
+      SupabaseStore.getAttendance(tenant.id),
+      SupabaseStore.getEmployees(tenant.id),
+      SupabaseStore.getShifts(tenant.id)
+    ]);
+    if (supaEmployees && supaEmployees.length > 0) {
+      db.syncEmployees(supaEmployees);
+    }
+    if (supaRecords && supaRecords.length > 0) {
+      db.syncAttendance(supaRecords);
+    }
+    if (supaShifts && supaShifts.length > 0) {
+      db.syncShifts(supaShifts);
     }
 
+    const emp = db.getEmployeeById(tenant.id, employeeId);
     if (!emp) {
       return NextResponse.json(
         { success: false, error: 'Employee not found for attendance punch' },

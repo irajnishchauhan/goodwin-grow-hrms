@@ -335,7 +335,17 @@ export default function TenantAttendancePage() {
       const json = await res.json();
       if (json.success) {
         setStatusMsg(json.message);
-        fetchAttendance(selectedDate);
+        if (json.data) {
+          setRecords((prev) => {
+            const next = [json.data, ...prev.filter((r) => !(r.employeeId === currentEmp.id && r.date === selectedDate))];
+            return next;
+          });
+          setRoster((prev) => {
+            const next = [json.data, ...prev.filter((r) => !(r.employeeId === currentEmp.id && r.date === selectedDate))];
+            return next;
+          });
+        }
+        await fetchAttendance(selectedDate);
       } else {
         setStatusMsg(json.error || 'Failed to record punch');
       }

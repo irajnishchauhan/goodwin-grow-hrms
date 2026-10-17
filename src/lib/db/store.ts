@@ -1496,21 +1496,37 @@ class HRMSDataStore {
     );
 
     if (!record) {
-      const evalRes = evaluateAttendanceStatus(timeStr, undefined, policy);
-      record = {
-        id: `att-${Date.now()}`,
-        tenantId,
-        employeeId,
-        employeeName: `${emp.firstName} ${emp.lastName}`,
-        date: today,
-        clockInTime: timeStr,
-        workingHours: 0,
-        status: evalRes.status,
-        notes:
-          notes ||
-          (evalRes.isLate ? `Clocked in ${evalRes.lateMinutes}m after grace` : 'Mobile Web Punch-In'),
-        shiftName: shift?.name || emp.shiftName || 'General Day Shift'
-      };
+      if (action === 'OUT') {
+        const evalRes = evaluateAttendanceStatus(undefined, timeStr, policy);
+        record = {
+          id: `att-${Date.now()}`,
+          tenantId,
+          employeeId,
+          employeeName: `${emp.firstName} ${emp.lastName}`,
+          date: today,
+          clockOutTime: timeStr,
+          workingHours: evalRes.workingHours,
+          status: evalRes.status,
+          notes: notes || 'Mobile Web Punch-Out',
+          shiftName: shift?.name || emp.shiftName || 'General Day Shift'
+        };
+      } else {
+        const evalRes = evaluateAttendanceStatus(timeStr, undefined, policy);
+        record = {
+          id: `att-${Date.now()}`,
+          tenantId,
+          employeeId,
+          employeeName: `${emp.firstName} ${emp.lastName}`,
+          date: today,
+          clockInTime: timeStr,
+          workingHours: 0,
+          status: evalRes.status,
+          notes:
+            notes ||
+            (evalRes.isLate ? `Clocked in ${evalRes.lateMinutes}m after grace` : 'Mobile Web Punch-In'),
+          shiftName: shift?.name || emp.shiftName || 'General Day Shift'
+        };
+      }
       this.attendance.push(record);
     } else {
       if (action === 'OUT') {

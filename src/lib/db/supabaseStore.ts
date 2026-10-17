@@ -824,19 +824,22 @@ export class SupabaseStore {
 
     SupabaseStore.invalidate(rec.tenantId);
 
-    const { error } = await supabase.from('attendance').upsert({
-      id: rec.id,
-      tenant_id: rec.tenantId,
-      employee_id: rec.employeeId,
-      employee_name: rec.employeeName,
-      date: rec.date,
-      clock_in_time: rec.clockInTime,
-      clock_out_time: rec.clockOutTime,
-      working_hours: rec.workingHours,
-      status: rec.status,
-      notes: rec.notes,
-      shift_name: rec.shiftName
-    });
+    const { error } = await supabase.from('attendance').upsert(
+      {
+        id: rec.id,
+        tenant_id: rec.tenantId,
+        employee_id: rec.employeeId,
+        employee_name: rec.employeeName,
+        date: rec.date,
+        clock_in_time: rec.clockInTime,
+        clock_out_time: rec.clockOutTime,
+        working_hours: rec.workingHours,
+        status: rec.status,
+        notes: rec.notes,
+        shift_name: rec.shiftName
+      },
+      { onConflict: 'tenant_id,employee_id,date' }
+    );
 
     if (error) {
       console.warn('Supabase saveAttendance error:', error.message);
