@@ -1798,6 +1798,40 @@ class HRMSDataStore {
     return doc;
   }
 
+  public updateDocument(
+    tenantId: string,
+    documentId: string,
+    updates: Partial<EmployeeDocument>
+  ): EmployeeDocument {
+    const idx = this.documents.findIndex((d) => d.id === documentId && d.tenantId === tenantId);
+    if (idx < 0) throw new Error('Document not found in tenant vault');
+    this.documents[idx] = {
+      ...this.documents[idx],
+      ...updates
+    };
+    return this.documents[idx];
+  }
+
+  public deleteDocument(tenantId: string, documentId: string): boolean {
+    const beforeLen = this.documents.length;
+    this.documents = this.documents.filter((d) => !(d.tenantId === tenantId && d.id === documentId));
+    return this.documents.length < beforeLen;
+  }
+
+  public deleteDocumentsBulk(tenantId: string, documentIds: string[]): number {
+    const idSet = new Set(documentIds);
+    const beforeLen = this.documents.length;
+    this.documents = this.documents.filter((d) => !(d.tenantId === tenantId && idSet.has(d.id)));
+    return beforeLen - this.documents.length;
+  }
+
+  public setDocumentsForTenant(tenantId: string, docs: EmployeeDocument[]): void {
+    this.documents = [
+      ...this.documents.filter((d) => d.tenantId !== tenantId),
+      ...docs
+    ];
+  }
+
   // -------------------------------------------------------------
   // RECRUITMENT & ATS
   // -------------------------------------------------------------
@@ -1814,6 +1848,26 @@ class HRMSDataStore {
     };
     this.jobOpenings.unshift(newOpening);
     return newOpening;
+  }
+
+  public updateJobOpening(
+    tenantId: string,
+    openingId: string,
+    data: Partial<JobOpening>
+  ): JobOpening {
+    const idx = this.jobOpenings.findIndex((j) => j.id === openingId && j.tenantId === tenantId);
+    if (idx < 0) throw new Error('Job opening not found in tenant workspace');
+    this.jobOpenings[idx] = {
+      ...this.jobOpenings[idx],
+      ...data
+    };
+    return this.jobOpenings[idx];
+  }
+
+  public deleteJobOpening(tenantId: string, openingId: string): boolean {
+    const beforeLen = this.jobOpenings.length;
+    this.jobOpenings = this.jobOpenings.filter((j) => !(j.tenantId === tenantId && j.id === openingId));
+    return this.jobOpenings.length < beforeLen;
   }
 
   public getJobApplicants(tenantId: string, openingId?: string): JobApplicant[] {
@@ -1838,11 +1892,96 @@ class HRMSDataStore {
     return newApplicant;
   }
 
+  public updateApplicant(
+    tenantId: string,
+    applicantId: string,
+    data: Partial<JobApplicant>
+  ): JobApplicant {
+    const idx = this.jobApplicants.findIndex((a) => a.id === applicantId && a.tenantId === tenantId);
+    if (idx < 0) throw new Error('Applicant not found');
+    this.jobApplicants[idx] = {
+      ...this.jobApplicants[idx],
+      ...data
+    };
+    return this.jobApplicants[idx];
+  }
+
   public updateApplicantStage(tenantId: string, applicantId: string, newStage: CandidateStage): JobApplicant {
     const applicant = this.jobApplicants.find((a) => a.id === applicantId && a.tenantId === tenantId);
     if (!applicant) throw new Error('Applicant not found in tenant workspace');
     applicant.stage = newStage;
     return applicant;
+  }
+
+  public deleteApplicant(tenantId: string, applicantId: string): boolean {
+    const beforeLen = this.jobApplicants.length;
+    this.jobApplicants = this.jobApplicants.filter((a) => !(a.tenantId === tenantId && a.id === applicantId));
+    return this.jobApplicants.length < beforeLen;
+  }
+
+  public setJobOpeningsForTenant(tenantId: string, openings: JobOpening[]): void {
+    this.jobOpenings = [
+      ...this.jobOpenings.filter((j) => j.tenantId !== tenantId),
+      ...openings
+    ];
+  }
+
+  public setJobApplicantsForTenant(tenantId: string, applicants: JobApplicant[]): void {
+    this.jobApplicants = [
+      ...this.jobApplicants.filter((a) => a.tenantId !== tenantId),
+      ...applicants
+    ];
+  }
+
+  public hireApplicantAsEmployee(
+    tenantId: string,
+    applicantId: string,
+    initialMonthlySalary: number = 30000
+  ): Employee {
+    const applicant = this.jobApplicants.find((a) => a.id === applicantId && a.tenantId === tenantId);
+    if (!applicant) throw new Error('Applicant not found');
+
+    applicant.stage = 'HIRED';
+
+    // Parse name
+    const parts = applicant.fullName.trim().split(' ');
+    const firstName = parts[0] || 'Candidate';
+    const lastName = parts.slice(1).join(' ') || '';
+
+    // Check if employee already exists with this email
+    const existing = this.employees.find((e) => e.tenantId === tenantId && e.workEmail.toLowerCase() === applicant.email.toLowerCase());
+    if (existing) {
+      return existing;
+    }
+
+    const tenant = this.getTenantById(tenantId);
+    const codeNum = 1000 + this.employees.filter((e) => e.tenantId === tenantId).length + 1;
+    const employeeCode = `${tenant?.companyCode || 'GOODWIN'}-${codeNum}`;
+
+    const newEmp: Employee = {
+      id: `emp-${tenantId}-${Date.now()}`,
+      tenantId,
+      firstName,
+      lastName,
+      workEmail: applicant.email,
+      phone: applicant.phone || '+91 9876543210',
+      gender: 'OTHER',
+      joiningDate: new Date().toISOString().split('T')[0],
+      departmentId: 'dept-gen',
+      designationId: 'desig-gen',
+      departmentName: 'General',
+      designationTitle: applicant.jobTitle,
+      employmentType: 'FULL_TIME',
+      status: 'ACTIVE',
+      monthlySalary: initialMonthlySalary,
+      employeeCode,
+      loginStatus: 'NOT_INVITED',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+
+    this.employees.push(newEmp);
+    return newEmp;
   }
 
   // -------------------------------------------------------------

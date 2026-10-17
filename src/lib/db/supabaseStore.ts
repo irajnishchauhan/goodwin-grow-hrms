@@ -15,7 +15,9 @@ import {
   EmployeeDocument,
   LeaveStatus,
   TenantMembership,
-  RegularizationRequest
+  RegularizationRequest,
+  JobOpening,
+  JobApplicant
 } from '@/lib/types';
 
 /**
@@ -1351,6 +1353,114 @@ export class SupabaseStore {
     });
 
     return !error;
+  }
+
+  public static async deleteDocument(tenantId: string, documentId: string): Promise<boolean> {
+    const supabase = getSupabaseAdmin();
+    if (!supabase) return false;
+    SupabaseStore.invalidate(tenantId);
+    const { error } = await supabase.from('documents').delete().eq('tenant_id', tenantId).eq('id', documentId);
+    return !error;
+  }
+
+  public static async deleteDocumentsBulk(tenantId: string, documentIds: string[]): Promise<boolean> {
+    const supabase = getSupabaseAdmin();
+    if (!supabase) return false;
+    SupabaseStore.invalidate(tenantId);
+    const { error } = await supabase.from('documents').delete().eq('tenant_id', tenantId).in('id', documentIds);
+    return !error;
+  }
+
+  public static async updateDocument(doc: {
+    id: string;
+    tenantId: string;
+    title?: string;
+    documentType?: any;
+    employeeId?: string;
+    employeeName?: string;
+  }): Promise<boolean> {
+    const supabase = getSupabaseAdmin();
+    if (!supabase) return false;
+    SupabaseStore.invalidate(doc.tenantId);
+
+    const updates: Record<string, any> = {};
+    if (doc.title) updates.title = doc.title;
+    if (doc.documentType) updates.document_type = doc.documentType;
+    if (doc.employeeId) updates.employee_id = doc.employeeId;
+    if (doc.employeeName) updates.employee_name = doc.employeeName;
+
+    const { error } = await supabase
+      .from('documents')
+      .update(updates)
+      .eq('tenant_id', doc.tenantId)
+      .eq('id', doc.id);
+
+    return !error;
+  }
+
+  // --------------------------------------------------------------------------
+  // RECRUITMENT & ATS (Persistent JSON Storage in Tenant Checklist)
+  // --------------------------------------------------------------------------
+  public static async getRecruitment(
+    tenantId: string
+  ): Promise<{ openings: JobOpening[]; applicants: JobApplicant[] } | null> {
+    const cached = SupabaseStore.getCached<{ openings: JobOpening[]; applicants: JobApplicant[] }>(`recruitment_${tenantId}`);
+    if (cached) return cached;
+
+    const supabase = getSupabaseAdmin();
+    if (!supabase) return null;
+
+    const { data: tenant, error } = await supabase
+      .from('tenants')
+      .select('onboarding_checklist')
+      .eq('id', tenantId)
+      .single();
+
+    if (error || !tenant) return null;
+
+    const recruitmentItem = (tenant.onboarding_checklist || []).find((s: any) => s.id === '__recruitment__');
+    if (!recruitmentItem || !recruitmentItem.data) return null;
+
+    const result = {
+      openings: recruitmentItem.data.openings || [],
+      applicants: recruitmentItem.data.applicants || []
+    };
+
+    SupabaseStore.setCached(`recruitment_${tenantId}`, result, 30);
+    return result;
+  }
+
+  public static async saveRecruitment(
+    tenantId: string,
+    openings: JobOpening[],
+    applicants: JobApplicant[]
+  ): Promise<boolean> {
+    const supabase = getSupabaseAdmin();
+    if (!supabase) return false;
+
+    const { data: tenant, error: fetchErr } = await supabase
+      .from('tenants')
+      .select('onboarding_checklist')
+      .eq('id', tenantId)
+      .single();
+
+    if (fetchErr || !tenant) return false;
+
+    const checklist = (tenant.onboarding_checklist || []).filter((s: any) => s.id !== '__recruitment__');
+    checklist.push({
+      id: '__recruitment__',
+      title: 'Recruitment & ATS Data',
+      completed: true,
+      data: { openings, applicants }
+    });
+
+    const { error: updErr } = await supabase
+      .from('tenants')
+      .update({ onboarding_checklist: checklist })
+      .eq('id', tenantId);
+
+    SupabaseStore.invalidate(tenantId);
+    return !updErr;
   }
 
   // --------------------------------------------------------------------------
