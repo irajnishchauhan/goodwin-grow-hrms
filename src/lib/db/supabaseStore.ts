@@ -23,6 +23,38 @@ import {
  * Performs asynchronous PostgreSQL queries when Supabase credentials are configured.
  */
 export class SupabaseStore {
+  // Ultra-Fast In-Memory Cache for Enterprise Keka-grade Speed (sub-10ms responses)
+  private static cache = new Map<string, { data: any; expiresAt: number }>();
+
+  public static getCached<T>(key: string): T | null {
+    const entry = SupabaseStore.cache.get(key);
+    if (!entry) return null;
+    if (Date.now() > entry.expiresAt) {
+      SupabaseStore.cache.delete(key);
+      return null;
+    }
+    return entry.data as T;
+  }
+
+  public static setCached<T>(key: string, data: T, ttlSeconds: number = 30): void {
+    SupabaseStore.cache.set(key, {
+      data,
+      expiresAt: Date.now() + ttlSeconds * 1000
+    });
+  }
+
+  public static invalidate(tenantIdOrSlug?: string): void {
+    if (!tenantIdOrSlug) {
+      SupabaseStore.cache.clear();
+      return;
+    }
+    for (const key of SupabaseStore.cache.keys()) {
+      if (key.includes(tenantIdOrSlug)) {
+        SupabaseStore.cache.delete(key);
+      }
+    }
+  }
+
   public static isConnected(): boolean {
     return isSupabaseConfigured();
   }
@@ -31,6 +63,9 @@ export class SupabaseStore {
   // TENANTS
   // --------------------------------------------------------------------------
   public static async getTenants(): Promise<Tenant[] | null> {
+    const cached = SupabaseStore.getCached<Tenant[]>('all_tenants');
+    if (cached) return cached;
+
     const supabase = getSupabaseAdmin();
     if (!supabase) return null;
 
@@ -40,7 +75,7 @@ export class SupabaseStore {
       return null;
     }
 
-    return data.map((t) => ({
+    const mapped = data.map((t) => ({
       id: t.id,
       name: t.name,
       slug: t.slug,
@@ -72,9 +107,15 @@ export class SupabaseStore {
       createdAt: t.created_at,
       updatedAt: t.updated_at
     }));
+
+    SupabaseStore.setCached('all_tenants', mapped, 60);
+    return mapped;
   }
 
   public static async getTenantById(id: string): Promise<Tenant | null> {
+    const cached = SupabaseStore.getCached<Tenant>(`tenant_id_${id}`);
+    if (cached) return cached;
+
     const supabase = getSupabaseAdmin();
     if (!supabase) return null;
 
@@ -89,7 +130,7 @@ export class SupabaseStore {
     }
 
     const t = data;
-    return {
+    const res: Tenant = {
       id: t.id,
       name: t.name,
       slug: t.slug,
@@ -122,9 +163,16 @@ export class SupabaseStore {
       createdAt: t.created_at,
       updatedAt: t.updated_at
     };
+
+    SupabaseStore.setCached(`tenant_id_${id}`, res, 60);
+    SupabaseStore.setCached(`tenant_slug_${res.slug}`, res, 60);
+    return res;
   }
 
   public static async getTenantBySlug(slug: string): Promise<Tenant | null> {
+    const cached = SupabaseStore.getCached<Tenant>(`tenant_slug_${slug}`);
+    if (cached) return cached;
+
     const supabase = getSupabaseAdmin();
     if (!supabase) return null;
 
@@ -139,7 +187,7 @@ export class SupabaseStore {
     }
 
     const t = data;
-    return {
+    const res: Tenant = {
       id: t.id,
       name: t.name,
       slug: t.slug,
@@ -172,11 +220,19 @@ export class SupabaseStore {
       createdAt: t.created_at,
       updatedAt: t.updated_at
     };
+
+    SupabaseStore.setCached(`tenant_slug_${slug}`, res, 60);
+    SupabaseStore.setCached(`tenant_id_${res.id}`, res, 60);
+    return res;
   }
 
   public static async saveTenant(tenant: Tenant): Promise<boolean> {
     const supabase = getSupabaseAdmin();
     if (!supabase) return false;
+
+    SupabaseStore.invalidate(tenant.id);
+    SupabaseStore.invalidate(tenant.slug);
+    SupabaseStore.invalidate('all_tenants');
 
     const checklistWithMeta = [...(tenant.onboardingChecklist || []).filter((s: any) => s.id !== '__org_root__')];
     if (tenant.orgTreeRootId) {
@@ -298,6 +354,9 @@ export class SupabaseStore {
   // EMPLOYEES
   // --------------------------------------------------------------------------
   public static async getEmployees(tenantId: string): Promise<Employee[] | null> {
+    const cached = SupabaseStore.getCached<Employee[]>(`employees_${tenantId}`);
+    if (cached) return cached;
+
     const supabase = getSupabaseAdmin();
     if (!supabase) return null;
 
@@ -312,7 +371,7 @@ export class SupabaseStore {
       return null;
     }
 
-    return data.map((e) => ({
+    const mapped = data.map((e) => ({
       id: e.id,
       tenantId: e.tenant_id,
       userId: e.user_id,
@@ -343,11 +402,16 @@ export class SupabaseStore {
       createdAt: e.created_at,
       updatedAt: e.updated_at
     }));
+
+    SupabaseStore.setCached(`employees_${tenantId}`, mapped, 30);
+    return mapped;
   }
 
   public static async saveEmployee(emp: Employee): Promise<boolean> {
     const supabase = getSupabaseAdmin();
     if (!supabase) return false;
+
+    SupabaseStore.invalidate(emp.tenantId);
 
     const { error } = await supabase.from('employees').upsert({
       id: emp.id,
@@ -484,6 +548,9 @@ export class SupabaseStore {
   // DEPARTMENTS & DESIGNATIONS
   // --------------------------------------------------------------------------
   public static async getDepartments(tenantId: string): Promise<Department[] | null> {
+    const cached = SupabaseStore.getCached<Department[]>(`departments_${tenantId}`);
+    if (cached) return cached;
+
     const supabase = getSupabaseAdmin();
     if (!supabase) return null;
 
@@ -494,17 +561,22 @@ export class SupabaseStore {
 
     if (error || !data) return null;
 
-    return data.map((d) => ({
+    const mapped = data.map((d) => ({
       id: d.id,
       tenantId: d.tenant_id,
       name: d.name,
       code: d.code
     }));
+
+    SupabaseStore.setCached(`departments_${tenantId}`, mapped, 60);
+    return mapped;
   }
 
   public static async saveDepartment(dept: Department): Promise<boolean> {
     const supabase = getSupabaseAdmin();
     if (!supabase) return false;
+
+    SupabaseStore.invalidate(dept.tenantId);
 
     const { error } = await supabase.from('departments').upsert({
       id: dept.id,
@@ -520,6 +592,8 @@ export class SupabaseStore {
     const supabase = getSupabaseAdmin();
     if (!supabase) return false;
 
+    SupabaseStore.invalidate(tenantId);
+
     const { error } = await supabase
       .from('departments')
       .delete()
@@ -534,6 +608,9 @@ export class SupabaseStore {
   }
 
   public static async getDesignations(tenantId: string): Promise<Designation[] | null> {
+    const cached = SupabaseStore.getCached<Designation[]>(`designations_${tenantId}`);
+    if (cached) return cached;
+
     const supabase = getSupabaseAdmin();
     if (!supabase) return null;
 
@@ -544,7 +621,7 @@ export class SupabaseStore {
 
     if (error || !data) return null;
 
-    return data.map((d) => {
+    const mapped = data.map((d) => {
       let gl = 'L1';
       if (d.level !== undefined && d.level !== null) {
         gl = typeof d.level === 'number' ? `L${d.level}` : (String(d.level).startsWith('L') ? String(d.level) : `L${d.level}`);
@@ -559,11 +636,16 @@ export class SupabaseStore {
         gradeLevel: gl
       };
     });
+
+    SupabaseStore.setCached(`designations_${tenantId}`, mapped, 60);
+    return mapped;
   }
 
   public static async saveDesignation(desig: Designation): Promise<boolean> {
     const supabase = getSupabaseAdmin();
     if (!supabase) return false;
+
+    SupabaseStore.invalidate(desig.tenantId);
 
     const numericLevel = parseInt(desig.gradeLevel.replace(/\D/g, ''), 10) || 1;
 
@@ -587,6 +669,9 @@ export class SupabaseStore {
   // SHIFTS & HOLIDAYS
   // --------------------------------------------------------------------------
   public static async getShifts(tenantId: string): Promise<Shift[] | null> {
+    const cached = SupabaseStore.getCached<Shift[]>(`shifts_${tenantId}`);
+    if (cached) return cached;
+
     const supabase = getSupabaseAdmin();
     if (!supabase) return null;
 
@@ -612,12 +697,15 @@ export class SupabaseStore {
       mapped[0].isDefault = true;
     }
 
+    SupabaseStore.setCached(`shifts_${tenantId}`, mapped, 60);
     return mapped;
   }
 
   public static async saveShift(shift: Shift): Promise<boolean> {
     const supabase = getSupabaseAdmin();
     if (!supabase) return false;
+
+    SupabaseStore.invalidate(shift.tenantId);
 
     const { error } = await supabase.from('shifts').upsert({
       id: shift.id,
@@ -639,6 +727,8 @@ export class SupabaseStore {
   public static async deleteShift(tenantId: string, shiftId: string, shiftName?: string): Promise<boolean> {
     const supabase = getSupabaseAdmin();
     if (!supabase) return false;
+
+    SupabaseStore.invalidate(tenantId);
 
     try {
       // 1. Try deleting by shiftId
@@ -666,6 +756,9 @@ export class SupabaseStore {
   }
 
   public static async getHolidays(tenantId: string): Promise<Holiday[] | null> {
+    const cached = SupabaseStore.getCached<Holiday[]>(`holidays_${tenantId}`);
+    if (cached) return cached;
+
     const supabase = getSupabaseAdmin();
     if (!supabase) return null;
 
@@ -676,7 +769,7 @@ export class SupabaseStore {
 
     if (error || !data) return null;
 
-    return data.map((h) => ({
+    const mapped = data.map((h) => ({
       id: h.id,
       tenantId: h.tenant_id,
       name: h.name,
@@ -684,12 +777,18 @@ export class SupabaseStore {
       isOptional: h.is_optional,
       dayOfWeek: new Date(h.date).toLocaleDateString('en-US', { weekday: 'long' })
     }));
+
+    SupabaseStore.setCached(`holidays_${tenantId}`, mapped, 60);
+    return mapped;
   }
 
   // --------------------------------------------------------------------------
   // ATTENDANCE
   // --------------------------------------------------------------------------
   public static async getAttendance(tenantId: string): Promise<AttendanceRecord[] | null> {
+    const cached = SupabaseStore.getCached<AttendanceRecord[]>(`attendance_${tenantId}`);
+    if (cached) return cached;
+
     const supabase = getSupabaseAdmin();
     if (!supabase) return null;
 
@@ -701,7 +800,7 @@ export class SupabaseStore {
 
     if (error || !data) return null;
 
-    return data.map((a) => ({
+    const mapped = data.map((a) => ({
       id: a.id,
       tenantId: a.tenant_id,
       employeeId: a.employee_id,
@@ -714,11 +813,16 @@ export class SupabaseStore {
       notes: a.notes,
       shiftName: a.shift_name
     }));
+
+    SupabaseStore.setCached(`attendance_${tenantId}`, mapped, 10);
+    return mapped;
   }
 
   public static async saveAttendance(rec: AttendanceRecord): Promise<boolean> {
     const supabase = getSupabaseAdmin();
     if (!supabase) return false;
+
+    SupabaseStore.invalidate(rec.tenantId);
 
     const { error } = await supabase.from('attendance').upsert({
       id: rec.id,
@@ -750,6 +854,8 @@ export class SupabaseStore {
     const supabase = getSupabaseAdmin();
     if (!supabase) return false;
 
+    SupabaseStore.invalidate(tenantId);
+
     try {
       if (recordId && !recordId.startsWith('absent-') && !recordId.startsWith('leave-') && !recordId.startsWith('off-')) {
         await supabase
@@ -780,6 +886,8 @@ export class SupabaseStore {
   ): Promise<boolean> {
     const supabase = getSupabaseAdmin();
     if (!supabase) return false;
+
+    SupabaseStore.invalidate(tenantId);
 
     try {
       if (deleteAllForDate) {
@@ -848,6 +956,9 @@ export class SupabaseStore {
   // REGULARIZATION REQUESTS
   // --------------------------------------------------------------------------
   public static async getRegularizations(tenantId: string): Promise<RegularizationRequest[] | null> {
+    const cached = SupabaseStore.getCached<RegularizationRequest[]>(`regularizations_${tenantId}`);
+    if (cached) return cached;
+
     const supabase = getSupabaseAdmin();
     if (!supabase) return null;
 
@@ -863,7 +974,7 @@ export class SupabaseStore {
         return null;
       }
 
-      return data.map((row: any) => {
+      const mapped = data.map((row: any) => {
         const d = row.details || {};
         return {
           id: row.id,
@@ -882,6 +993,9 @@ export class SupabaseStore {
           comment: d.comment
         };
       });
+
+      SupabaseStore.setCached(`regularizations_${tenantId}`, mapped, 15);
+      return mapped;
     } catch (e) {
       console.warn('Supabase getRegularizations error:', e);
       return null;
@@ -891,6 +1005,8 @@ export class SupabaseStore {
   public static async saveRegularization(reg: RegularizationRequest): Promise<boolean> {
     const supabase = getSupabaseAdmin();
     if (!supabase) return false;
+
+    SupabaseStore.invalidate(reg.tenantId);
 
     try {
       const { error } = await supabase.from('audit_logs').upsert({
@@ -940,6 +1056,9 @@ export class SupabaseStore {
   // LEAVE TYPES & APPLICATIONS
   // --------------------------------------------------------------------------
   public static async getLeaveTypes(tenantId: string): Promise<LeaveType[] | null> {
+    const cached = SupabaseStore.getCached<LeaveType[]>(`leave_types_${tenantId}`);
+    if (cached) return cached;
+
     const supabase = getSupabaseAdmin();
     if (!supabase) return null;
 
@@ -950,7 +1069,7 @@ export class SupabaseStore {
 
     if (error || !data) return null;
 
-    return data.map((l) => ({
+    const mapped = data.map((l) => ({
       id: l.id,
       tenantId: l.tenant_id,
       name: l.name,
@@ -959,11 +1078,16 @@ export class SupabaseStore {
       color: l.color,
       isPaid: l.is_paid
     }));
+
+    SupabaseStore.setCached(`leave_types_${tenantId}`, mapped, 60);
+    return mapped;
   }
 
   public static async saveLeaveType(lt: LeaveType): Promise<boolean> {
     const supabase = getSupabaseAdmin();
     if (!supabase) return false;
+
+    SupabaseStore.invalidate(lt.tenantId);
 
     const { error } = await supabase.from('leave_types').upsert({
       id: lt.id,
@@ -986,6 +1110,8 @@ export class SupabaseStore {
     const supabase = getSupabaseAdmin();
     if (!supabase) return false;
 
+    SupabaseStore.invalidate(tenantId);
+
     const { error } = await supabase
       .from('leave_types')
       .delete()
@@ -1000,6 +1126,9 @@ export class SupabaseStore {
   }
 
   public static async getLeaveApplications(tenantId: string): Promise<LeaveApplication[] | null> {
+    const cached = SupabaseStore.getCached<LeaveApplication[]>(`leave_apps_${tenantId}`);
+    if (cached) return cached;
+
     const supabase = getSupabaseAdmin();
     if (!supabase) return null;
 
@@ -1011,7 +1140,7 @@ export class SupabaseStore {
 
     if (error || !data) return null;
 
-    return data.map((a) => ({
+    const mapped = data.map((a) => ({
       id: a.id,
       tenantId: a.tenant_id,
       employeeId: a.employee_id,
@@ -1027,11 +1156,16 @@ export class SupabaseStore {
       reviewComment: a.review_comment,
       appliedAt: a.applied_at
     }));
+
+    SupabaseStore.setCached(`leave_apps_${tenantId}`, mapped, 15);
+    return mapped;
   }
 
   public static async saveLeaveApplication(app: LeaveApplication): Promise<boolean> {
     const supabase = getSupabaseAdmin();
     if (!supabase) return false;
+
+    SupabaseStore.invalidate(app.tenantId);
 
     const { error } = await supabase.from('leave_applications').upsert({
       id: app.id,
@@ -1087,6 +1221,9 @@ export class SupabaseStore {
   // PAYROLL & SALARY SLIPS
   // --------------------------------------------------------------------------
   public static async getSalarySlips(tenantId: string): Promise<SalarySlip[] | null> {
+    const cached = SupabaseStore.getCached<SalarySlip[]>(`salary_slips_${tenantId}`);
+    if (cached) return cached;
+
     const supabase = getSupabaseAdmin();
     if (!supabase) return null;
 
@@ -1097,7 +1234,7 @@ export class SupabaseStore {
 
     if (error || !data) return null;
 
-    return data.map((s) => ({
+    const mapped = data.map((s) => ({
       id: s.id,
       tenantId: s.tenant_id,
       employeeId: s.employee_id,
@@ -1118,11 +1255,16 @@ export class SupabaseStore {
       paymentStatus: s.payment_status,
       generatedDate: s.generated_date
     }));
+
+    SupabaseStore.setCached(`salary_slips_${tenantId}`, mapped, 30);
+    return mapped;
   }
 
   public static async saveSalarySlip(slip: SalarySlip): Promise<boolean> {
     const supabase = getSupabaseAdmin();
     if (!supabase) return false;
+
+    SupabaseStore.invalidate(slip.tenantId);
 
     const { error } = await supabase.from('salary_slips').upsert({
       id: slip.id,
@@ -1157,6 +1299,10 @@ export class SupabaseStore {
   // DOCUMENTS
   // --------------------------------------------------------------------------
   public static async getDocuments(tenantId: string, employeeId?: string): Promise<EmployeeDocument[] | null> {
+    const cacheKey = `documents_${tenantId}_${employeeId || 'all'}`;
+    const cached = SupabaseStore.getCached<EmployeeDocument[]>(cacheKey);
+    if (cached) return cached;
+
     const supabase = getSupabaseAdmin();
     if (!supabase) return null;
 
@@ -1168,7 +1314,7 @@ export class SupabaseStore {
     const { data, error } = await query;
     if (error || !data) return null;
 
-    return data.map((d) => ({
+    const mapped = data.map((d) => ({
       id: d.id,
       tenantId: d.tenant_id,
       employeeId: d.employee_id,
@@ -1179,11 +1325,16 @@ export class SupabaseStore {
       fileSize: d.file_size,
       uploadedAt: d.uploaded_at
     }));
+
+    SupabaseStore.setCached(cacheKey, mapped, 30);
+    return mapped;
   }
 
   public static async saveDocument(doc: EmployeeDocument): Promise<boolean> {
     const supabase = getSupabaseAdmin();
     if (!supabase) return false;
+
+    SupabaseStore.invalidate(doc.tenantId);
 
     const { error } = await supabase.from('documents').upsert({
       id: doc.id,
@@ -1203,6 +1354,9 @@ export class SupabaseStore {
   // INVITATIONS
   // --------------------------------------------------------------------------
   public static async getInvitations(tenantId: string): Promise<Invitation[] | null> {
+    const cached = SupabaseStore.getCached<Invitation[]>(`invitations_${tenantId}`);
+    if (cached) return cached;
+
     const supabase = getSupabaseAdmin();
     if (!supabase) return null;
 
@@ -1213,7 +1367,7 @@ export class SupabaseStore {
 
     if (error || !data) return null;
 
-    return data.map((i) => ({
+    const mapped = data.map((i) => ({
       id: i.id,
       tenantId: i.tenant_id,
       tenantName: i.tenant_name,
@@ -1229,6 +1383,9 @@ export class SupabaseStore {
       acceptedAt: i.accepted_at,
       createdAt: i.created_at || new Date().toISOString()
     }));
+
+    SupabaseStore.setCached(`invitations_${tenantId}`, mapped, 30);
+    return mapped;
   }
 
   public static async getInvitationByToken(token: string): Promise<Invitation | null> {
@@ -1280,6 +1437,8 @@ export class SupabaseStore {
   public static async saveInvitation(inv: Invitation): Promise<boolean> {
     const supabase = getSupabaseAdmin();
     if (!supabase) return false;
+
+    SupabaseStore.invalidate(inv.tenantId);
 
     const { error } = await supabase.from('invitations').upsert({
       id: inv.id,

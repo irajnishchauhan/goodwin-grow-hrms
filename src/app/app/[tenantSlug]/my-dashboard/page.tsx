@@ -54,6 +54,16 @@ export default function EmployeeSelfServiceDashboard() {
   const [clockOutTime, setClockOutTime] = useState<string | null>(null);
   const [punchLoading, setPunchLoading] = useState(false);
   const [punchMessage, setPunchMessage] = useState<string | null>(null);
+  const [activeShift, setActiveShift] = useState<{
+    id: string;
+    name: string;
+    startTime: string;
+    endTime: string;
+    graceMinutes: number;
+    formattedStart: string;
+    formattedEnd: string;
+    lateCutoff: string;
+  } | null>(null);
 
   // Apply Leave Modal State
   const [leaveModalOpen, setLeaveModalOpen] = useState(false);
@@ -223,6 +233,9 @@ export default function EmployeeSelfServiceDashboard() {
 
       // 1. Process attendance
       if (attJson.success) {
+        if (attJson.data?.stats?.activeShift) {
+          setActiveShift(attJson.data.stats.activeShift);
+        }
         const today = new Date().toISOString().split('T')[0];
         const records = attJson.data?.records || [];
         const todayRec = records.find(
@@ -295,6 +308,38 @@ export default function EmployeeSelfServiceDashboard() {
     setPunchLoading(true);
     setPunchMessage(null);
 
+    // Keka-style instant optimistic punch feedback
+    const timeNow = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const prevIsClockedIn = isClockedIn;
+    const prevClockIn = clockInTime;
+    const prevClockOut = clockOutTime;
+
+    if (action === 'IN') {
+      setIsClockedIn(true);
+      setClockInTime(timeNow);
+      setPunchMessage(`Clocked In at ${timeNow} (In Progress)`);
+    } else {
+      setIsClockedIn(false);
+      setClockOutTime(timeNow);
+      setPunchMessage(`Shift Complete (Punched Out at ${timeNow})`);
+    }
+
+    // Immediately unblock from localStorage deleted keys for this tenant
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const delKey = `${currentEmp.id}::${today}`;
+      const stored = localStorage.getItem(`hrms_deleted_att_${tenantSlug}`);
+      if (stored) {
+        const keys: string[] = JSON.parse(stored);
+        localStorage.setItem(
+          `hrms_deleted_att_${tenantSlug}`,
+          JSON.stringify(keys.filter((k) => k !== delKey))
+        );
+      }
+    } catch {
+      // ignore
+    }
+
     try {
       const res = await fetch(`/api/tenants/${tenantSlug}/attendance`, {
         method: 'POST',
@@ -308,22 +353,23 @@ export default function EmployeeSelfServiceDashboard() {
 
       const json = await res.json();
       if (json.success) {
-        const timeNow = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         if (action === 'IN') {
-          setIsClockedIn(true);
-          setClockInTime(timeNow);
           setPunchMessage(`Successfully punched IN at ${timeNow}.`);
         } else {
-          setIsClockedIn(false);
-          setClockOutTime(timeNow);
           setPunchMessage(`Successfully punched OUT at ${timeNow}. Have a great evening!`);
         }
         // Refresh attendance records
         await loadEmployeeDetails(currentEmp.id);
       } else {
+        setIsClockedIn(prevIsClockedIn);
+        setClockInTime(prevClockIn);
+        setClockOutTime(prevClockOut);
         setPunchMessage(json.error || 'Failed to record punch.');
       }
     } catch (err) {
+      setIsClockedIn(prevIsClockedIn);
+      setClockInTime(prevClockIn);
+      setClockOutTime(prevClockOut);
       setPunchMessage('Failed to record punch. Please check your network connection.');
     } finally {
       setPunchLoading(false);
@@ -455,8 +501,8 @@ export default function EmployeeSelfServiceDashboard() {
                 <Clock className="w-4 h-4 text-amber-600" />
                 <span>Daily Punch & Shift</span>
               </span>
-              <span className="text-[11px] px-2.5 py-0.5 rounded-md bg-slate-100 border border-slate-200 text-slate-700 font-mono font-medium">
-                {currentEmp.shiftName || 'General Day Shift'}
+              <span className="text-[11px] px-2.5 py-0.5 rounded-md bg-emerald-50 border border-emerald-200 text-emerald-800 font-mono font-medium">
+                {activeShift?.name || currentEmp.shiftName || 'General Day Shift'}
               </span>
             </div>
 
@@ -520,7 +566,7 @@ export default function EmployeeSelfServiceDashboard() {
             </div>
 
             <div className="text-[11px] text-slate-500 text-center font-medium">
-              Shift: 09:00 AM – 06:00 PM &bull; Grace Period: 15 min &bull; Biometric auto-synced
+              Shift: {activeShift ? `${activeShift.formattedStart} – ${activeShift.formattedEnd} • Grace Period: ${activeShift.graceMinutes} min` : '10:00 AM – 07:00 PM • Grace Period: 15 min'} &bull; Biometric auto-synced
             </div>
 
             <div className="pt-2 text-center border-t border-slate-100">

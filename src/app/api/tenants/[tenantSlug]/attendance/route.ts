@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db/store';
 import { SupabaseStore } from '@/lib/db/supabaseStore';
-import { Employee } from '@/lib/types';
+import { Employee, AttendanceRecord } from '@/lib/types';
 import {
   buildDailyWorkforceRoster,
   evaluateAttendanceStatus,
@@ -63,7 +63,12 @@ export async function GET(
     // Collect excluded deleted employees for this date
     const excludedEmployeeIds = new Set<string>();
     employees.forEach((emp) => {
-      if (db.isAttendanceKeyExcluded(tenant.id, emp.id, targetDate)) {
+      const hasPunch = realPunchRecords.some(
+        (r) => r.employeeId === emp.id && r.date === targetDate && Boolean(r.clockInTime)
+      );
+      if (hasPunch) {
+        db.clearExcludedAttendanceKey(tenant.id, emp.id, targetDate);
+      } else if (db.isAttendanceKeyExcluded(tenant.id, emp.id, targetDate)) {
         excludedEmployeeIds.add(emp.id);
       }
     });
@@ -80,9 +85,22 @@ export async function GET(
     });
 
     // Real logged attendance records (only actual punches, admin marks, and approved leaves)
-    const loggedRecords = roster.filter(
+    const rosterPunches = roster.filter(
       (r) => !r.id.startsWith('absent-') && !r.id.startsWith('off-')
     );
+
+    // Merge with any direct target date punch records to ensure 100% visibility
+    const targetDatePunches = realPunchRecords.filter(
+      (r) => r.date === targetDate && Boolean(r.clockInTime)
+    );
+    const recordMap = new Map<string, AttendanceRecord>();
+    rosterPunches.forEach((r) => recordMap.set(r.employeeId, r));
+    targetDatePunches.forEach((r) => {
+      if (!recordMap.has(r.employeeId)) {
+        recordMap.set(r.employeeId, r);
+      }
+    });
+    const loggedRecords = Array.from(recordMap.values());
 
     const payload = {
       records: loggedRecords,
@@ -209,8 +227,13 @@ export async function POST(
       );
     }
 
+    const today = new Date().toISOString().split('T')[0];
+    db.clearExcludedAttendanceKey(tenant.id, employeeId, today);
+
     const record = db.recordPunch(tenant.id, employeeId, action, notes);
     await SupabaseStore.saveAttendance(record);
+    SupabaseStore.invalidate(tenant.id);
+    SupabaseStore.invalidate(tenantSlug);
 
     return NextResponse.json(
       {
@@ -384,6 +407,8 @@ export async function PUT(
 
     await SupabaseStore.saveAttendance(updatedRecord);
 
+    SupabaseStore.invalidate(tenant.id);
+    SupabaseStore.invalidate(tenantSlug);
     db.invalidateCache(tenant.id);
     db.invalidateCache(tenantSlug);
 
@@ -446,6 +471,8 @@ export async function DELETE(
       db.deleteAttendanceRecords(tenant.id, items, deleteAllForDate || undefined);
       await SupabaseStore.deleteAttendanceRecords(tenant.id, items, deleteAllForDate || undefined);
 
+      SupabaseStore.invalidate(tenant.id);
+      SupabaseStore.invalidate(tenantSlug);
       db.invalidateCache(tenant.id);
       db.invalidateCache(tenantSlug);
 
@@ -482,6 +509,8 @@ export async function DELETE(
       date || undefined
     );
 
+    SupabaseStore.invalidate(tenant.id);
+    SupabaseStore.invalidate(tenantSlug);
     db.invalidateCache(tenant.id);
     db.invalidateCache(tenantSlug);
 

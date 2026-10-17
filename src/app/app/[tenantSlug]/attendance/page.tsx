@@ -207,10 +207,30 @@ export default function TenantAttendancePage() {
       ]);
 
       if (json.success) {
-        setRecords(json.data.records || []);
+        const fetchedRecords: AttendanceRecord[] = json.data.records || [];
+        setRecords(fetchedRecords);
         if (json.data.roster) {
           setRoster(json.data.roster);
         }
+
+        // Cleanse deleted keys for anyone who has an active punch record
+        const punchedKeys = new Set(
+          fetchedRecords
+            .filter((r) => Boolean(r.clockInTime))
+            .map((r) => `${r.employeeId}::${r.date}`)
+        );
+        if (punchedKeys.size > 0) {
+          setDeletedRosterKeys((prev) => {
+            const next = prev.filter((k) => !punchedKeys.has(k));
+            try {
+              localStorage.setItem(`hrms_deleted_att_${tenantSlug}`, JSON.stringify(next));
+            } catch {
+              // ignore
+            }
+            return next;
+          });
+        }
+
         if (json.data.regularizations) {
           setRegularizations(json.data.regularizations);
         }
@@ -283,6 +303,12 @@ export default function TenantAttendancePage() {
     }
     setPunchLoading(true);
     setStatusMsg(null);
+
+    // Immediately remove from deleted keys so punch shows up without delay
+    const delKey = `${currentEmp.id}::${selectedDate}`;
+    const unblocked = deletedRosterKeys.filter((k) => k !== delKey);
+    saveDeletedKeys(unblocked);
+
     try {
       const res = await fetch(`/api/tenants/${tenantSlug}/attendance`, {
         method: 'POST',
@@ -676,7 +702,8 @@ export default function TenantAttendancePage() {
       : records;
 
   const visibleRecords = sourceList.filter((r) => {
-    if (deletedRosterKeys.includes(`${r.employeeId}::${r.date}`)) {
+    // If an employee clocked in with a real punch, NEVER filter it out with stale deleted keys
+    if (!r.clockInTime && deletedRosterKeys.includes(`${r.employeeId}::${r.date}`)) {
       return false;
     }
 

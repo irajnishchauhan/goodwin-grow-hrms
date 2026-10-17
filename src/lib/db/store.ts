@@ -1357,6 +1357,10 @@ class HRMSDataStore {
     return this.excludedAttendanceKeys.has(`${tenantId}::${employeeId}::${date}`);
   }
 
+  public clearExcludedAttendanceKey(tenantId: string, employeeId: string, date: string): void {
+    this.excludedAttendanceKeys.delete(`${tenantId}::${employeeId}::${date}`);
+  }
+
   public clearExcludedAttendanceKeys(tenantId: string, date?: string): void {
     if (date) {
       for (const key of this.excludedAttendanceKeys) {
@@ -1458,6 +1462,9 @@ class HRMSDataStore {
 
     const today = new Date().toISOString().split('T')[0];
     const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    // Ensure any prior deletion exclusion is cleared for this employee today
+    this.clearExcludedAttendanceKey(tenantId, employeeId, today);
 
     const shift =
       this.shifts.find((s) => s.tenantId === tenantId && (s.name === emp.shiftName || s.isDefault)) ||

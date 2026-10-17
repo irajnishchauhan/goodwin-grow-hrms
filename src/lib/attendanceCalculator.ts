@@ -262,10 +262,15 @@ export function buildDailyWorkforceRoster({
   const isSunday = targetDateObj.getUTCDay() === 0;
 
   activeEmployees.forEach((emp) => {
-    if (excludedEmployeeIds && excludedEmployeeIds.has(emp.id)) {
+    const punch = punchMap.get(emp.id);
+    // If employee has a logged punch record, NEVER exclude them based on previous deletion keys
+    if (!punch && excludedEmployeeIds && excludedEmployeeIds.has(emp.id)) {
       return;
     }
-    const shift = emp.shiftName ? shiftMap.get(emp.shiftName.toLowerCase().trim()) || defaultShift : defaultShift;
+
+    const shift =
+      (emp.shiftName && shiftMap.get(emp.shiftName.toLowerCase().trim())) ||
+      defaultShift;
     const policy: ShiftPolicy = shift
       ? {
           startTime: shift.startTime || '09:00',
@@ -275,8 +280,6 @@ export function buildDailyWorkforceRoster({
           halfDayMinHours: 4.0
         }
       : defaultPolicy;
-
-    const punch = punchMap.get(emp.id);
 
     if (punch) {
       // Evaluate punch using shift rules
