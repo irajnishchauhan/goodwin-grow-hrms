@@ -81,7 +81,13 @@ export default function TenantOrgChartPage() {
 
   const fetchEmployees = async () => {
     try {
-      const res = await fetch(`/api/tenants/${tenantSlug}/employees`);
+      const res = await fetch(`/api/tenants/${tenantSlug}/employees?t=${Date.now()}`, {
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache'
+        }
+      });
       const json = await res.json();
       if (json.success) {
         setEmployees(json.data.employees || []);
@@ -206,7 +212,8 @@ export default function TenantOrgChartPage() {
 
     try {
       const updates = employees.map((emp) => {
-        const targetManagerId = reportingDraft[emp.id] || 'OWNER';
+        const isCurrentRoot = rootType === 'EMPLOYEE' && emp.id === designatedRootEmpId;
+        const targetManagerId = isCurrentRoot ? 'OWNER' : (reportingDraft[emp.id] || 'OWNER');
         let targetManagerName = 'Managing Director Office';
 
         if (targetManagerId === 'OWNER') {
@@ -237,6 +244,23 @@ export default function TenantOrgChartPage() {
       const data = await res.json();
       if (data.success) {
         setSaveSuccessMsg('Organization hierarchy successfully updated & saved!');
+        if (data.data?.employees) {
+          setEmployees(data.data.employees);
+          const draft: Record<string, string> = {};
+          data.data.employees.forEach((emp: Employee) => {
+            draft[emp.id] = emp.reportingManagerId || 'OWNER';
+          });
+          setReportingDraft(draft);
+        }
+        if (data.data?.orgTreeRootId !== undefined) {
+          setTenant((prev) => (prev ? { ...prev, orgTreeRootId: data.data.orgTreeRootId } : null));
+          if (data.data.orgTreeRootId && data.data.orgTreeRootId !== 'OWNER') {
+            setRootType('EMPLOYEE');
+            setDesignatedRootEmpId(data.data.orgTreeRootId);
+          } else {
+            setRootType('OWNER');
+          }
+        }
         await fetchEmployees();
         setTimeout(() => {
           setIsAssignModalOpen(false);
@@ -281,8 +305,15 @@ export default function TenantOrgChartPage() {
 
       const data = await res.json();
       if (data.success) {
+        setEmployees((prev) =>
+          prev.map((emp) =>
+            emp.id === editingEmployee.id
+              ? { ...emp, reportingManagerId: managerId || undefined, reportingManagerName: managerName }
+              : emp
+          )
+        );
         setEditingEmployee(null);
-        fetchEmployees();
+        await fetchEmployees();
       } else {
         alert(data.error || 'Failed to update reporting line');
       }

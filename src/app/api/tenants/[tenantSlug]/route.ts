@@ -2,24 +2,20 @@ import { NextResponse } from 'next/server';
 import { db } from '@/lib/db/store';
 import { SupabaseStore } from '@/lib/db/supabaseStore';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(
   _req: Request,
   context: { params: Promise<{ tenantSlug: string }> }
 ) {
   try {
     const { tenantSlug } = await context.params;
-    const tenant = await db.getResolvedTenant(tenantSlug);
+    const tenant = await SupabaseStore.getTenantBySlug(tenantSlug) || await db.getResolvedTenant(tenantSlug, true);
     if (!tenant) {
       return NextResponse.json({ success: false, error: 'Tenant workspace not found' }, { status: 404 });
     }
 
-    const cacheKey = `tenant_overview_${tenant.id}`;
-    const cached = db.getCached<any>(cacheKey);
-    if (cached) {
-      return NextResponse.json({ success: true, data: cached });
-    }
-
-    // High speed parallel fetching from Supabase
+    // Direct parallel fetching from Supabase PostgreSQL
     const [departmentsRes, designationsRes, shiftsRes, leaveTypesRes, employeesRes] = await Promise.all([
       SupabaseStore.getDepartments(tenant.id),
       SupabaseStore.getDesignations(tenant.id),
@@ -28,11 +24,11 @@ export async function GET(
       SupabaseStore.getEmployees(tenant.id)
     ]);
 
-    const departments = departmentsRes && departmentsRes.length > 0 ? departmentsRes : db.getDepartments(tenant.id);
-    const designations = designationsRes && designationsRes.length > 0 ? designationsRes : db.getDesignations(tenant.id);
-    const shifts = shiftsRes && shiftsRes.length > 0 ? shiftsRes : db.getShifts(tenant.id);
-    const leaveTypes = leaveTypesRes && leaveTypesRes.length > 0 ? leaveTypesRes : db.getLeaveTypes(tenant.id);
-    const employees = employeesRes && employeesRes.length > 0 ? employeesRes : db.getEmployees(tenant.id);
+    const departments = departmentsRes !== null ? departmentsRes : db.getDepartments(tenant.id);
+    const designations = designationsRes !== null ? designationsRes : db.getDesignations(tenant.id);
+    const shifts = shiftsRes !== null ? shiftsRes : db.getShifts(tenant.id);
+    const leaveTypes = leaveTypesRes !== null ? leaveTypesRes : db.getLeaveTypes(tenant.id);
+    const employees = employeesRes !== null ? employeesRes : db.getEmployees(tenant.id);
 
     const payload = {
       tenant,
@@ -43,12 +39,10 @@ export async function GET(
       employeeCount: employees.length
     };
 
-    db.setCached(cacheKey, payload, 30000);
-
-    return NextResponse.json({
-      success: true,
-      data: payload
-    });
+    return NextResponse.json(
+      { success: true, data: payload },
+      { headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate' } }
+    );
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Error fetching tenant configuration';
     return NextResponse.json({ success: false, error: message }, { status: 500 });
@@ -61,21 +55,26 @@ export async function PUT(
 ) {
   try {
     const { tenantSlug } = await context.params;
-    const tenant = await db.getResolvedTenant(tenantSlug);
+    const tenant = await SupabaseStore.getTenantBySlug(tenantSlug) || await db.getResolvedTenant(tenantSlug, true);
     if (!tenant) {
       return NextResponse.json({ success: false, error: 'Tenant workspace not found' }, { status: 404 });
     }
 
     const body = await req.json();
-    const updatedTenant = db.updateTenant(tenant.id, body);
-    db.invalidateCache(tenant.id);
+    const updatedTenant = { ...tenant, ...body, updatedAt: new Date().toISOString() };
     await SupabaseStore.saveTenant(updatedTenant);
+    db.upsertTenant(updatedTenant);
+    db.invalidateCache(tenant.id);
+    db.invalidateCache(tenantSlug);
 
-    return NextResponse.json({
-      success: true,
-      message: 'Workspace settings saved successfully',
-      data: { tenant: updatedTenant }
-    });
+    return NextResponse.json(
+      {
+        success: true,
+        message: 'Workspace settings saved successfully to PostgreSQL',
+        data: { tenant: updatedTenant }
+      },
+      { headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate' } }
+    );
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Failed to update tenant';
     return NextResponse.json({ success: false, error: message }, { status: 400 });
@@ -88,7 +87,7 @@ export async function POST(
 ) {
   try {
     const { tenantSlug } = await context.params;
-    const tenant = await db.getResolvedTenant(tenantSlug);
+    const tenant = await SupabaseStore.getTenantBySlug(tenantSlug) || await db.getResolvedTenant(tenantSlug, true);
     if (!tenant) {
       return NextResponse.json({ success: false, error: 'Tenant workspace not found' }, { status: 404 });
     }
@@ -96,6 +95,9 @@ export async function POST(
     const body = await req.json();
     const { action } = body;
     db.invalidateCache(tenant.id);
+    db.invalidateCache(tenantSlug);
+
+    const noStoreHeader = { headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate' } };
 
     switch (action) {
       case 'add-department': {
@@ -103,7 +105,7 @@ export async function POST(
         if (!name) return NextResponse.json({ success: false, error: 'Department name is required' }, { status: 400 });
         const dept = db.addDepartment(tenant.id, name, code);
         await SupabaseStore.saveDepartment(dept);
-        return NextResponse.json({ success: true, message: 'Department added', data: dept });
+        return NextResponse.json({ success: true, message: 'Department added', data: dept }, noStoreHeader);
       }
 
       case 'delete-department': {
@@ -111,14 +113,14 @@ export async function POST(
         if (!departmentId) return NextResponse.json({ success: false, error: 'Department ID is required' }, { status: 400 });
         const success = db.deleteDepartment(tenant.id, departmentId);
         await SupabaseStore.deleteDepartment(tenant.id, departmentId);
-        return NextResponse.json({ success, message: success ? 'Department deleted' : 'Department not found' });
+        return NextResponse.json({ success, message: success ? 'Department deleted' : 'Department not found' }, noStoreHeader);
       }
 
       case 'update-shift': {
         const { shiftId, ...shiftData } = body;
         const shift = db.updateShift(tenant.id, shiftId, shiftData);
         await SupabaseStore.saveShift(shift);
-        return NextResponse.json({ success: true, message: 'Shift updated', data: shift });
+        return NextResponse.json({ success: true, message: 'Shift updated', data: shift }, noStoreHeader);
       }
 
       case 'add-shift': {
@@ -132,7 +134,7 @@ export async function POST(
           color: color || '#3B82F6'
         });
         await SupabaseStore.saveShift(shift);
-        return NextResponse.json({ success: true, message: 'Shift added', data: shift });
+        return NextResponse.json({ success: true, message: 'Shift added', data: shift }, noStoreHeader);
       }
 
       case 'delete-shift': {
@@ -140,14 +142,14 @@ export async function POST(
         if (!shiftId) return NextResponse.json({ success: false, error: 'Shift ID is required' }, { status: 400 });
         const success = db.deleteShift(tenant.id, shiftId);
         await SupabaseStore.deleteShift(tenant.id, shiftId);
-        return NextResponse.json({ success, message: 'Shift deleted' });
+        return NextResponse.json({ success, message: 'Shift deleted' }, noStoreHeader);
       }
 
       case 'update-leave-type': {
         const { leaveTypeId, ...leaveData } = body;
         const lt = db.updateLeaveType(tenant.id, leaveTypeId, leaveData);
         await SupabaseStore.saveLeaveType(lt);
-        return NextResponse.json({ success: true, message: 'Leave policy updated', data: lt });
+        return NextResponse.json({ success: true, message: 'Leave policy updated', data: lt }, noStoreHeader);
       }
 
       case 'add-leave-type': {
@@ -160,7 +162,7 @@ export async function POST(
           isPaid: isPaid ?? true
         });
         await SupabaseStore.saveLeaveType(lt);
-        return NextResponse.json({ success: true, message: 'Leave policy created', data: lt });
+        return NextResponse.json({ success: true, message: 'Leave policy created', data: lt }, noStoreHeader);
       }
 
       case 'delete-leave-type': {
@@ -168,14 +170,14 @@ export async function POST(
         if (!leaveTypeId) return NextResponse.json({ success: false, error: 'Leave Type ID is required' }, { status: 400 });
         const success = db.deleteLeaveType(tenant.id, leaveTypeId);
         await SupabaseStore.deleteLeaveType(tenant.id, leaveTypeId);
-        return NextResponse.json({ success, message: 'Leave type deleted' });
+        return NextResponse.json({ success, message: 'Leave type deleted' }, noStoreHeader);
       }
 
       case 'toggle-step': {
         const { stepId, completed } = body;
         const updatedTenant = db.updateOnboardingStep(tenant.id, stepId, completed);
         await SupabaseStore.saveTenant(updatedTenant);
-        return NextResponse.json({ success: true, message: 'Step updated', data: { tenant: updatedTenant } });
+        return NextResponse.json({ success: true, message: 'Step updated', data: { tenant: updatedTenant } }, noStoreHeader);
       }
 
       case 'clear-workspace': {
@@ -187,7 +189,7 @@ export async function POST(
           success: true,
           message: `Workspace "${tenant.name}" data completely cleared for fresh setup.`,
           data: { tenant: updatedTenant }
-        });
+        }, noStoreHeader);
       }
 
       default:
@@ -205,11 +207,13 @@ export async function DELETE(
 ) {
   try {
     const { tenantSlug } = await context.params;
-    const tenant = await db.getResolvedTenant(tenantSlug);
+    const tenant = await SupabaseStore.getTenantBySlug(tenantSlug) || await db.getResolvedTenant(tenantSlug, true);
     if (!tenant) {
       return NextResponse.json({ success: false, error: 'Tenant workspace not found' }, { status: 404 });
     }
 
+    db.invalidateCache(tenant.id);
+    db.invalidateCache(tenantSlug);
     const deleted = db.deleteTenant(tenant.id);
     await SupabaseStore.deleteTenant(tenant.id);
 
@@ -220,7 +224,7 @@ export async function DELETE(
     return NextResponse.json({
       success: true,
       message: `Workspace "${tenant.name}" and all associated data permanently deleted.`
-    });
+    }, { headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate' } });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Error deleting workspace';
     return NextResponse.json({ success: false, error: message }, { status: 500 });

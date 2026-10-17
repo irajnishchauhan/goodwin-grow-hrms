@@ -113,7 +113,10 @@ export default function EmployeeSelfServiceDashboard() {
   const loadDashboardData = async () => {
     try {
       setLoading(true);
-      const empRes = await fetch(`/api/tenants/${tenantSlug}/employees`);
+      const empRes = await fetch(`/api/tenants/${tenantSlug}/employees?t=${Date.now()}`, {
+        cache: 'no-store',
+        headers: { 'Cache-Control': 'no-cache, no-store' }
+      });
       const empJson = await empRes.json();
       
       if (empJson.success) {
@@ -193,10 +196,22 @@ export default function EmployeeSelfServiceDashboard() {
   const loadEmployeeDetails = async (empId: string) => {
     try {
       const [attRes, leavesRes, payRes, docRes] = await Promise.all([
-        fetch(`/api/tenants/${tenantSlug}/attendance`),
-        fetch(`/api/tenants/${tenantSlug}/leaves`),
-        fetch(`/api/tenants/${tenantSlug}/payroll`),
-        fetch(`/api/tenants/${tenantSlug}/documents?employeeId=${empId}`)
+        fetch(`/api/tenants/${tenantSlug}/attendance?t=${Date.now()}`, {
+          cache: 'no-store',
+          headers: { 'Cache-Control': 'no-cache, no-store' }
+        }),
+        fetch(`/api/tenants/${tenantSlug}/leaves?t=${Date.now()}`, {
+          cache: 'no-store',
+          headers: { 'Cache-Control': 'no-cache, no-store' }
+        }),
+        fetch(`/api/tenants/${tenantSlug}/payroll?t=${Date.now()}`, {
+          cache: 'no-store',
+          headers: { 'Cache-Control': 'no-cache, no-store' }
+        }),
+        fetch(`/api/tenants/${tenantSlug}/documents?employeeId=${empId}&t=${Date.now()}`, {
+          cache: 'no-store',
+          headers: { 'Cache-Control': 'no-cache, no-store' }
+        })
       ]);
 
       const [attJson, leavesJson, payJson, docJson] = await Promise.all([

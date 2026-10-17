@@ -347,11 +347,17 @@ class HRMSDataStore {
   public invalidateCache(prefix?: string): void {
     if (!prefix) {
       this.moduleCache.clear();
+      this.tenantCache.clear();
       return;
     }
     for (const key of this.moduleCache.keys()) {
       if (key.startsWith(prefix) || key.includes(prefix)) {
         this.moduleCache.delete(key);
+      }
+    }
+    for (const key of this.tenantCache.keys()) {
+      if (key.startsWith(prefix) || key.includes(prefix)) {
+        this.tenantCache.delete(key);
       }
     }
   }

@@ -3,37 +3,33 @@ import { db } from '@/lib/db/store';
 import { SupabaseStore } from '@/lib/db/supabaseStore';
 import { Employee } from '@/lib/types';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(
   req: Request,
   context: { params: Promise<{ tenantSlug: string }> }
 ) {
   try {
     const { tenantSlug } = await context.params;
-    const tenant = await db.getResolvedTenant(tenantSlug);
+    const tenant = await SupabaseStore.getTenantBySlug(tenantSlug) || await db.getResolvedTenant(tenantSlug, true);
     if (!tenant) {
       return NextResponse.json({ success: false, error: 'Tenant not found' }, { status: 404 });
     }
 
     const { searchParams } = new URL(req.url);
     const date = searchParams.get('date') || undefined;
-    const cacheKey = `attendance_${tenant.id}_${date || 'today'}`;
-
-    const cached = db.getCached<any>(cacheKey);
-    if (cached) {
-      return NextResponse.json({ success: true, data: cached });
-    }
 
     const [supaRecords, supaEmployees] = await Promise.all([
       SupabaseStore.getAttendance(tenant.id),
       SupabaseStore.getEmployees(tenant.id)
     ]);
 
-    let records = supaRecords && supaRecords.length > 0 ? supaRecords : db.getAttendance(tenant.id, date);
-    if (supaRecords && date) {
+    let records = supaRecords !== null ? supaRecords : db.getAttendance(tenant.id, date);
+    if (date) {
       records = records.filter((r) => r.date === date);
     }
 
-    let employees = supaEmployees && supaEmployees.length > 0 ? supaEmployees : db.getEmployees(tenant.id);
+    let employees = supaEmployees !== null ? supaEmployees : db.getEmployees(tenant.id);
 
     const payload = {
       records,
@@ -41,12 +37,10 @@ export async function GET(
       totalEmployees: employees.length
     };
 
-    db.setCached(cacheKey, payload, 15000);
-
-    return NextResponse.json({
-      success: true,
-      data: payload
-    });
+    return NextResponse.json(
+      { success: true, data: payload },
+      { headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate' } }
+    );
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Error fetching attendance';
     return NextResponse.json({ success: false, error: message }, { status: 500 });
@@ -59,7 +53,7 @@ export async function POST(
 ) {
   try {
     const { tenantSlug } = await context.params;
-    const tenant = await db.getResolvedTenant(tenantSlug);
+    const tenant = await SupabaseStore.getTenantBySlug(tenantSlug) || await db.getResolvedTenant(tenantSlug, true);
     if (!tenant) {
       return NextResponse.json({ success: false, error: 'Tenant not found' }, { status: 404 });
     }
@@ -75,6 +69,7 @@ export async function POST(
 
     const action: 'IN' | 'OUT' = (rawAction === 'PUNCH_IN' || rawAction === 'IN') ? 'IN' : 'OUT';
     db.invalidateCache(tenant.id);
+    db.invalidateCache(tenantSlug);
 
     // Ensure employee exists in db memory before punching
     let emp = db.getEmployeeById(tenant.id, employeeId);
@@ -118,11 +113,14 @@ export async function POST(
     const record = db.recordPunch(tenant.id, employeeId, action, notes);
     await SupabaseStore.saveAttendance(record);
 
-    return NextResponse.json({
-      success: true,
-      message: `Punch ${action === 'IN' ? 'In' : 'Out'} logged at ${new Date().toLocaleTimeString()}`,
-      data: record
-    });
+    return NextResponse.json(
+      {
+        success: true,
+        message: `Punch ${action === 'IN' ? 'In' : 'Out'} logged at ${new Date().toLocaleTimeString()}`,
+        data: record
+      },
+      { headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate' } }
+    );
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Error recording punch';
     return NextResponse.json({ success: false, error: message }, { status: 400 });

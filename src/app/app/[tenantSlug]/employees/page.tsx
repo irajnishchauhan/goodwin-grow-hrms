@@ -76,7 +76,13 @@ export default function TenantEmployeesPage() {
 
   const fetchEmployees = async () => {
     try {
-      const res = await fetch(`/api/tenants/${tenantSlug}/employees`);
+      const res = await fetch(`/api/tenants/${tenantSlug}/employees?t=${Date.now()}`, {
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache'
+        }
+      });
       const json = await res.json();
       if (json.success) {
         setEmployees(json.data.employees);

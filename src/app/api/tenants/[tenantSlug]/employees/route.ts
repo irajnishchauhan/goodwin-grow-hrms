@@ -2,35 +2,31 @@ import { NextResponse } from 'next/server';
 import { db } from '@/lib/db/store';
 import { SupabaseStore } from '@/lib/db/supabaseStore';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(
   _req: Request,
   context: { params: Promise<{ tenantSlug: string }> }
 ) {
   try {
     const { tenantSlug } = await context.params;
-    const tenant = await db.getResolvedTenant(tenantSlug);
+    const tenant = await SupabaseStore.getTenantBySlug(tenantSlug) || await db.getResolvedTenant(tenantSlug, true);
     if (!tenant) {
       return NextResponse.json({ success: false, error: 'Tenant workspace not found' }, { status: 404 });
     }
 
-    const cacheKey = `employees_page_${tenant.id}`;
-    const cached = db.getCached<any>(cacheKey);
-    if (cached) {
-      return NextResponse.json({ success: true, data: cached });
-    }
-
-    // High speed parallel fetching from Supabase
+    // Direct fetch from Supabase PostgreSQL
     const [employeesRes, departmentsRes] = await Promise.all([
       SupabaseStore.getEmployees(tenant.id),
       SupabaseStore.getDepartments(tenant.id)
     ]);
 
-    let employees = employeesRes && employeesRes.length > 0 ? employeesRes : db.getEmployees(tenant.id);
+    let employees = employeesRes !== null ? employeesRes : db.getEmployees(tenant.id);
     if (employeesRes && employeesRes.length > 0) {
       db.syncEmployees(employeesRes);
     }
 
-    let departments = departmentsRes && departmentsRes.length > 0 ? departmentsRes : db.getDepartments(tenant.id);
+    let departments = departmentsRes !== null ? departmentsRes : db.getDepartments(tenant.id);
 
     const payload = {
       tenant,
@@ -40,12 +36,10 @@ export async function GET(
       capacity: tenant.maxEmployees
     };
 
-    db.setCached(cacheKey, payload, 30000);
-
-    return NextResponse.json({
-      success: true,
-      data: payload
-    });
+    return NextResponse.json(
+      { success: true, data: payload },
+      { headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate' } }
+    );
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Error fetching employees';
     return NextResponse.json({ success: false, error: message }, { status: 500 });
@@ -58,7 +52,7 @@ export async function POST(
 ) {
   try {
     const { tenantSlug } = await context.params;
-    const tenant = await db.getResolvedTenant(tenantSlug);
+    const tenant = await SupabaseStore.getTenantBySlug(tenantSlug) || await db.getResolvedTenant(tenantSlug, true);
     if (!tenant) {
       return NextResponse.json({ success: false, error: 'Tenant workspace not found' }, { status: 404 });
     }
@@ -74,6 +68,7 @@ export async function POST(
     }
 
     db.invalidateCache(tenant.id);
+    db.invalidateCache(tenantSlug);
 
     const newEmp = db.createEmployee(tenant.id, {
       firstName,
@@ -92,11 +87,14 @@ export async function POST(
     // Save to Supabase PostgreSQL asynchronously
     await SupabaseStore.saveEmployee(newEmp);
 
-    return NextResponse.json({
-      success: true,
-      message: `Employee ${newEmp.firstName} ${newEmp.lastName} added successfully to ${tenant.name}.`,
-      data: newEmp
-    });
+    return NextResponse.json(
+      {
+        success: true,
+        message: `Employee ${newEmp.firstName} ${newEmp.lastName} added successfully to ${tenant.name}.`,
+        data: newEmp
+      },
+      { headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate' } }
+    );
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Error adding employee';
     return NextResponse.json({ success: false, error: message }, { status: 400 });
@@ -109,7 +107,7 @@ export async function DELETE(
 ) {
   try {
     const { tenantSlug } = await context.params;
-    const tenant = await db.getResolvedTenant(tenantSlug);
+    const tenant = await SupabaseStore.getTenantBySlug(tenantSlug) || await db.getResolvedTenant(tenantSlug, true);
     if (!tenant) {
       return NextResponse.json({ success: false, error: 'Tenant not found' }, { status: 404 });
     }
@@ -122,6 +120,7 @@ export async function DELETE(
     }
 
     db.invalidateCache(tenant.id);
+    db.invalidateCache(tenantSlug);
     const deleted = db.deleteEmployee(tenant.id, employeeId);
     await SupabaseStore.deleteEmployee(tenant.id, employeeId);
 
@@ -129,7 +128,10 @@ export async function DELETE(
       return NextResponse.json({ success: false, error: 'Employee not found in this tenant workspace' }, { status: 404 });
     }
 
-    return NextResponse.json({ success: true, message: 'Employee removed successfully' });
+    return NextResponse.json(
+      { success: true, message: 'Employee removed successfully' },
+      { headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate' } }
+    );
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Error deleting employee';
     return NextResponse.json({ success: false, error: message }, { status: 500 });
@@ -142,13 +144,14 @@ export async function PATCH(
 ) {
   try {
     const { tenantSlug } = await context.params;
-    const tenant = await db.getResolvedTenant(tenantSlug);
+    const tenant = await SupabaseStore.getTenantBySlug(tenantSlug) || await db.getResolvedTenant(tenantSlug, true);
     if (!tenant) {
       return NextResponse.json({ success: false, error: 'Tenant workspace not found' }, { status: 404 });
     }
 
     const body = await req.json();
     db.invalidateCache(tenant.id);
+    db.invalidateCache(tenantSlug);
 
     // Batch update mode (e.g. from the Organization Hierarchy Assigner)
     if (body.updates && Array.isArray(body.updates)) {
@@ -170,16 +173,25 @@ export async function PATCH(
         await SupabaseStore.saveTenant(tenant);
       }
 
-      const refreshedEmployees = db.getEmployees(tenant.id);
+      db.invalidateCache(tenant.id);
+      db.invalidateCache(tenantSlug);
 
-      return NextResponse.json({
-        success: true,
-        message: 'Organization hierarchy updated successfully',
-        data: {
-          employees: refreshedEmployees,
-          orgTreeRootId: tenant.orgTreeRootId
-        }
-      });
+      const refreshedEmployees = (await SupabaseStore.getEmployees(tenant.id)) || db.getEmployees(tenant.id);
+      if (refreshedEmployees) {
+        db.syncEmployees(refreshedEmployees);
+      }
+
+      return NextResponse.json(
+        {
+          success: true,
+          message: 'Organization hierarchy updated successfully',
+          data: {
+            employees: refreshedEmployees,
+            orgTreeRootId: tenant.orgTreeRootId
+          }
+        },
+        { headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate' } }
+      );
     }
 
     // Single employee update mode
@@ -188,14 +200,19 @@ export async function PATCH(
       return NextResponse.json({ success: false, error: 'Employee ID is required' }, { status: 400 });
     }
 
-    const updatedEmp = db.updateEmployee(tenant.id, employeeId, updates);
     await SupabaseStore.updateEmployee(tenant.id, employeeId, updates);
+    const updatedEmp = db.updateEmployee(tenant.id, employeeId, updates);
+    db.invalidateCache(tenant.id);
+    db.invalidateCache(tenantSlug);
 
-    return NextResponse.json({
-      success: true,
-      message: 'Employee updated successfully',
-      data: updatedEmp
-    });
+    return NextResponse.json(
+      {
+        success: true,
+        message: 'Employee updated successfully',
+        data: updatedEmp
+      },
+      { headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate' } }
+    );
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Error updating employee';
     return NextResponse.json({ success: false, error: message }, { status: 500 });

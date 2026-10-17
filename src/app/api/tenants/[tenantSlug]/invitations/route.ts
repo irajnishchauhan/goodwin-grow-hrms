@@ -2,21 +2,17 @@ import { NextResponse } from 'next/server';
 import { db } from '@/lib/db/store';
 import { SupabaseStore } from '@/lib/db/supabaseStore';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(
   _req: Request,
   context: { params: Promise<{ tenantSlug: string }> }
 ) {
   try {
     const { tenantSlug } = await context.params;
-    const tenant = await db.getResolvedTenant(tenantSlug);
+    const tenant = await SupabaseStore.getTenantBySlug(tenantSlug) || await db.getResolvedTenant(tenantSlug, true);
     if (!tenant) {
       return NextResponse.json({ success: false, error: 'Tenant not found' }, { status: 404 });
-    }
-
-    const cacheKey = `invitations_${tenant.id}`;
-    const cached = db.getCached<any>(cacheKey);
-    if (cached) {
-      return NextResponse.json({ success: true, data: cached });
     }
 
     const [invitationsRes, employeesRes] = await Promise.all([
@@ -24,8 +20,8 @@ export async function GET(
       SupabaseStore.getEmployees(tenant.id)
     ]);
 
-    let invitations = invitationsRes && invitationsRes.length > 0 ? invitationsRes : db.getInvitations(tenant.id);
-    let employees = employeesRes && employeesRes.length > 0 ? employeesRes : db.getEmployees(tenant.id);
+    let invitations = invitationsRes !== null ? invitationsRes : db.getInvitations(tenant.id);
+    let employees = employeesRes !== null ? employeesRes : db.getEmployees(tenant.id);
 
     // Reliable stats calculation checking both invitations and employee loginStatus
     const pendingInvEmpIds = new Set(
@@ -56,12 +52,10 @@ export async function GET(
       }
     };
 
-    db.setCached(cacheKey, payload, 20000);
-
-    return NextResponse.json({
-      success: true,
-      data: payload
-    });
+    return NextResponse.json(
+      { success: true, data: payload },
+      { headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate' } }
+    );
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Error fetching invitations';
     return NextResponse.json({ success: false, error: message }, { status: 500 });
@@ -74,7 +68,7 @@ export async function POST(
 ) {
   try {
     const { tenantSlug } = await context.params;
-    const tenant = await db.getResolvedTenant(tenantSlug);
+    const tenant = await SupabaseStore.getTenantBySlug(tenantSlug) || await db.getResolvedTenant(tenantSlug, true);
     if (!tenant) {
       return NextResponse.json({ success: false, error: 'Tenant not found' }, { status: 404 });
     }
@@ -82,6 +76,7 @@ export async function POST(
     const body = await req.json();
     const { employeeId, role } = body;
     db.invalidateCache(tenant.id);
+    db.invalidateCache(tenantSlug);
 
     if (!employeeId) {
       return NextResponse.json({ success: false, error: 'Employee ID is required' }, { status: 400 });
@@ -101,11 +96,14 @@ export async function POST(
     await SupabaseStore.saveInvitation(invitation);
     await SupabaseStore.updateEmployeeLoginStatus(employeeId, 'PENDING');
 
-    return NextResponse.json({
-      success: true,
-      message: `Invitation generated and dispatched to ${invitation.email}`,
-      data: invitation
-    });
+    return NextResponse.json(
+      {
+        success: true,
+        message: `Invitation generated and dispatched to ${invitation.email}`,
+        data: invitation
+      },
+      { headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate' } }
+    );
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Error sending invitation';
     return NextResponse.json({ success: false, error: message }, { status: 400 });
@@ -118,13 +116,15 @@ export async function PATCH(
 ) {
   try {
     const { tenantSlug } = await context.params;
-    const tenant = await db.getResolvedTenant(tenantSlug);
+    const tenant = await SupabaseStore.getTenantBySlug(tenantSlug) || await db.getResolvedTenant(tenantSlug, true);
     if (!tenant) {
       return NextResponse.json({ success: false, error: 'Tenant not found' }, { status: 404 });
     }
 
     const body = await req.json();
     const { invitationId, action } = body;
+    db.invalidateCache(tenant.id);
+    db.invalidateCache(tenantSlug);
 
     if (action === 'RESEND') {
       const inv = db.resendInvitation(tenant.id, invitationId);
@@ -132,7 +132,10 @@ export async function PATCH(
         await SupabaseStore.saveInvitation(inv);
         await SupabaseStore.updateEmployeeLoginStatus(inv.employeeId, 'PENDING');
       }
-      return NextResponse.json({ success: true, message: 'Invitation resent successfully', data: inv });
+      return NextResponse.json(
+        { success: true, message: 'Invitation resent successfully', data: inv },
+        { headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate' } }
+      );
     } else if (action === 'REVOKE') {
       const inv = db.getInvitations(tenant.id).find((i) => i.id === invitationId);
       db.revokeInvitation(tenant.id, invitationId);
@@ -140,7 +143,10 @@ export async function PATCH(
         await SupabaseStore.saveInvitation(inv);
         await SupabaseStore.updateEmployeeLoginStatus(inv.employeeId, 'REVOKED');
       }
-      return NextResponse.json({ success: true, message: 'Invitation revoked successfully' });
+      return NextResponse.json(
+        { success: true, message: 'Invitation revoked successfully' },
+        { headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate' } }
+      );
     }
 
     return NextResponse.json({ success: false, error: 'Invalid action' }, { status: 400 });

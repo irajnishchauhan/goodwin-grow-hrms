@@ -3,21 +3,17 @@ import { db } from '@/lib/db/store';
 import { SupabaseStore } from '@/lib/db/supabaseStore';
 import { Employee, LeaveType } from '@/lib/types';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(
   _req: Request,
   context: { params: Promise<{ tenantSlug: string }> }
 ) {
   try {
     const { tenantSlug } = await context.params;
-    const tenant = await db.getResolvedTenant(tenantSlug);
+    const tenant = await SupabaseStore.getTenantBySlug(tenantSlug) || await db.getResolvedTenant(tenantSlug, true);
     if (!tenant) {
       return NextResponse.json({ success: false, error: 'Tenant not found' }, { status: 404 });
-    }
-
-    const cacheKey = `leaves_${tenant.id}`;
-    const cached = db.getCached<any>(cacheKey);
-    if (cached) {
-      return NextResponse.json({ success: true, data: cached });
     }
 
     let [leaveTypes, applications] = await Promise.all([
@@ -76,7 +72,8 @@ export async function GET(
       leaveTypes = defaultTypes;
     }
 
-    if (!applications || applications.length === 0) {
+    // Only fallback if Supabase query failed (returned null)
+    if (applications === null) {
       applications = db.getLeaveApplications(tenant.id);
     }
 
@@ -87,12 +84,10 @@ export async function GET(
       approvedCount: applications.filter((a) => a.status === 'APPROVED').length
     };
 
-    db.setCached(cacheKey, payload, 20000);
-
-    return NextResponse.json({
-      success: true,
-      data: payload
-    });
+    return NextResponse.json(
+      { success: true, data: payload },
+      { headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate' } }
+    );
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Error fetching leave data';
     return NextResponse.json({ success: false, error: message }, { status: 500 });
@@ -105,7 +100,7 @@ export async function POST(
 ) {
   try {
     const { tenantSlug } = await context.params;
-    const tenant = await db.getResolvedTenant(tenantSlug);
+    const tenant = await SupabaseStore.getTenantBySlug(tenantSlug) || await db.getResolvedTenant(tenantSlug, true);
     if (!tenant) {
       return NextResponse.json({ success: false, error: 'Tenant not found' }, { status: 404 });
     }
@@ -113,6 +108,7 @@ export async function POST(
     const body = await req.json();
     const { employeeId, leaveTypeId, startDate, endDate, totalDays, reason } = body;
     db.invalidateCache(tenant.id);
+    db.invalidateCache(tenantSlug);
 
     if (!employeeId || !leaveTypeId || !startDate || !endDate || !reason) {
       return NextResponse.json({ success: false, error: 'Missing required leave fields' }, { status: 400 });
@@ -178,11 +174,14 @@ export async function POST(
 
     await SupabaseStore.saveLeaveApplication(newApp);
 
-    return NextResponse.json({
-      success: true,
-      message: 'Leave application submitted successfully for HR approval',
-      data: newApp
-    });
+    return NextResponse.json(
+      {
+        success: true,
+        message: 'Leave application submitted successfully for HR approval',
+        data: newApp
+      },
+      { headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate' } }
+    );
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Error submitting leave';
     return NextResponse.json({ success: false, error: message }, { status: 400 });
@@ -195,7 +194,7 @@ export async function PATCH(
 ) {
   try {
     const { tenantSlug } = await context.params;
-    const tenant = await db.getResolvedTenant(tenantSlug);
+    const tenant = await SupabaseStore.getTenantBySlug(tenantSlug) || await db.getResolvedTenant(tenantSlug, true);
     if (!tenant) {
       return NextResponse.json({ success: false, error: 'Tenant not found' }, { status: 404 });
     }
@@ -203,6 +202,7 @@ export async function PATCH(
     const body = await req.json();
     const { leaveId, status, reviewedBy, comment } = body;
     db.invalidateCache(tenant.id);
+    db.invalidateCache(tenantSlug);
 
     if (!leaveId || !status) {
       return NextResponse.json({ success: false, error: 'Leave ID and new status required' }, { status: 400 });
@@ -226,11 +226,14 @@ export async function PATCH(
       await SupabaseStore.saveLeaveApplication(updated);
     }
 
-    return NextResponse.json({
-      success: true,
-      message: `Leave status updated to ${status}`,
-      data: updated
-    });
+    return NextResponse.json(
+      {
+        success: true,
+        message: `Leave status updated to ${status}`,
+        data: updated
+      },
+      { headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate' } }
+    );
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Error updating leave';
     return NextResponse.json({ success: false, error: message }, { status: 400 });

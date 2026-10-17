@@ -127,7 +127,10 @@ export default function CompanySetupWizardPage() {
   const loadData = async () => {
     try {
       setLoading(true);
-      const res = await fetch(`/api/tenants/${tenantSlug}`);
+      const res = await fetch(`/api/tenants/${tenantSlug}?t=${Date.now()}`, {
+        cache: 'no-store',
+        headers: { 'Cache-Control': 'no-cache, no-store' }
+      });
       const json = await res.json();
 
       if (json.success && json.data) {

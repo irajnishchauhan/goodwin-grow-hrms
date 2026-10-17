@@ -33,8 +33,14 @@ export default function TenantAttendancePage() {
   const fetchAttendance = async () => {
     try {
       const [res, empRes] = await Promise.all([
-        fetch(`/api/tenants/${tenantSlug}/attendance`),
-        fetch(`/api/tenants/${tenantSlug}/employees`)
+        fetch(`/api/tenants/${tenantSlug}/attendance?t=${Date.now()}`, {
+          cache: 'no-store',
+          headers: { 'Cache-Control': 'no-cache, no-store' }
+        }),
+        fetch(`/api/tenants/${tenantSlug}/employees?t=${Date.now()}`, {
+          cache: 'no-store',
+          headers: { 'Cache-Control': 'no-cache, no-store' }
+        })
       ]);
 
       const [json, empJson] = await Promise.all([
