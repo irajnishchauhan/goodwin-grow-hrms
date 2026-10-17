@@ -151,11 +151,11 @@ export default function TenantLeavesPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-extrabold text-white tracking-tight flex items-center gap-2">
-            <Calendar className="w-6 h-6 text-emerald-400" />
+          <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
+            <Calendar className="w-6 h-6 text-emerald-600" />
             {isEmployeeOnly ? 'My Leave Applications & Entitlements' : 'Leave Management & Approvals'}
           </h1>
-          <p className="text-xs text-slate-400 mt-1">
+          <p className="text-xs text-slate-500 mt-1">
             {isEmployeeOnly
               ? `Track your annual leave balances, apply for time-off, and check review status (${user?.name || 'Employee'})`
               : `Leave policies, quota balances, and multi-tier approval workflow for ${tenant?.name || 'Workspace'}`}
@@ -168,7 +168,7 @@ export default function TenantLeavesPage() {
             if (leaveTypes.length > 0 && !leaveTypeId) setLeaveTypeId(leaveTypes[0].id);
             setModalOpen(true);
           }}
-          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs shadow-md shadow-emerald-900/30 transition-all"
+          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs shadow-xs transition-all cursor-pointer"
         >
           <Plus className="w-4 h-4" />
           <span>Apply For Leave</span>
@@ -178,31 +178,31 @@ export default function TenantLeavesPage() {
       {/* Leave Type Policies */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {leaveTypes.map((lt) => (
-          <div key={lt.id} className="p-4 rounded-2xl bg-slate-950 border border-slate-800 shadow-md space-y-2">
+          <div key={lt.id} className="p-4 rounded-2xl bg-white border border-slate-200 shadow-xs space-y-2">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-white">{lt.name}</span>
-              <span className="font-mono text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-800 text-slate-300">
+              <span className="text-xs font-bold text-slate-900">{lt.name}</span>
+              <span className="font-mono text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
                 {lt.code}
               </span>
             </div>
-            <div className="text-2xl font-extrabold text-emerald-400">{lt.daysPerYear} Days</div>
-            <p className="text-[11px] text-slate-400">Annual entitlement per employee (Paid)</p>
+            <div className="text-2xl font-extrabold text-emerald-700">{lt.daysPerYear} Days</div>
+            <p className="text-[11px] text-slate-500 font-medium">Annual entitlement per employee (Paid)</p>
           </div>
         ))}
       </div>
 
       {/* Leave Applications Table */}
-      <div className="rounded-2xl bg-slate-950 border border-slate-800 overflow-hidden shadow-xl">
-        <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
-          <h3 className="text-sm font-bold text-white">
+      <div className="rounded-2xl bg-white border border-slate-200 overflow-hidden shadow-xs">
+        <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+          <h3 className="text-sm font-bold text-slate-900">
             {isEmployeeOnly ? 'My Leave Requests' : 'Leave Requests & Approvals'}
           </h3>
-          <span className="text-xs text-slate-400">{visibleApplications.length} Request(s)</span>
+          <span className="text-xs text-slate-500 font-medium">{visibleApplications.length} Request(s)</span>
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs text-slate-300">
-            <thead className="bg-slate-900 uppercase font-semibold text-[10px] text-slate-400 tracking-wider border-b border-slate-800">
+          <table className="w-full text-left text-xs text-slate-700">
+            <thead className="bg-slate-50 uppercase font-semibold text-[10px] text-slate-500 tracking-wider border-b border-slate-200">
               <tr>
                 <th className="px-6 py-3.5">Employee</th>
                 <th className="px-6 py-3.5">Leave Type</th>
@@ -213,7 +213,7 @@ export default function TenantLeavesPage() {
                 <th className="px-6 py-3.5 text-right">{isEmployeeOnly ? 'Review Remarks' : 'HR Review'}</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-800/80">
+            <tbody className="divide-y divide-slate-200">
               {visibleApplications.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="px-6 py-8 text-center text-slate-500 text-xs">
@@ -224,24 +224,24 @@ export default function TenantLeavesPage() {
                 </tr>
               ) : (
                 visibleApplications.map((app) => (
-                  <tr key={app.id} className="hover:bg-slate-900/60 transition-colors">
-                    <td className="px-6 py-4 font-bold text-white">{app.employeeName}</td>
-                    <td className="px-6 py-4 font-medium text-slate-300">{app.leaveTypeName}</td>
-                    <td className="px-6 py-4 font-mono text-slate-400">
+                  <tr key={app.id} className="hover:bg-slate-50/80 transition-colors">
+                    <td className="px-6 py-4 font-bold text-slate-900">{app.employeeName}</td>
+                    <td className="px-6 py-4 font-medium text-slate-700">{app.leaveTypeName}</td>
+                    <td className="px-6 py-4 font-mono text-slate-500">
                       {app.startDate} &rarr; {app.endDate}
                     </td>
-                    <td className="px-6 py-4 font-bold text-emerald-400">{app.totalDays} Days</td>
-                    <td className="px-6 py-4 text-slate-300 max-w-xs truncate italic">
+                    <td className="px-6 py-4 font-bold text-emerald-700">{app.totalDays} Days</td>
+                    <td className="px-6 py-4 text-slate-600 max-w-xs truncate italic">
                       &ldquo;{app.reason}&rdquo;
                     </td>
                     <td className="px-6 py-4">
                       <span
                         className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
                           app.status === 'APPROVED'
-                            ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                             : app.status === 'PENDING'
-                            ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
-                            : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+                            ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                            : 'bg-rose-50 text-rose-700 border border-rose-200'
                         }`}
                       >
                         {app.status}
@@ -249,26 +249,26 @@ export default function TenantLeavesPage() {
                     </td>
                     <td className="px-6 py-4 text-right">
                       {isEmployeeOnly ? (
-                        <span className="text-[11px] text-slate-400 italic">
+                        <span className="text-[11px] text-slate-500 italic">
                           {app.reviewComment || (app.status === 'PENDING' ? 'Under Review' : 'Processed')}
                         </span>
                       ) : app.status === 'PENDING' ? (
                         <div className="flex items-center justify-end gap-2">
                           <button
                             onClick={() => handleStatusUpdate(app.id, 'APPROVED')}
-                            className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-[11px]"
+                            className="flex items-center gap-1 px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-[11px] shadow-xs cursor-pointer"
                           >
                             <CheckCircle2 className="w-3 h-3" /> Approve
                           </button>
                           <button
                             onClick={() => handleStatusUpdate(app.id, 'REJECTED')}
-                            className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-rose-600/20 hover:bg-rose-600/30 text-rose-300 border border-rose-500/30 font-semibold text-[11px]"
+                            className="flex items-center gap-1 px-3 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-semibold text-[11px] cursor-pointer"
                           >
                             <XCircle className="w-3 h-3" /> Reject
                           </button>
                         </div>
                       ) : (
-                        <span className="text-[11px] text-slate-400">{app.reviewedBy || 'Decided'}</span>
+                        <span className="text-[11px] text-slate-500 font-medium">{app.reviewedBy || 'Decided'}</span>
                       )}
                     </td>
                   </tr>

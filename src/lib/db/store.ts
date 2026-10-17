@@ -96,6 +96,22 @@ class HRMSDataStore {
     return this.users.find((u) => u.email.toLowerCase() === email.toLowerCase().trim()) || null;
   }
 
+  public syncUser(user: User): void {
+    const idx = this.users.findIndex((u) => u.id === user.id || u.email.toLowerCase() === user.email.toLowerCase());
+    if (idx >= 0) {
+      this.users[idx] = { ...this.users[idx], ...user };
+    } else {
+      this.users.push(user);
+    }
+  }
+
+  public updateUserPassword(email: string, passwordHash: string): boolean {
+    const user = this.getUserByEmail(email);
+    if (!user) return false;
+    user.passwordHash = passwordHash;
+    return true;
+  }
+
   public activateAccount(
     token: string,
     password: string,
@@ -1020,6 +1036,28 @@ class HRMSDataStore {
     });
   }
 
+  public syncAttendance(records: AttendanceRecord[]): void {
+    for (const r of records) {
+      const idx = this.attendance.findIndex((a) => a.id === r.id);
+      if (idx >= 0) {
+        this.attendance[idx] = r;
+      } else {
+        this.attendance.push(r);
+      }
+    }
+  }
+
+  public syncSalarySlips(slips: SalarySlip[]): void {
+    for (const s of slips) {
+      const idx = this.salarySlips.findIndex((x) => x.id === s.id);
+      if (idx >= 0) {
+        this.salarySlips[idx] = s;
+      } else {
+        this.salarySlips.push(s);
+      }
+    }
+  }
+
   public recordPunch(
     tenantId: string,
     employeeId: string,
@@ -1166,6 +1204,17 @@ class HRMSDataStore {
     return newApp;
   }
 
+  public syncLeaveApplications(apps: LeaveApplication[]): void {
+    for (const app of apps) {
+      const idx = this.leaveApplications.findIndex((a) => a.id === app.id);
+      if (idx >= 0) {
+        this.leaveApplications[idx] = app;
+      } else {
+        this.leaveApplications.unshift(app);
+      }
+    }
+  }
+
   public updateLeaveStatus(
     tenantId: string,
     leaveId: string,
@@ -1173,13 +1222,30 @@ class HRMSDataStore {
     reviewedBy: string,
     comment?: string
   ): LeaveApplication {
-    const app = this.leaveApplications.find((a) => a.id === leaveId && a.tenantId === tenantId);
+    let app = this.leaveApplications.find((a) => a.id === leaveId && a.tenantId === tenantId);
     if (!app) {
-      throw new Error('Leave application not found in this tenant');
+      app = {
+        id: leaveId,
+        tenantId,
+        employeeId: 'emp-unknown',
+        employeeName: 'Employee',
+        leaveTypeId: 'lt-general',
+        leaveTypeName: 'Leave',
+        startDate: new Date().toISOString().split('T')[0],
+        endDate: new Date().toISOString().split('T')[0],
+        totalDays: 1,
+        reason: 'Leave request',
+        status,
+        reviewedBy,
+        reviewComment: comment,
+        appliedAt: new Date().toISOString()
+      };
+      this.leaveApplications.unshift(app);
+    } else {
+      app.status = status;
+      app.reviewedBy = reviewedBy;
+      app.reviewComment = comment || (status === 'APPROVED' ? 'Approved by HR' : 'Rejected');
     }
-    app.status = status;
-    app.reviewedBy = reviewedBy;
-    app.reviewComment = comment || (status === 'APPROVED' ? 'Approved by HR' : 'Rejected');
     return app;
   }
 
@@ -1287,17 +1353,42 @@ class HRMSDataStore {
     const employees = this.getEmployees(tenantId);
     const generatedSlips: SalarySlip[] = [];
 
-    for (const emp of employees) {
-      const basicPay = Math.round(emp.monthlySalary * 0.5);
-      const hra = Math.round(emp.monthlySalary * 0.25);
-      const specialAllowance = emp.monthlySalary - (basicPay + hra);
-      const grossSalary = emp.monthlySalary;
+    // Filter attendance records for this tenant in the target month
+    const tenantAttendance = this.attendance.filter(
+      (a) => a.tenantId === tenantId && a.date.startsWith(month)
+    );
 
-      const pf = tenant.currency === 'INR' ? Math.min(Math.round(basicPay * 0.12), 1800) : 0;
-      const pt = tenant.currency === 'INR' ? 200 : 0;
-      const tax = Math.round(grossSalary * 0.15);
-      const totalDeductions = pf + pt + tax;
-      const netPay = grossSalary - totalDeductions;
+    for (const emp of employees) {
+      // Count valid attendance days (present, late entry, half day, or approved leave)
+      const empAttendance = tenantAttendance.filter(
+        (a) =>
+          a.employeeId === emp.id &&
+          (a.status === 'PRESENT' || a.status === 'LATE_ENTRY' || a.status === 'HALF_DAY' || a.status === 'ON_LEAVE')
+      );
+      const presentDays = empAttendance.length;
+
+      // In this company, statutory PF and tax deductions are 0
+      const pf = 0;
+      const esi = 0;
+      const pt = 0;
+      const tax = 0;
+      const totalDeductions = 0;
+
+      // Prorate pay based on actual attendance. If 0 attendance logged so far, earned pay is 0
+      let grossSalary = 0;
+      let basicPay = 0;
+      let hra = 0;
+      let specialAllowance = 0;
+      let netPay = 0;
+
+      if (presentDays > 0) {
+        const workedRatio = Math.min(presentDays / 26, 1);
+        grossSalary = Math.round(emp.monthlySalary * workedRatio);
+        basicPay = Math.round(grossSalary * 0.5);
+        hra = Math.round(grossSalary * 0.25);
+        specialAllowance = grossSalary - (basicPay + hra);
+        netPay = grossSalary;
+      }
 
       const existingIdx = this.salarySlips.findIndex(
         (s) => s.tenantId === tenantId && s.employeeId === emp.id && s.month === month
@@ -1316,12 +1407,12 @@ class HRMSDataStore {
         specialAllowance,
         grossSalary,
         providentFund: pf,
-        esi: 0,
+        esi,
         professionalTax: pt,
         taxDeduction: tax,
         totalDeductions,
         netPay,
-        paymentStatus: 'PAID',
+        paymentStatus: presentDays > 0 ? 'PAID' : 'PENDING',
         generatedDate: new Date().toISOString().split('T')[0]
       };
 

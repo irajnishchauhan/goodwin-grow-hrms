@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db/store';
+import { SupabaseStore } from '@/lib/db/supabaseStore';
 
 export async function POST(req: Request) {
   try {
@@ -13,12 +14,21 @@ export async function POST(req: Request) {
       );
     }
 
-    const { user, token } = db.loginUser(email, password);
+    const trimmedEmail = email.trim();
+
+    // 1. Sync user from Supabase if not in memory or to verify latest credentials
+    const supaUser = await SupabaseStore.getUserByEmail(trimmedEmail);
+    if (supaUser) {
+      db.syncUser(supaUser);
+    }
+
+    // 2. Perform login verification
+    const { user, token } = db.loginUser(trimmedEmail, password);
 
     let redirectUrl = '/';
     if (user.isSuperAdmin) {
       redirectUrl = '/super-admin';
-    } else if (user.memberships.length === 1) {
+    } else if (user.memberships && user.memberships.length === 1) {
       const membership = user.memberships[0];
       const slug = membership.tenantSlug;
       if (membership.role === 'COMPANY_ADMIN') {
@@ -30,8 +40,10 @@ export async function POST(req: Request) {
       } else {
         redirectUrl = `/app/${slug}/my-dashboard`;
       }
-    } else if (user.memberships.length > 1) {
+    } else if (user.memberships && user.memberships.length > 1) {
       redirectUrl = `/select-company?userId=${user.id}`;
+    } else {
+      redirectUrl = `/app/${user.activeTenantId?.replace('tenant-', '') || 'goodwin-batteries-fleet'}/my-dashboard`;
     }
 
     return NextResponse.json({
@@ -44,7 +56,7 @@ export async function POST(req: Request) {
       }
     });
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Authentication failed';
+    const message = error instanceof Error ? error.message : 'Invalid email or password. Please verify your credentials.';
     return NextResponse.json({ success: false, error: message }, { status: 401 });
   }
 }

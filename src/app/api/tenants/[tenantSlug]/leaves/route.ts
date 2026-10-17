@@ -204,8 +204,21 @@ export async function PATCH(
       return NextResponse.json({ success: false, error: 'Leave ID and new status required' }, { status: 400 });
     }
 
+    // Always sync existing leave applications from Supabase first
+    const supaApplications = await SupabaseStore.getLeaveApplications(tenant.id);
+    if (supaApplications && supaApplications.length > 0) {
+      db.syncLeaveApplications(supaApplications);
+    }
+
     const updated = db.updateLeaveStatus(tenant.id, leaveId, status, reviewedBy || 'HR Admin', comment);
     if (updated) {
+      await SupabaseStore.updateLeaveStatus(
+        tenant.id,
+        leaveId,
+        status,
+        reviewedBy || 'HR Admin',
+        comment || (status === 'APPROVED' ? 'Approved by HR' : 'Rejected')
+      );
       await SupabaseStore.saveLeaveApplication(updated);
     }
 

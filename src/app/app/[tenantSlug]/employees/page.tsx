@@ -983,6 +983,16 @@ Ritu,Chopra,ritu.chopra@goodwinbatteries.com,+91 98444 55667,Research & Battery 
               </div>
             )}
 
+            {!isEmployeeOnly && (
+              <Link
+                href={`/app/${tenantSlug}/invitations`}
+                className="w-full py-2.5 px-3 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 text-xs font-bold border border-amber-200 flex items-center justify-center gap-1.5 transition-colors shadow-xs"
+              >
+                <KeyRound className="w-3.5 h-3.5 text-amber-600" />
+                <span>Manage Credentials & Reset Password</span>
+              </Link>
+            )}
+
             <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] flex items-center gap-2">
               <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
               <span>Isolated inside {tenant?.name}&apos;s security tenant boundary.</span>

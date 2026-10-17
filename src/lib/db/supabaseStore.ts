@@ -12,7 +12,9 @@ import {
   Designation,
   Shift,
   Holiday,
-  EmployeeDocument
+  EmployeeDocument,
+  LeaveStatus,
+  TenantMembership
 } from '@/lib/types';
 
 /**
@@ -708,6 +710,33 @@ export class SupabaseStore {
     return true;
   }
 
+  public static async updateLeaveStatus(
+    tenantId: string,
+    leaveId: string,
+    status: LeaveStatus,
+    reviewedBy: string,
+    reviewComment?: string
+  ): Promise<boolean> {
+    const supabase = getSupabaseAdmin();
+    if (!supabase) return false;
+
+    const { error } = await supabase
+      .from('leave_applications')
+      .update({
+        status,
+        reviewed_by: reviewedBy,
+        review_comment: reviewComment || (status === 'APPROVED' ? 'Approved by HR' : 'Rejected')
+      })
+      .eq('id', leaveId)
+      .eq('tenant_id', tenantId);
+
+    if (error) {
+      console.warn('Supabase updateLeaveStatus error:', error.message);
+      return false;
+    }
+    return true;
+  }
+
   // --------------------------------------------------------------------------
   // PAYROLL & SALARY SLIPS
   // --------------------------------------------------------------------------
@@ -963,6 +992,65 @@ export class SupabaseStore {
       });
     }
 
+    return true;
+  }
+
+  public static async getUserByEmail(email: string): Promise<User | null> {
+    const supabase = getSupabaseAdmin();
+    if (!supabase) return null;
+
+    const trimmed = email.trim().toLowerCase();
+    const { data: userData, error: userError } = await supabase
+      .from('users')
+      .select('*')
+      .ilike('email', trimmed)
+      .maybeSingle();
+
+    if (userError || !userData) return null;
+
+    // Fetch user memberships with tenant details
+    const { data: memberData } = await supabase
+      .from('tenant_memberships')
+      .select('*, tenants(name, slug)')
+      .eq('user_id', userData.id);
+
+    const memberships: TenantMembership[] = (memberData || []).map((m: any) => ({
+      id: m.id,
+      tenantId: m.tenant_id,
+      tenantName: m.tenants?.name || 'Workspace',
+      tenantSlug: m.tenants?.slug || m.tenant_id,
+      role: m.role,
+      status: m.status
+    }));
+
+    return {
+      id: userData.id,
+      email: userData.email,
+      passwordHash: userData.password_hash,
+      name: userData.name,
+      avatarUrl: userData.avatar_url,
+      isSuperAdmin: Boolean(userData.is_super_admin),
+      memberships,
+      activeTenantId: userData.active_tenant_id,
+      isActive: Boolean(userData.is_active),
+      createdAt: userData.created_at
+    };
+  }
+
+  public static async updateUserPassword(email: string, passwordHash: string): Promise<boolean> {
+    const supabase = getSupabaseAdmin();
+    if (!supabase) return false;
+
+    const trimmed = email.trim().toLowerCase();
+    const { error } = await supabase
+      .from('users')
+      .update({ password_hash: passwordHash, updated_at: new Date().toISOString() })
+      .ilike('email', trimmed);
+
+    if (error) {
+      console.warn('Supabase updateUserPassword error:', error.message);
+      return false;
+    }
     return true;
   }
 }

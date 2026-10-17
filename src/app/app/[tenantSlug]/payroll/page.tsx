@@ -106,14 +106,14 @@ export default function TenantPayrollPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-extrabold text-white tracking-tight flex items-center gap-2">
-            <CreditCard className="w-6 h-6 text-emerald-400" />
+          <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
+            <CreditCard className="w-6 h-6 text-emerald-600" />
             {isEmployeeOnly ? 'My Salary Slips & Compensation' : 'Payroll & Statutory Compensation'}
           </h1>
-          <p className="text-xs text-slate-400 mt-1">
+          <p className="text-xs text-slate-500 mt-1">
             {isEmployeeOnly
               ? `Personal monthly payslips and tax deductions for ${user?.name || 'Employee'}`
-              : `Salary structure engine, automated tax calculations, and payslip disbursement for ${tenant?.name}`}
+              : `Salary structure engine, automated attendance-based calculations, and payslip disbursement for ${tenant?.name}`}
           </p>
         </div>
 
@@ -121,18 +121,18 @@ export default function TenantPayrollPage() {
           <button
             onClick={handleRunPayroll}
             disabled={runningBatch}
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs shadow-md shadow-emerald-900/30 transition-all disabled:opacity-50"
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs shadow-xs transition-all disabled:opacity-50 cursor-pointer"
           >
             <Play className="w-3.5 h-3.5 fill-white" />
-            <span>{runningBatch ? 'Processing Batch...' : 'Run October 2026 Payroll'}</span>
+            <span>{runningBatch ? 'Processing Batch...' : 'Recalculate October 2026 Payroll'}</span>
           </button>
         )}
       </div>
 
       {batchMsg && (
-        <div className="p-3 rounded-xl bg-emerald-950/80 border border-emerald-500/40 text-emerald-300 text-xs flex items-center justify-between animate-fade-in">
+        <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-center justify-between animate-fade-in shadow-xs">
           <span>✓ {batchMsg}</span>
-          <button onClick={() => setBatchMsg(null)} className="text-emerald-400 hover:text-white">
+          <button onClick={() => setBatchMsg(null)} className="text-emerald-700 hover:text-emerald-900 font-bold cursor-pointer">
             Dismiss
           </button>
         </div>
@@ -140,51 +140,51 @@ export default function TenantPayrollPage() {
 
       {/* Summary KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="p-5 rounded-2xl bg-slate-950 border border-slate-800 shadow-md">
-          <div className="text-xs font-semibold uppercase text-slate-400">
+        <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-xs">
+          <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">
             {isEmployeeOnly ? 'My Monthly Gross' : 'Total Monthly Gross'}
           </div>
-          <div className="text-2xl font-extrabold text-white mt-1">
+          <div className="text-2xl sm:text-3xl font-extrabold text-slate-900 mt-1">
             {tenant?.currency} {totalGross.toLocaleString()}
           </div>
-          <p className="text-[11px] text-slate-400 mt-1">
-            {isEmployeeOnly ? 'Agreed monthly CTC' : 'Before statutory deductions'}
+          <p className="text-[11px] text-slate-500 mt-1">
+            {isEmployeeOnly ? 'Earned gross for logged attendance' : 'Prorated by attendance days logged'}
           </p>
         </div>
 
-        <div className="p-5 rounded-2xl bg-slate-950 border border-slate-800 shadow-md">
-          <div className="text-xs font-semibold uppercase text-slate-400">
+        <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-xs">
+          <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">
             {isEmployeeOnly ? 'My Deductions (PF/Tax)' : 'Statutory Deductions (PF/Tax)'}
           </div>
-          <div className="text-2xl font-extrabold text-rose-400 mt-1">
+          <div className="text-2xl sm:text-3xl font-extrabold text-slate-900 mt-1">
             {tenant?.currency} {totalDeductions.toLocaleString()}
           </div>
-          <p className="text-[11px] text-slate-400 mt-1">Provident Fund + ESI + TDS + PT</p>
+          <p className="text-[11px] text-slate-500 mt-1">PF (₹0) + ESI (₹0) + TDS (₹0) + PT (₹0)</p>
         </div>
 
-        <div className="p-5 rounded-2xl bg-slate-950 border border-slate-800 shadow-md">
-          <div className="text-xs font-semibold uppercase text-slate-400">
+        <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-xs">
+          <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">
             {isEmployeeOnly ? 'My Net Take-Home Pay' : 'Net Salary Disbursed'}
           </div>
-          <div className="text-2xl font-extrabold text-emerald-400 mt-1">
+          <div className="text-2xl sm:text-3xl font-extrabold text-emerald-700 mt-1">
             {tenant?.currency} {totalNet.toLocaleString()}
           </div>
-          <p className="text-[11px] text-emerald-400 mt-1">✓ Credited to bank account</p>
+          <p className="text-[11px] text-emerald-700 font-medium mt-1">✓ Credited to employee bank accounts</p>
         </div>
       </div>
 
       {/* Salary Slips Table */}
-      <div className="rounded-2xl bg-slate-950 border border-slate-800 overflow-hidden shadow-xl">
-        <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
-          <h3 className="text-sm font-bold text-white">
+      <div className="rounded-2xl bg-white border border-slate-200 overflow-hidden shadow-xs">
+        <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+          <h3 className="text-sm font-bold text-slate-900">
             {isEmployeeOnly ? 'My October 2026 Payslips' : 'October 2026 Salary Slips'}
           </h3>
-          <span className="text-xs text-slate-400">{visibleSlips.length} Payslip(s)</span>
+          <span className="text-xs text-slate-500 font-medium">{visibleSlips.length} Payslip(s)</span>
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs text-slate-300">
-            <thead className="bg-slate-900 uppercase font-semibold text-[10px] text-slate-400 tracking-wider border-b border-slate-800">
+          <table className="w-full text-left text-xs text-slate-700">
+            <thead className="bg-slate-50 uppercase font-semibold text-[10px] text-slate-500 tracking-wider border-b border-slate-200">
               <tr>
                 <th className="px-6 py-3.5">Employee</th>
                 <th className="px-6 py-3.5">Code</th>
@@ -195,41 +195,47 @@ export default function TenantPayrollPage() {
                 <th className="px-6 py-3.5 text-right">Payslip</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-800/80">
+            <tbody className="divide-y divide-slate-200">
               {visibleSlips.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="px-6 py-8 text-center text-slate-500 text-xs">
                     {isEmployeeOnly
                       ? 'No personal payslips found on record for your employee account.'
-                      : 'No payroll slips generated for this period. Click "Run October 2026 Payroll" above.'}
+                      : 'No payroll slips generated for this period. Click "Recalculate October 2026 Payroll" above.'}
                   </td>
                 </tr>
               ) : (
                 visibleSlips.map((slip) => (
-                  <tr key={slip.id} className="hover:bg-slate-900/60 transition-colors">
-                    <td className="px-6 py-4 font-bold text-white">{slip.employeeName}</td>
-                    <td className="px-6 py-4 font-mono font-bold text-emerald-400">{slip.employeeCode}</td>
-                    <td className="px-6 py-4 font-semibold text-slate-200">
+                  <tr key={slip.id} className="hover:bg-slate-50/80 transition-colors">
+                    <td className="px-6 py-4 font-bold text-slate-900">{slip.employeeName}</td>
+                    <td className="px-6 py-4 font-mono font-bold text-emerald-700">{slip.employeeCode}</td>
+                    <td className="px-6 py-4 font-semibold text-slate-800">
                       {tenant?.currency} {slip.grossSalary.toLocaleString()}
                     </td>
-                    <td className="px-6 py-4 text-rose-400 font-semibold">
-                      - {tenant?.currency} {slip.totalDeductions.toLocaleString()}
+                    <td className="px-6 py-4 text-slate-600 font-medium">
+                      {tenant?.currency} {slip.totalDeductions.toLocaleString()}
                     </td>
-                    <td className="px-6 py-4 font-extrabold text-emerald-400">
+                    <td className="px-6 py-4 font-extrabold text-emerald-700">
                       {tenant?.currency} {slip.netPay.toLocaleString()}
                     </td>
                     <td className="px-6 py-4">
-                      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                        <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                      <span
+                        className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+                          slip.paymentStatus === 'PAID'
+                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                            : 'bg-amber-50 text-amber-700 border border-amber-200'
+                        }`}
+                      >
+                        <CheckCircle2 className="w-3 h-3 text-emerald-600" />
                         {slip.paymentStatus}
                       </span>
                     </td>
                     <td className="px-6 py-4 text-right">
                       <button
                         onClick={() => setActiveSlip(slip)}
-                        className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition-colors"
+                        className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-semibold border border-slate-200 transition-colors cursor-pointer"
                       >
-                        <FileText className="w-3.5 h-3.5 text-emerald-400" />
+                        <FileText className="w-3.5 h-3.5 text-emerald-600" />
                         <span>View Slip</span>
                       </button>
                     </td>
@@ -246,19 +252,19 @@ export default function TenantPayrollPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fade-in">
           <div className="w-full max-w-2xl rounded-2xl bg-white border border-slate-200 shadow-2xl overflow-hidden text-slate-900">
             {/* Modal Header */}
-            <div className="bg-slate-900 px-6 py-4 text-white flex items-center justify-between">
+            <div className="bg-slate-50 px-6 py-4 text-slate-900 border-b border-slate-200 flex items-center justify-between">
               <div className="flex items-center gap-2.5">
-                <Building2 className="w-5 h-5 text-emerald-400" />
+                <Building2 className="w-5 h-5 text-emerald-600" />
                 <div>
-                  <h3 className="font-bold text-base text-white">{tenant?.name}</h3>
-                  <p className="text-xs text-slate-400 font-mono">
+                  <h3 className="font-bold text-base text-slate-900">{tenant?.name}</h3>
+                  <p className="text-xs text-slate-500 font-mono">
                     Payslip for October 2026 • Ref: {activeSlip.id}
                   </p>
                 </div>
               </div>
               <button
                 onClick={() => setActiveSlip(null)}
-                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800"
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 cursor-pointer transition-colors"
               >
                 <X className="w-5 h-5" />
               </button>

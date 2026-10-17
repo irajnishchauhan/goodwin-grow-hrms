@@ -16,7 +16,12 @@ import {
   Plus,
   Users,
   ExternalLink,
-  X
+  X,
+  KeyRound,
+  Eye,
+  EyeOff,
+  Lock,
+  Check
 } from 'lucide-react';
 import { Invitation, Employee, Tenant, UserRole } from '@/lib/types';
 import RoleGuard from '@/components/RoleGuard';
@@ -44,6 +49,16 @@ export default function TenantInvitationsPage() {
   const [actionMsg, setActionMsg] = useState<string | null>(null);
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
   const [previewEmailInv, setPreviewEmailInv] = useState<Invitation | null>(null);
+
+  // Admin Reset Password State
+  const [resetModalOpen, setResetModalOpen] = useState(false);
+  const [resetEmail, setResetEmail] = useState('');
+  const [resetEmpName, setResetEmpName] = useState('');
+  const [resetPasswordVal, setResetPasswordVal] = useState('');
+  const [showResetPassword, setShowResetPassword] = useState(false);
+  const [resetLoading, setResetLoading] = useState(false);
+  const [resetSuccess, setResetSuccess] = useState<{ password: string; email: string } | null>(null);
+  const [copiedCreds, setCopiedCreds] = useState(false);
 
   const fetchInvitations = async () => {
     try {
@@ -96,6 +111,48 @@ export default function TenantInvitationsPage() {
     } catch (e) {
       console.error(e);
     }
+  };
+
+  const handleOpenResetPassword = (email: string, name: string) => {
+    setResetEmail(email);
+    setResetEmpName(name);
+    setResetPasswordVal(`Goodwin@${Math.floor(1000 + Math.random() * 9000)}`);
+    setShowResetPassword(true);
+    setResetSuccess(null);
+    setCopiedCreds(false);
+    setResetModalOpen(true);
+  };
+
+  const handleExecuteResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!resetEmail || !resetPasswordVal) return;
+    setResetLoading(true);
+    try {
+      const res = await fetch(`/api/tenants/${tenantSlug}/auth/reset-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: resetEmail, newPassword: resetPasswordVal })
+      });
+      const json = await res.json();
+      if (json.success) {
+        setResetSuccess({ email: resetEmail, password: json.data?.temporaryPassword || resetPasswordVal });
+        setActionMsg(`✓ Password successfully reset for ${resetEmail}`);
+        fetchInvitations();
+      } else {
+        alert(json.error || 'Failed to reset password');
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setResetLoading(false);
+    }
+  };
+
+  const handleCopyCredentials = (email: string, pass: string) => {
+    const text = `Goodwin Grow HRMS Login Credentials\nEmail: ${email}\nPassword: ${pass}\nLogin URL: ${window.location.origin}/login`;
+    navigator.clipboard.writeText(text);
+    setCopiedCreds(true);
+    setTimeout(() => setCopiedCreds(false), 3000);
   };
 
   const handleResend = async (invitationId: string) => {
@@ -311,9 +368,19 @@ export default function TenantInvitationsPage() {
                             </>
                           )}
                           {inv.status === 'ACCEPTED' && (
-                            <span className="text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full font-bold text-[11px] flex items-center gap-1">
-                              <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Activated
-                            </span>
+                            <div className="flex items-center gap-2">
+                              <span className="text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full font-bold text-[11px] flex items-center gap-1">
+                                <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Activated
+                              </span>
+                              <button
+                                onClick={() => handleOpenResetPassword(inv.email, inv.employeeName)}
+                                className="px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 text-[11px] font-bold border border-amber-200 flex items-center gap-1 transition-colors cursor-pointer"
+                                title="Reset employee password"
+                              >
+                                <KeyRound className="w-3 h-3 text-amber-600" />
+                                <span>Reset Password</span>
+                              </button>
+                            </div>
                           )}
                         </div>
                       </td>
@@ -483,6 +550,138 @@ export default function TenantInvitationsPage() {
                   </a>
                 </div>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Admin Reset Password Modal */}
+        {resetModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fade-in">
+            <div className="w-full max-w-md rounded-2xl bg-white border border-slate-200 shadow-2xl overflow-hidden text-slate-900">
+              <div className="bg-slate-50 px-6 py-4 border-b border-slate-200 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center">
+                    <KeyRound className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="font-extrabold text-sm text-slate-900">Reset Employee Password</h3>
+                    <p className="text-[11px] text-slate-500 font-medium">{resetEmpName} ({resetEmail})</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setResetModalOpen(false)}
+                  className="text-slate-400 hover:text-slate-600 p-1 rounded-lg cursor-pointer transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {resetSuccess ? (
+                <div className="p-6 space-y-4 text-xs">
+                  <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 space-y-2">
+                    <div className="flex items-center gap-2 font-bold text-emerald-800 text-sm">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                      <span>Password Reset Successfully!</span>
+                    </div>
+                    <p className="text-[11px] text-emerald-700">
+                      The credentials have been instantly updated in the database. Share these credentials with the employee:
+                    </p>
+                    <div className="p-3 rounded-lg bg-white border border-emerald-200 font-mono text-xs space-y-1 select-all">
+                      <div><span className="text-slate-400 font-sans">Email:</span> {resetSuccess.email}</div>
+                      <div><span className="text-slate-400 font-sans">Password:</span> <span className="font-bold text-slate-900">{resetSuccess.password}</span></div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between gap-3 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => handleCopyCredentials(resetSuccess.email, resetSuccess.password)}
+                      className="flex-1 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-all shadow-sm cursor-pointer"
+                    >
+                      {copiedCreds ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                      <span>{copiedCreds ? 'Copied to Clipboard!' : 'Copy Credentials'}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setResetModalOpen(false)}
+                      className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs transition-colors cursor-pointer"
+                    >
+                      Done
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <form onSubmit={handleExecuteResetPassword} className="p-6 space-y-4 text-xs">
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Employee Email</label>
+                    <input
+                      type="text"
+                      disabled
+                      value={resetEmail}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-100 text-slate-600 font-mono text-xs"
+                    />
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="font-bold text-slate-700">Set New Password *</label>
+                      <button
+                        type="button"
+                        onClick={() => setResetPasswordVal(`Goodwin@${Math.floor(1000 + Math.random() * 9000)}`)}
+                        className="text-[11px] text-amber-700 hover:text-amber-800 font-semibold cursor-pointer underline"
+                      >
+                        Generate Random
+                      </button>
+                    </div>
+                    <div className="relative">
+                      <input
+                        type={showResetPassword ? 'text' : 'password'}
+                        value={resetPasswordVal}
+                        onChange={(e) => setResetPasswordVal(e.target.value)}
+                        required
+                        minLength={6}
+                        className="w-full px-3 py-2 pr-10 rounded-xl border border-slate-300 bg-white font-mono text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500/30 shadow-sm"
+                        placeholder="Enter minimum 6 characters..."
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowResetPassword(!showResetPassword)}
+                        className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 cursor-pointer"
+                      >
+                        {showResetPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-[11px] space-y-1 font-medium">
+                    <div className="font-bold flex items-center gap-1.5 text-amber-800">
+                      <ShieldCheck className="w-3.5 h-3.5 text-amber-600" />
+                      <span>Admin Password Override</span>
+                    </div>
+                    <p>
+                      This will immediately update the password in the database and activate the employee login if not already activated.
+                    </p>
+                  </div>
+
+                  <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-200">
+                    <button
+                      type="button"
+                      onClick={() => setResetModalOpen(false)}
+                      className="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-100 font-medium transition-colors cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={resetLoading}
+                      className="px-5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold transition-all shadow-sm flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
+                    >
+                      <Lock className="w-3.5 h-3.5" />
+                      <span>{resetLoading ? 'Updating...' : 'Set Password'}</span>
+                    </button>
+                  </div>
+                </form>
+              )}
             </div>
           </div>
         )}

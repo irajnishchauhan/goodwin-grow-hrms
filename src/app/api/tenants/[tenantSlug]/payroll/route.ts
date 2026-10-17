@@ -61,6 +61,15 @@ export async function POST(
     const body = await req.json();
     const { month } = body;
 
+    const supaEmps = await SupabaseStore.getEmployees(tenant.id);
+    if (supaEmps && supaEmps.length > 0) {
+      db.syncEmployees(supaEmps);
+    }
+    const supaAtt = await SupabaseStore.getAttendance(tenant.id);
+    if (supaAtt && supaAtt.length > 0) {
+      db.syncAttendance(supaAtt);
+    }
+
     const slips = db.generatePayrollRun(tenant.id, month || '2026-10');
     // Save to Supabase
     for (const slip of slips) {
