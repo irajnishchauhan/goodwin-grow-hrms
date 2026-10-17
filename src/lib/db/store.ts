@@ -892,6 +892,7 @@ class HRMSDataStore {
     let shift = this.shifts.find(
       (s) => (s.tenantId === tenantId || !s.tenantId) && (s.id === shiftId || s.name === shiftId)
     );
+    const parsedGrace = data.graceMinutes !== undefined ? Number(data.graceMinutes) : undefined;
     if (!shift) {
       shift = {
         id: shiftId,
@@ -899,15 +900,25 @@ class HRMSDataStore {
         name: data.name || 'Custom Shift',
         startTime: data.startTime || '09:00',
         endTime: data.endTime || '18:00',
-        graceMinutes: data.graceMinutes ?? 15,
-        isDefault: Boolean(data.isDefault),
+        isDefault: data.isDefault !== undefined ? Boolean(data.isDefault) : true,
         color: data.color || '#3B82F6',
-        ...data
+        ...data,
+        graceMinutes: parsedGrace ?? 15
       };
       this.shifts.push(shift);
     } else {
       Object.assign(shift, data);
+      if (parsedGrace !== undefined) {
+        shift.graceMinutes = parsedGrace;
+      }
     }
+
+    // If tenant has no default shift, make this one the default
+    const tenantShifts = this.shifts.filter((s) => s.tenantId === tenantId);
+    if (tenantShifts.length === 1 || !tenantShifts.some((s) => s.isDefault)) {
+      shift.isDefault = true;
+    }
+
     return shift;
   }
 
@@ -917,6 +928,10 @@ class HRMSDataStore {
     );
     if (idx !== -1) {
       this.shifts.splice(idx, 1);
+      const remaining = this.shifts.filter((s) => s.tenantId === tenantId);
+      if (remaining.length > 0 && !remaining.some((s) => s.isDefault)) {
+        remaining[0].isDefault = true;
+      }
       return true;
     }
     return false;
@@ -1249,15 +1264,26 @@ class HRMSDataStore {
   // SHIFTS, ATTENDANCE & REGULARIZATION
   // -------------------------------------------------------------
   public getShifts(tenantId: string): Shift[] {
-    return this.shifts.filter((s) => s.tenantId === tenantId);
+    const list = this.shifts.filter((s) => s.tenantId === tenantId);
+    if (list.length > 0 && !list.some((s) => s.isDefault)) {
+      list[0].isDefault = true;
+    }
+    return list;
   }
 
   public createShift(tenantId: string, data: Omit<Shift, 'id' | 'tenantId'>): Shift {
+    const tenantShifts = this.shifts.filter((s) => s.tenantId === tenantId);
+    const isDefault = data.isDefault !== undefined ? Boolean(data.isDefault) : tenantShifts.length === 0;
     const newShift: Shift = {
       id: `shift-${Date.now()}`,
       tenantId,
-      ...data
+      ...data,
+      graceMinutes: Number(data.graceMinutes) || 15,
+      isDefault
     };
+    if (isDefault) {
+      tenantShifts.forEach((s) => (s.isDefault = false));
+    }
     this.shifts.push(newShift);
     return newShift;
   }
@@ -1272,6 +1298,54 @@ class HRMSDataStore {
       if (date && a.date !== date) return false;
       return true;
     });
+  }
+
+  public updateAttendanceRecord(
+    tenantId: string,
+    recordId: string,
+    updates: Partial<AttendanceRecord>
+  ): AttendanceRecord {
+    let record = this.attendance.find(
+      (a) => a.tenantId === tenantId && (a.id === recordId || (updates.employeeId && a.employeeId === updates.employeeId && updates.date && a.date === updates.date))
+    );
+
+    if (!record) {
+      record = {
+        id: recordId || `att-${Date.now()}`,
+        tenantId,
+        employeeId: updates.employeeId || 'unknown',
+        employeeName: updates.employeeName || 'Employee',
+        date: updates.date || new Date().toISOString().split('T')[0],
+        workingHours: updates.workingHours ?? 0,
+        status: updates.status || 'PRESENT',
+        ...updates
+      };
+      this.attendance.push(record);
+    } else {
+      Object.assign(record, updates);
+    }
+
+    return record;
+  }
+
+  public deleteAttendanceRecord(
+    tenantId: string,
+    recordId: string,
+    employeeId?: string,
+    date?: string
+  ): boolean {
+    const idx = this.attendance.findIndex((a) => {
+      if (a.tenantId !== tenantId) return false;
+      if (recordId && a.id === recordId) return true;
+      if (employeeId && date && a.employeeId === employeeId && a.date === date) return true;
+      return false;
+    });
+
+    if (idx !== -1) {
+      this.attendance.splice(idx, 1);
+      return true;
+    }
+    return false;
   }
 
   public syncAttendance(records: AttendanceRecord[]): void {

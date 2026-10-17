@@ -597,16 +597,22 @@ export class SupabaseStore {
 
     if (error || !data) return null;
 
-    return data.map((s) => ({
+    const mapped = data.map((s) => ({
       id: s.id,
       tenantId: s.tenant_id,
       name: s.name,
       startTime: s.start_time,
       endTime: s.end_time,
-      graceMinutes: s.grace_minutes,
-      isDefault: s.is_default,
+      graceMinutes: Number(s.grace_minutes) || 15,
+      isDefault: Boolean(s.is_default),
       color: s.color || '#3B82F6'
     }));
+
+    if (mapped.length > 0 && !mapped.some((s) => s.isDefault)) {
+      mapped[0].isDefault = true;
+    }
+
+    return mapped;
   }
 
   public static async saveShift(shift: Shift): Promise<boolean> {
@@ -733,6 +739,38 @@ export class SupabaseStore {
       return false;
     }
     return true;
+  }
+
+  public static async deleteAttendance(
+    tenantId: string,
+    recordId: string,
+    employeeId?: string,
+    date?: string
+  ): Promise<boolean> {
+    const supabase = getSupabaseAdmin();
+    if (!supabase) return false;
+
+    try {
+      if (recordId && !recordId.startsWith('absent-') && !recordId.startsWith('leave-') && !recordId.startsWith('off-')) {
+        await supabase
+          .from('attendance')
+          .delete()
+          .eq('tenant_id', tenantId)
+          .eq('id', recordId);
+      }
+      if (employeeId && date) {
+        await supabase
+          .from('attendance')
+          .delete()
+          .eq('tenant_id', tenantId)
+          .eq('employee_id', employeeId)
+          .eq('date', date);
+      }
+      return true;
+    } catch (e) {
+      console.warn('Supabase deleteAttendance exception:', e);
+      return false;
+    }
   }
 
   // --------------------------------------------------------------------------

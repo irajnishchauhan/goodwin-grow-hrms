@@ -21,15 +21,21 @@ import {
   ShieldCheck,
   AlertTriangle,
   UserX,
-  ChevronRight
+  ChevronRight,
+  Edit2,
+  Trash2,
+  Settings,
+  Plus
 } from 'lucide-react';
 import {
   AttendanceRecord,
+  AttendanceStatus,
   Employee,
   Tenant,
   RegularizationRequest,
   Shift
 } from '@/lib/types';
+import { formatTimeTo12Hour, getLateCutoffDisplay } from '@/lib/attendanceCalculator';
 import { useCurrentUser } from '@/lib/auth/useCurrentUser';
 import RoleGuard from '@/components/RoleGuard';
 
@@ -49,7 +55,25 @@ export default function TenantAttendancePage() {
   const [regularizations, setRegularizations] = useState<RegularizationRequest[]>([]);
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [tenant, setTenant] = useState<Tenant | null>(null);
-  const [stats, setStats] = useState({
+  const [stats, setStats] = useState<{
+    totalEmployees: number;
+    presentCount: number;
+    onTimeCount: number;
+    lateCount: number;
+    halfDayCount: number;
+    onLeaveCount: number;
+    absentCount: number;
+    activeShift?: {
+      id: string;
+      name: string;
+      startTime: string;
+      endTime: string;
+      graceMinutes: number;
+      formattedStart: string;
+      formattedEnd: string;
+      lateCutoff: string;
+    };
+  }>({
     totalEmployees: 0,
     presentCount: 0,
     onTimeCount: 0,
@@ -63,8 +87,44 @@ export default function TenantAttendancePage() {
   const [punchLoading, setPunchLoading] = useState(false);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
 
-  // Tab View
-  const [activeTab, setActiveTab] = useState<'attendance' | 'regularizations'>('attendance');
+  // Tab View: Daily Roster | Regularizations | Shift Schedules & Grace Policies
+  const [activeTab, setActiveTab] = useState<'attendance' | 'regularizations' | 'shifts'>('attendance');
+
+  // Super Admin Detection (admin@goodwingrow.ai or rajnish.chauhan@goodwinbatteries.com or super_admin/company_admin)
+  const isSuperAdmin = Boolean(
+    user?.isSuperAdmin ||
+    user?.email === 'admin@goodwingrow.ai' ||
+    user?.email === 'rajnish.chauhan@goodwinbatteries.com' ||
+    user?.memberships?.some(
+      (m) => m.tenantSlug === tenantSlug && (m.role === 'SUPER_ADMIN' || m.role === 'COMPANY_ADMIN')
+    )
+  );
+
+  // Super Admin Attendance Edit State
+  const [editingRecord, setEditingRecord] = useState<AttendanceRecord | null>(null);
+  const [editClockIn, setEditClockIn] = useState('');
+  const [editClockOut, setEditClockOut] = useState('');
+  const [editStatus, setEditStatus] = useState<AttendanceStatus>('PRESENT');
+  const [editHours, setEditHours] = useState<number>(0);
+  const [editNotes, setEditNotes] = useState('');
+  const [editShiftName, setEditShiftName] = useState('');
+  const [editSubmitting, setEditSubmitting] = useState(false);
+  const [editFeedback, setEditFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  // Super Admin Attendance Delete Confirmation State
+  const [deletingRecord, setDeletingRecord] = useState<AttendanceRecord | null>(null);
+  const [deleteSubmitting, setDeleteSubmitting] = useState(false);
+
+  // Shifts Management Tab State
+  const [editingShiftMap, setEditingShiftMap] = useState<
+    Record<string, { startTime: string; endTime: string; graceMinutes: number; name: string }>
+  >({});
+  const [newShiftName, setNewShiftName] = useState('');
+  const [newShiftStart, setNewShiftStart] = useState('09:00');
+  const [newShiftEnd, setNewShiftEnd] = useState('18:00');
+  const [newShiftGrace, setNewShiftGrace] = useState(15);
+  const [shiftSavingId, setShiftSavingId] = useState<string | null>(null);
+  const [shiftMsg, setShiftMsg] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   // Attendance Status Filter
   const [statusFilter, setStatusFilter] = useState<
@@ -122,6 +182,11 @@ export default function TenantAttendancePage() {
         }
         if (json.data.shifts) {
           setShifts(json.data.shifts);
+          const map: Record<string, { startTime: string; endTime: string; graceMinutes: number; name: string }> = {};
+          json.data.shifts.forEach((s: Shift) => {
+            map[s.id] = { startTime: s.startTime, endTime: s.endTime, graceMinutes: s.graceMinutes, name: s.name };
+          });
+          setEditingShiftMap(map);
         }
         if (json.data.stats) {
           setStats(json.data.stats);
@@ -319,6 +384,188 @@ export default function TenantAttendancePage() {
     setIsRegModalOpen(true);
   };
 
+  // Super Admin: Open Edit Attendance Record Modal
+  const handleOpenEditRecord = (rec: AttendanceRecord) => {
+    setEditingRecord(rec);
+    setEditClockIn(rec.clockInTime || '');
+    setEditClockOut(rec.clockOutTime || '');
+    setEditStatus(rec.status);
+    setEditHours(rec.workingHours || 0);
+    setEditNotes(rec.notes || '');
+    setEditShiftName(rec.shiftName || shifts[0]?.name || 'General Day Shift');
+    setEditFeedback(null);
+  };
+
+  // Super Admin: Submit Edited Record
+  const handleSaveAttendanceRecord = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingRecord) return;
+    setEditSubmitting(true);
+    setEditFeedback(null);
+
+    try {
+      const res = await fetch(`/api/tenants/${tenantSlug}/attendance`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          recordId: editingRecord.id,
+          employeeId: editingRecord.employeeId,
+          employeeName: editingRecord.employeeName,
+          date: editingRecord.date,
+          clockInTime: editClockIn.trim() || null,
+          clockOutTime: editClockOut.trim() || null,
+          status: editStatus,
+          workingHours: Number(editHours) || 0,
+          notes: editNotes.trim() || 'Updated by Super Admin',
+          shiftName: editShiftName
+        })
+      });
+
+      const json = await res.json();
+      if (json.success) {
+        setEditFeedback({ type: 'success', message: 'Attendance record updated successfully!' });
+        fetchAttendance(selectedDate);
+        setTimeout(() => {
+          setEditingRecord(null);
+          setEditFeedback(null);
+        }, 900);
+      } else {
+        setEditFeedback({ type: 'error', message: json.error || 'Failed to update record' });
+      }
+    } catch (err) {
+      console.error(err);
+      setEditFeedback({ type: 'error', message: 'Communication error with server' });
+    } finally {
+      setEditSubmitting(false);
+    }
+  };
+
+  // Super Admin: Confirm Delete Attendance Record
+  const handleConfirmDeleteRecord = async () => {
+    if (!deletingRecord) return;
+    setDeleteSubmitting(true);
+
+    try {
+      const res = await fetch(`/api/tenants/${tenantSlug}/attendance`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          recordId: deletingRecord.id,
+          employeeId: deletingRecord.employeeId,
+          date: deletingRecord.date
+        })
+      });
+
+      const json = await res.json();
+      if (json.success) {
+        setStatusMsg(`Attendance record for ${deletingRecord.employeeName} deleted. Marked Unpunched.`);
+        setDeletingRecord(null);
+        fetchAttendance(selectedDate);
+      } else {
+        alert(json.error || 'Failed to delete attendance record');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Failed to communicate with server');
+    } finally {
+      setDeleteSubmitting(false);
+    }
+  };
+
+  // Shift Management: Save Shift Timing
+  const handleSaveShiftTiming = async (shiftId: string) => {
+    const edit = editingShiftMap[shiftId];
+    if (!edit) return;
+    setShiftSavingId(shiftId);
+    setShiftMsg(null);
+
+    try {
+      const res = await fetch(`/api/tenants/${tenantSlug}/shifts`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          shiftId,
+          name: edit.name,
+          startTime: edit.startTime,
+          endTime: edit.endTime,
+          graceMinutes: Number(edit.graceMinutes) || 15
+        })
+      });
+
+      const json = await res.json();
+      if (json.success) {
+        setShiftMsg({
+          type: 'success',
+          message: `Shift "${json.data.name}" updated successfully (${edit.startTime} - ${edit.endTime}, ${edit.graceMinutes}m grace)!`
+        });
+        fetchAttendance(selectedDate);
+      } else {
+        setShiftMsg({ type: 'error', message: json.error || 'Failed to update shift' });
+      }
+    } catch (err) {
+      console.error(err);
+      setShiftMsg({ type: 'error', message: 'Failed to communicate with server' });
+    } finally {
+      setShiftSavingId(null);
+    }
+  };
+
+  // Shift Management: Add Shift
+  const handleAddShift = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newShiftName.trim()) return;
+    setShiftSavingId('new');
+    setShiftMsg(null);
+
+    try {
+      const res = await fetch(`/api/tenants/${tenantSlug}/shifts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: newShiftName.trim(),
+          startTime: newShiftStart,
+          endTime: newShiftEnd,
+          graceMinutes: Number(newShiftGrace) || 15
+        })
+      });
+
+      const json = await res.json();
+      if (json.success) {
+        setNewShiftName('');
+        setShiftMsg({ type: 'success', message: `Shift "${json.data.name}" added successfully!` });
+        fetchAttendance(selectedDate);
+      } else {
+        setShiftMsg({ type: 'error', message: json.error || 'Failed to add shift' });
+      }
+    } catch (err) {
+      console.error(err);
+      setShiftMsg({ type: 'error', message: 'Failed to communicate with server' });
+    } finally {
+      setShiftSavingId(null);
+    }
+  };
+
+  // Shift Management: Delete Shift
+  const handleDeleteShift = async (shiftId: string, shiftName: string) => {
+    if (!confirm(`Are you sure you want to delete shift "${shiftName}"?`)) return;
+    try {
+      const res = await fetch(`/api/tenants/${tenantSlug}/shifts`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ shiftId, shiftName })
+      });
+      const json = await res.json();
+      if (json.success) {
+        setShiftMsg({ type: 'success', message: `Shift "${shiftName}" deleted successfully` });
+        fetchAttendance(selectedDate);
+      } else {
+        setShiftMsg({ type: 'error', message: json.error || 'Failed to delete shift' });
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   // Filter records by status and role
   const visibleRecords = records.filter((r) => {
     if (isEmployeeOnly) {
@@ -354,6 +601,26 @@ export default function TenantAttendancePage() {
     return '8.5 hrs';
   };
 
+  const activeShift = stats?.activeShift || (shifts.length > 0 ? {
+    id: shifts[0].id,
+    name: shifts[0].name,
+    startTime: shifts[0].startTime,
+    endTime: shifts[0].endTime,
+    graceMinutes: shifts[0].graceMinutes ?? 15,
+    formattedStart: formatTimeTo12Hour(shifts[0].startTime),
+    formattedEnd: formatTimeTo12Hour(shifts[0].endTime),
+    lateCutoff: getLateCutoffDisplay(shifts[0].startTime, shifts[0].graceMinutes ?? 15)
+  } : {
+    id: 'default',
+    name: 'General Day Shift',
+    startTime: '09:00',
+    endTime: '18:00',
+    graceMinutes: 15,
+    formattedStart: '09:00 AM',
+    formattedEnd: '06:00 PM',
+    lateCutoff: '09:15 AM'
+  });
+
   return (
     <RoleGuard
       tenantSlug={tenantSlug}
@@ -375,11 +642,11 @@ export default function TenantAttendancePage() {
           </div>
 
           <div className="flex items-center gap-2.5 flex-wrap">
-            {/* Shift Policy Badge */}
+            {/* Shift Policy Badge (Synced dynamically) */}
             <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-700 shadow-xs">
               <Calendar className="w-3.5 h-3.5 text-emerald-600" />
               <span>
-                Standard Day Shift: <strong>09:00 AM - 06:00 PM</strong> (15m grace)
+                {activeShift.name}: <strong>{activeShift.formattedStart} - {activeShift.formattedEnd}</strong> ({activeShift.graceMinutes}m grace)
               </span>
             </div>
 
@@ -446,6 +713,21 @@ export default function TenantAttendancePage() {
               </span>
             )}
           </button>
+
+          <button
+            onClick={() => setActiveTab('shifts')}
+            className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold transition-all border-b-2 cursor-pointer ${
+              activeTab === 'shifts'
+                ? 'border-emerald-600 text-emerald-700 bg-emerald-50/50'
+                : 'border-transparent text-slate-500 hover:text-slate-900 hover:bg-slate-50'
+            }`}
+          >
+            <Settings className="w-4 h-4" />
+            <span>Shift Schedules & Grace Policies</span>
+            <span className="px-2 py-0.5 rounded-full text-[10px] bg-blue-100 text-blue-800 font-bold">
+              {shifts.length} Configured
+            </span>
+          </button>
         </div>
 
         {/* ==================================================================== */}
@@ -467,7 +749,7 @@ export default function TenantAttendancePage() {
                       : 'Not Clocked In Yet Today'}
                   </h3>
                   <p className="text-xs text-slate-500">
-                    Shift: <strong>{currentEmp.shiftName || 'General Day Shift'} (09:00 AM - 06:00 PM)</strong>. 15-minute grace period applies.
+                    Shift: <strong>{currentEmp.shiftName || activeShift.name} ({activeShift.formattedStart} - {activeShift.formattedEnd})</strong>. {activeShift.graceMinutes}-minute grace period applies.
                   </p>
                 </div>
 
@@ -520,7 +802,7 @@ export default function TenantAttendancePage() {
               <div className="p-4 rounded-2xl bg-amber-50/60 border border-amber-200/90 shadow-xs">
                 <div className="text-[10px] font-bold uppercase tracking-wider text-amber-700">Late Arrivals</div>
                 <div className="text-2xl font-black text-amber-800 mt-1 font-mono">{stats.lateCount}</div>
-                <p className="text-[10px] text-amber-600 font-medium mt-0.5">Punched after 09:15 AM</p>
+                <p className="text-[10px] text-amber-600 font-medium mt-0.5">Punched after {activeShift.lateCutoff}</p>
               </div>
 
               <div className="p-4 rounded-2xl bg-indigo-50/60 border border-indigo-200/90 shadow-xs">
@@ -598,7 +880,7 @@ export default function TenantAttendancePage() {
                     Daily Attendance Log & Shift Calculation
                   </h3>
                   <p className="text-xs text-slate-500 font-medium">
-                    Calculated for date <strong>{selectedDate}</strong> based on General Shift (09:00 - 18:00, 15m grace).
+                    Calculated for date <strong>{selectedDate}</strong> based on {activeShift.name} ({activeShift.formattedStart} - {activeShift.formattedEnd}, {activeShift.graceMinutes}m grace).
                   </p>
                 </div>
                 <span className="text-xs px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 font-bold">
@@ -644,10 +926,25 @@ export default function TenantAttendancePage() {
                             </td>
 
                             <td className="px-5 py-4">
-                              <span className="font-semibold text-slate-800 text-[11px]">
-                                {r.shiftName || 'General Day Shift'}
-                              </span>
-                              <div className="text-[10px] text-slate-500 font-mono">09:00 AM - 06:00 PM</div>
+                              {(() => {
+                                const rowShift =
+                                  shifts.find(
+                                    (s) =>
+                                      s.name?.toLowerCase().trim() === r.shiftName?.toLowerCase().trim() ||
+                                      s.id === r.shiftName
+                                  ) || activeShift;
+                                return (
+                                  <>
+                                    <span className="font-semibold text-slate-800 text-[11px]">
+                                      {rowShift?.name || r.shiftName || 'General Day Shift'}
+                                    </span>
+                                    <div className="text-[10px] text-slate-500 font-mono">
+                                      {formatTimeTo12Hour(rowShift?.startTime || '09:00')} -{' '}
+                                      {formatTimeTo12Hour(rowShift?.endTime || '18:00')} ({rowShift?.graceMinutes ?? 15}m grace)
+                                    </div>
+                                  </>
+                                );
+                              })()}
                             </td>
 
                             <td className="px-5 py-4 font-mono font-semibold">
@@ -728,15 +1025,38 @@ export default function TenantAttendancePage() {
                             </td>
 
                             <td className="px-5 py-4 text-right">
-                              {(isUnpunched || isLate || isHalf) && (
-                                <button
-                                  onClick={() => handleQuickRegularize(r.employeeId, r.date)}
-                                  className="px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold text-[11px] transition-colors cursor-pointer"
-                                  title="Submit regularization request for this date"
-                                >
-                                  Regularize
-                                </button>
-                              )}
+                              <div className="flex items-center justify-end gap-1.5 flex-wrap">
+                                {(isUnpunched || isLate || isHalf) && (
+                                  <button
+                                    onClick={() => handleQuickRegularize(r.employeeId, r.date)}
+                                    className="px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold text-[11px] transition-colors cursor-pointer"
+                                    title="Submit regularization request for this date"
+                                  >
+                                    Regularize
+                                  </button>
+                                )}
+
+                                {isSuperAdmin && (
+                                  <>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleOpenEditRecord(r)}
+                                      className="p-1.5 rounded-lg bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-700 border border-slate-200 hover:border-blue-300 font-semibold text-[11px] transition-colors cursor-pointer"
+                                      title="Super Admin: Edit attendance record"
+                                    >
+                                      <Edit2 className="w-3.5 h-3.5" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setDeletingRecord(r)}
+                                      className="p-1.5 rounded-lg bg-slate-100 hover:bg-rose-50 text-slate-600 hover:text-rose-700 border border-slate-200 hover:border-rose-300 font-semibold text-[11px] transition-colors cursor-pointer"
+                                      title="Super Admin: Delete attendance record"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  </>
+                                )}
+                              </div>
                             </td>
                           </tr>
                         );
@@ -948,6 +1268,463 @@ export default function TenantAttendancePage() {
                     )}
                   </tbody>
                 </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ==================================================================== */}
+        {/* TAB 3: SHIFT SCHEDULES & BIOMETRIC GRACE POLICIES */}
+        {/* ==================================================================== */}
+        {activeTab === 'shifts' && (
+          <div className="space-y-6 animate-fade-in text-xs">
+            {/* Banner */}
+            <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div>
+                <h2 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
+                  <Clock className="w-5 h-5 text-emerald-600" />
+                  <span>Shift Schedules & Biometric Grace Minutes</span>
+                </h2>
+                <p className="text-slate-500 mt-1">
+                  Configure factory shifts, standard working hours, and biometric grace periods for automatic late entry and half-day marking.
+                </p>
+              </div>
+
+              <div className="px-3 py-1.5 rounded-xl bg-blue-50 border border-blue-200 text-blue-900 font-bold text-xs">
+                {shifts.length} Active Shift Policies
+              </div>
+            </div>
+
+            {shiftMsg && (
+              <div
+                className={`p-3.5 rounded-xl text-xs font-semibold flex items-center justify-between shadow-xs ${
+                  shiftMsg.type === 'success'
+                    ? 'bg-emerald-50 border border-emerald-200 text-emerald-800'
+                    : 'bg-rose-50 border border-rose-200 text-rose-800'
+                }`}
+              >
+                <span>{shiftMsg.message}</span>
+                <button
+                  onClick={() => setShiftMsg(null)}
+                  className="font-bold hover:underline cursor-pointer"
+                >
+                  Dismiss
+                </button>
+              </div>
+            )}
+
+            {/* Configured Shifts Cards Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {shifts.map((s) => {
+                const edit = editingShiftMap[s.id] || {
+                  startTime: s.startTime,
+                  endTime: s.endTime,
+                  graceMinutes: s.graceMinutes,
+                  name: s.name
+                };
+
+                return (
+                  <div
+                    key={s.id}
+                    className="p-5 rounded-2xl bg-white border border-slate-200 shadow-xs space-y-4 transition-all hover:border-emerald-300"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="font-extrabold text-slate-900 text-sm">{s.name}</span>
+                        {s.isDefault && (
+                          <span className="px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-[10px] font-bold">
+                            Default Shift
+                          </span>
+                        )}
+                      </div>
+
+                      {shifts.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteShift(s.id, s.name)}
+                          className="text-slate-400 hover:text-rose-600 p-1.5 rounded-lg hover:bg-rose-50 transition-colors cursor-pointer"
+                          title={`Delete shift ${s.name}`}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-3">
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-500 mb-1">
+                          Start Time
+                        </label>
+                        <input
+                          type="time"
+                          value={edit.startTime}
+                          onChange={(e) =>
+                            setEditingShiftMap({
+                              ...editingShiftMap,
+                              [s.id]: { ...edit, startTime: e.target.value }
+                            })
+                          }
+                          className="w-full px-2.5 py-1.5 rounded-xl border border-slate-300 bg-slate-50 text-slate-900 font-mono text-xs focus:ring-2 focus:ring-emerald-500"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-500 mb-1">
+                          End Time
+                        </label>
+                        <input
+                          type="time"
+                          value={edit.endTime}
+                          onChange={(e) =>
+                            setEditingShiftMap({
+                              ...editingShiftMap,
+                              [s.id]: { ...edit, endTime: e.target.value }
+                            })
+                          }
+                          className="w-full px-2.5 py-1.5 rounded-xl border border-slate-300 bg-slate-50 text-slate-900 font-mono text-xs focus:ring-2 focus:ring-emerald-500"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-500 mb-1">
+                          Grace (mins)
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          max="60"
+                          value={edit.graceMinutes}
+                          onChange={(e) =>
+                            setEditingShiftMap({
+                              ...editingShiftMap,
+                              [s.id]: { ...edit, graceMinutes: Number(e.target.value) }
+                            })
+                          }
+                          className="w-full px-2.5 py-1.5 rounded-xl border border-slate-300 bg-slate-50 text-slate-900 font-mono text-xs focus:ring-2 focus:ring-emerald-500"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-between text-[11px] text-slate-600">
+                      <span>Cutoff for On-Time Punch:</span>
+                      <strong className="text-emerald-700 font-mono">
+                        {getLateCutoffDisplay(edit.startTime, edit.graceMinutes)}
+                      </strong>
+                    </div>
+
+                    <button
+                      type="button"
+                      disabled={shiftSavingId === s.id}
+                      onClick={() => handleSaveShiftTiming(s.id)}
+                      className="w-full py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                    >
+                      <Check className="w-3.5 h-3.5" />
+                      <span>{shiftSavingId === s.id ? 'Updating...' : 'Update Shift Timing'}</span>
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Configure Additional Shift Form */}
+            <form
+              onSubmit={handleAddShift}
+              className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-3"
+            >
+              <h3 className="text-xs font-extrabold text-slate-900 flex items-center gap-1.5">
+                <Plus className="w-4 h-4 text-emerald-600" />
+                Configure Additional Shift
+              </h3>
+
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                <div className="sm:col-span-1">
+                  <label className="block text-[10px] font-bold text-slate-500 mb-1">Shift Name</label>
+                  <input
+                    type="text"
+                    required
+                    value={newShiftName}
+                    onChange={(e) => setNewShiftName(e.target.value)}
+                    placeholder="e.g. Night Assembly C"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-slate-50 text-slate-900 text-xs focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 mb-1">Start Time</label>
+                  <input
+                    type="time"
+                    required
+                    value={newShiftStart}
+                    onChange={(e) => setNewShiftStart(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-slate-50 text-slate-900 font-mono text-xs focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 mb-1">End Time</label>
+                  <input
+                    type="time"
+                    required
+                    value={newShiftEnd}
+                    onChange={(e) => setNewShiftEnd(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-slate-50 text-slate-900 font-mono text-xs focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 mb-1">Grace Period (Mins)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="60"
+                    value={newShiftGrace}
+                    onChange={(e) => setNewShiftGrace(Number(e.target.value))}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-slate-50 text-slate-900 font-mono text-xs focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end pt-2">
+                <button
+                  type="submit"
+                  disabled={shiftSavingId === 'new'}
+                  className="px-5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs shadow-md transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                >
+                  <Plus className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>{shiftSavingId === 'new' ? 'Adding...' : 'Add Shift Policy'}</span>
+                </button>
+              </div>
+            </form>
+
+            {/* Industrial Attendance Policy Reference */}
+            <div className="p-5 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
+              <h4 className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                Industry Standard Attendance Policy Rules
+              </h4>
+              <ul className="list-disc list-inside space-y-1 text-slate-600 text-[11px] leading-relaxed">
+                <li>
+                  <strong>Grace Period:</strong> Clocking in within <strong>{activeShift.graceMinutes} minutes</strong> of shift start marks <strong>PRESENT</strong>.
+                </li>
+                <li>
+                  <strong>Late Entry:</strong> Clocking in after <strong>{activeShift.lateCutoff}</strong> is automatically marked <strong>LATE ENTRY</strong>.
+                </li>
+                <li>
+                  <strong>Half Day:</strong> Employees working between <strong>4.0 and 7.5 hours</strong> are calculated as <strong>HALF DAY</strong>.
+                </li>
+                <li>
+                  <strong>Full Day Present:</strong> Completing <strong>7.5+ hours</strong> of active working hours qualifies as <strong>PRESENT</strong>.
+                </li>
+                <li>
+                  <strong>Unpunched / Absent:</strong> Any employee without punch logs or approved leave on a working day is marked <strong>ABSENT</strong>.
+                </li>
+              </ul>
+            </div>
+          </div>
+        )}
+
+        {/* Super Admin Edit Attendance Record Modal */}
+        {editingRecord && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fade-in">
+            <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden">
+              <div className="bg-slate-900 px-6 py-4 text-white flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Edit2 className="w-4 h-4 text-emerald-400" />
+                  <h3 className="text-base font-bold">Edit Attendance Record (Super Admin)</h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingRecord(null);
+                    setEditFeedback(null);
+                  }}
+                  className="text-white/80 hover:text-white transition-colors cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <form onSubmit={handleSaveAttendanceRecord} className="p-6 space-y-4 text-xs">
+                {editFeedback && (
+                  <div
+                    className={`p-3 rounded-xl flex items-center gap-2 ${
+                      editFeedback.type === 'success'
+                        ? 'bg-emerald-50 border border-emerald-200 text-emerald-800'
+                        : 'bg-rose-50 border border-rose-200 text-rose-800'
+                    }`}
+                  >
+                    {editFeedback.type === 'success' ? (
+                      <CheckCircle2 className="w-4 h-4 shrink-0" />
+                    ) : (
+                      <AlertCircle className="w-4 h-4 shrink-0" />
+                    )}
+                    <span>{editFeedback.message}</span>
+                  </div>
+                )}
+
+                {/* Employee & Date (Header) */}
+                <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between">
+                  <div>
+                    <div className="font-extrabold text-slate-900 text-sm">{editingRecord.employeeName}</div>
+                    <div className="text-[10px] text-slate-500 font-mono">Date: {editingRecord.date}</div>
+                  </div>
+                  <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-slate-200 text-slate-800">
+                    Current: {editingRecord.status}
+                  </span>
+                </div>
+
+                {/* Clock In / Out Times */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Clock In Time</label>
+                    <input
+                      type="text"
+                      value={editClockIn}
+                      onChange={(e) => setEditClockIn(e.target.value)}
+                      placeholder="e.g. 10:00 AM"
+                      className="w-full p-2.5 rounded-xl bg-slate-50 border border-slate-300 text-slate-900 font-mono text-xs focus:ring-2 focus:ring-emerald-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Clock Out Time</label>
+                    <input
+                      type="text"
+                      value={editClockOut}
+                      onChange={(e) => setEditClockOut(e.target.value)}
+                      placeholder="e.g. 07:00 PM"
+                      className="w-full p-2.5 rounded-xl bg-slate-50 border border-slate-300 text-slate-900 font-mono text-xs focus:ring-2 focus:ring-emerald-500"
+                    />
+                  </div>
+                </div>
+
+                {/* Status & Hours */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Attendance Status</label>
+                    <select
+                      value={editStatus}
+                      onChange={(e) => setEditStatus(e.target.value as AttendanceStatus)}
+                      className="w-full p-2.5 rounded-xl bg-slate-50 border border-slate-300 text-slate-900 text-xs focus:ring-2 focus:ring-emerald-500 font-bold"
+                    >
+                      <option value="PRESENT">PRESENT</option>
+                      <option value="LATE_ENTRY">LATE ENTRY</option>
+                      <option value="HALF_DAY">HALF DAY</option>
+                      <option value="ON_LEAVE">ON LEAVE</option>
+                      <option value="ABSENT">ABSENT</option>
+                      <option value="HOLIDAY">WEEK OFF / HOLIDAY</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Working Hours (hrs)</label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      max="24"
+                      value={editHours}
+                      onChange={(e) => setEditHours(Number(e.target.value))}
+                      className="w-full p-2.5 rounded-xl bg-slate-50 border border-slate-300 text-slate-900 font-mono text-xs focus:ring-2 focus:ring-emerald-500"
+                    />
+                  </div>
+                </div>
+
+                {/* Assigned Shift */}
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Assigned Shift Policy</label>
+                  <select
+                    value={editShiftName}
+                    onChange={(e) => setEditShiftName(e.target.value)}
+                    className="w-full p-2.5 rounded-xl bg-slate-50 border border-slate-300 text-slate-900 text-xs focus:ring-2 focus:ring-emerald-500"
+                  >
+                    {shifts.map((s) => (
+                      <option key={s.id} value={s.name}>
+                        {s.name} ({s.startTime} - {s.endTime}, {s.graceMinutes}m grace)
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Audit Note */}
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Method / Audit Note</label>
+                  <input
+                    type="text"
+                    value={editNotes}
+                    onChange={(e) => setEditNotes(e.target.value)}
+                    placeholder="e.g. Regularized by Super Admin"
+                    className="w-full p-2.5 rounded-xl bg-slate-50 border border-slate-300 text-slate-900 text-xs focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+
+                <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-200">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingRecord(null);
+                      setEditFeedback(null);
+                    }}
+                    className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={editSubmitting}
+                    className="px-5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs shadow-md transition-all disabled:opacity-50 flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Check className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>{editSubmitting ? 'Saving...' : 'Save Changes'}</span>
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* Super Admin Delete Confirmation Modal */}
+        {deletingRecord && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fade-in">
+            <div className="bg-white rounded-2xl max-w-sm w-full shadow-2xl border border-slate-200 overflow-hidden">
+              <div className="bg-rose-700 px-6 py-4 text-white flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Trash2 className="w-5 h-5 text-rose-200" />
+                  <h3 className="text-base font-bold">Delete Attendance Record</h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setDeletingRecord(null)}
+                  className="text-white/80 hover:text-white transition-colors cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="p-6 space-y-4 text-xs">
+                <p className="text-slate-700 leading-relaxed">
+                  Are you sure you want to delete the attendance punch for <strong>{deletingRecord.employeeName}</strong> on <strong>{deletingRecord.date}</strong>?
+                </p>
+                <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-[11px] font-medium">
+                  ⚠️ Deleting this record will immediately reset this employee to <strong>Unpunched (Absent)</strong> for this date.
+                </div>
+
+                <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-200">
+                  <button
+                    type="button"
+                    onClick={() => setDeletingRecord(null)}
+                    className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={deleteSubmitting}
+                    onClick={handleConfirmDeleteRecord}
+                    className="px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shadow-md transition-all disabled:opacity-50 flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>{deleteSubmitting ? 'Deleting...' : 'Delete Record'}</span>
+                  </button>
+                </div>
               </div>
             </div>
           </div>

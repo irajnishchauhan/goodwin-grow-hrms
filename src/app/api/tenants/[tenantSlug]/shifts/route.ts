@@ -118,6 +118,40 @@ export async function POST(
   }
 }
 
+export async function PUT(
+  req: Request,
+  context: { params: Promise<{ tenantSlug: string }> }
+) {
+  try {
+    const { tenantSlug } = await context.params;
+    const tenant = (await SupabaseStore.getTenantBySlug(tenantSlug)) || (await db.getResolvedTenant(tenantSlug, true));
+    if (!tenant) {
+      return NextResponse.json({ success: false, error: 'Tenant not found' }, { status: 404 });
+    }
+
+    const body = await req.json();
+    const { shiftId, id, ...shiftData } = body;
+    const targetId = shiftId || id;
+    if (!targetId) {
+      return NextResponse.json({ success: false, error: 'Shift ID is required' }, { status: 400 });
+    }
+
+    db.invalidateCache(tenant.id);
+    db.invalidateCache(tenantSlug);
+
+    const shift = db.updateShift(tenant.id, targetId, shiftData);
+    await SupabaseStore.saveShift(shift);
+
+    return NextResponse.json(
+      { success: true, data: shift, message: `Shift "${shift.name}" updated successfully` },
+      { headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate' } }
+    );
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Error updating shift';
+    return NextResponse.json({ success: false, error: message }, { status: 400 });
+  }
+}
+
 export async function PATCH(
   req: Request,
   context: { params: Promise<{ tenantSlug: string }> }

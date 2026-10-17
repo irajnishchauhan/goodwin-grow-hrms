@@ -356,13 +356,13 @@ export default function CompanySetupWizardPage() {
           shiftId,
           startTime: edit.startTime,
           endTime: edit.endTime,
-          graceMinutes: edit.graceMinutes
+          graceMinutes: Number(edit.graceMinutes) || 15
         })
       });
       const json = await res.json();
       if (json.success) {
         setShifts(shifts.map((s) => (s.id === shiftId ? json.data : s)));
-        showToast(`Shift "${json.data.name}" updated`);
+        showToast(`Shift "${json.data.name}" updated: ${edit.startTime} - ${edit.endTime} (${edit.graceMinutes}m grace)`);
       }
     } catch (err) {
       console.error(err);

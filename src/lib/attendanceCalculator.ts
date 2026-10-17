@@ -44,6 +44,33 @@ export function parseTimeToMinutes(timeStr?: string | null): number | null {
 }
 
 /**
+ * Formats time string (either "10:00", "19:00", or "10:00 AM") to clean 12-hour AM/PM format.
+ */
+export function formatTimeTo12Hour(timeStr?: string | null): string {
+  if (!timeStr) return '—';
+  const mins = parseTimeToMinutes(timeStr);
+  if (mins === null) return timeStr;
+  const hours = Math.floor(mins / 60);
+  const minutes = mins % 60;
+  const period = hours >= 12 ? 'PM' : 'AM';
+  const dispHours = hours % 12 || 12;
+  return `${String(dispHours).padStart(2, '0')}:${String(minutes).padStart(2, '0')} ${period}`;
+}
+
+/**
+ * Returns dynamic late cutoff time display given shift start time and grace minutes (e.g. "10:15 AM").
+ */
+export function getLateCutoffDisplay(startTime?: string | null, graceMinutes: number = 15): string {
+  const startMins = parseTimeToMinutes(startTime || '09:00') ?? 540;
+  const cutoffMins = startMins + graceMinutes;
+  const hours = Math.floor(cutoffMins / 60);
+  const minutes = cutoffMins % 60;
+  const period = hours >= 12 ? 'PM' : 'AM';
+  const dispHours = hours % 12 || 12;
+  return `${String(dispHours).padStart(2, '0')}:${String(minutes).padStart(2, '0')} ${period}`;
+}
+
+/**
  * Calculates effective hours and attendance status according to Indian / Global HRMS industry standards:
  * - Clock In after shift start + grace -> LATE_ENTRY
  * - Clock Out with >= 7.5 hrs (or shift duration) -> PRESENT
@@ -180,6 +207,16 @@ export function buildDailyWorkforceRoster({
     halfDayCount: number;
     onLeaveCount: number;
     absentCount: number;
+    activeShift: {
+      id: string;
+      name: string;
+      startTime: string;
+      endTime: string;
+      graceMinutes: number;
+      formattedStart: string;
+      formattedEnd: string;
+      lateCutoff: string;
+    };
   };
 } {
   const activeEmployees = employees.filter((e) => e.status !== 'ARCHIVED' && e.status !== 'EXITED');
@@ -336,7 +373,17 @@ export function buildDailyWorkforceRoster({
       lateCount,
       halfDayCount,
       onLeaveCount,
-      absentCount
+      absentCount,
+      activeShift: {
+        id: defaultShift?.id || 'default-shift',
+        name: defaultShift?.name || 'General Day Shift',
+        startTime: defaultShift?.startTime || '09:00',
+        endTime: defaultShift?.endTime || '18:00',
+        graceMinutes: defaultShift?.graceMinutes ?? 15,
+        formattedStart: formatTimeTo12Hour(defaultShift?.startTime || '09:00'),
+        formattedEnd: formatTimeTo12Hour(defaultShift?.endTime || '18:00'),
+        lateCutoff: getLateCutoffDisplay(defaultShift?.startTime || '09:00', defaultShift?.graceMinutes ?? 15)
+      }
     }
   };
 }

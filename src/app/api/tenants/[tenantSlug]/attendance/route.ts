@@ -2,7 +2,11 @@ import { NextResponse } from 'next/server';
 import { db } from '@/lib/db/store';
 import { SupabaseStore } from '@/lib/db/supabaseStore';
 import { Employee } from '@/lib/types';
-import { buildDailyWorkforceRoster } from '@/lib/attendanceCalculator';
+import {
+  buildDailyWorkforceRoster,
+  evaluateAttendanceStatus,
+  DEFAULT_SHIFT_POLICY
+} from '@/lib/attendanceCalculator';
 
 export const dynamic = 'force-dynamic';
 
@@ -262,6 +266,180 @@ export async function PATCH(
     );
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Error updating regularization status';
+    return NextResponse.json({ success: false, error: message }, { status: 400 });
+  }
+}
+
+export async function PUT(
+  req: Request,
+  context: { params: Promise<{ tenantSlug: string }> }
+) {
+  try {
+    const { tenantSlug } = await context.params;
+    const tenant =
+      (await SupabaseStore.getTenantBySlug(tenantSlug)) ||
+      (await db.getResolvedTenant(tenantSlug, true));
+    if (!tenant) {
+      return NextResponse.json({ success: false, error: 'Tenant not found' }, { status: 404 });
+    }
+
+    const body = await req.json();
+    const {
+      recordId,
+      employeeId,
+      date,
+      clockInTime,
+      clockOutTime,
+      workingHours,
+      status,
+      notes,
+      shiftName
+    } = body;
+
+    if (!employeeId || !date) {
+      return NextResponse.json(
+        { success: false, error: 'Employee ID and date are required' },
+        { status: 400 }
+      );
+    }
+
+    let emp = db.getEmployeeById(tenant.id, employeeId);
+    if (!emp) {
+      const emps = await SupabaseStore.getEmployees(tenant.id);
+      if (emps && emps.length > 0) {
+        db.syncEmployees(emps);
+        emp = db.getEmployeeById(tenant.id, employeeId);
+      }
+    }
+
+    const employeeName =
+      body.employeeName || (emp ? `${emp.firstName} ${emp.lastName}`.trim() : 'Employee');
+
+    // Resolve shift policy
+    const shifts = (await SupabaseStore.getShifts(tenant.id)) || db.getShifts(tenant.id);
+    const assignedShift =
+      shifts.find((s) => s.name === (shiftName || emp?.shiftName) || s.isDefault) || shifts[0];
+
+    const policy = assignedShift
+      ? {
+          startTime: assignedShift.startTime || '09:00',
+          endTime: assignedShift.endTime || '18:00',
+          graceMinutes: assignedShift.graceMinutes ?? 15,
+          fullDayMinHours: 7.5,
+          halfDayMinHours: 4.0
+        }
+      : DEFAULT_SHIFT_POLICY;
+
+    let computedStatus = status;
+    let computedHours = workingHours;
+
+    if (!status || status === 'PRESENT' || status === 'LATE_ENTRY' || status === 'HALF_DAY') {
+      if (clockInTime) {
+        const evalRes = evaluateAttendanceStatus(clockInTime, clockOutTime, policy);
+        if (!status) computedStatus = evalRes.status;
+        if (computedHours === undefined || computedHours === null) computedHours = evalRes.workingHours;
+      }
+    }
+
+    const effectiveRecordId =
+      recordId &&
+      !recordId.startsWith('absent-') &&
+      !recordId.startsWith('leave-') &&
+      !recordId.startsWith('off-')
+        ? recordId
+        : `att-${Date.now()}`;
+
+    const updatedRecord = db.updateAttendanceRecord(tenant.id, effectiveRecordId, {
+      id: effectiveRecordId,
+      tenantId: tenant.id,
+      employeeId,
+      employeeName,
+      date,
+      clockInTime: clockInTime || null,
+      clockOutTime: clockOutTime || null,
+      workingHours: Number(computedHours) || 0,
+      status: computedStatus || 'PRESENT',
+      notes: notes || 'Updated by Super Admin',
+      shiftName: assignedShift?.name || shiftName || 'General Day Shift'
+    });
+
+    await SupabaseStore.saveAttendance(updatedRecord);
+
+    db.invalidateCache(tenant.id);
+    db.invalidateCache(tenantSlug);
+
+    return NextResponse.json(
+      {
+        success: true,
+        message: `Attendance for ${employeeName} updated successfully`,
+        data: updatedRecord
+      },
+      { headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate' } }
+    );
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Error updating attendance record';
+    return NextResponse.json({ success: false, error: message }, { status: 400 });
+  }
+}
+
+export async function DELETE(
+  req: Request,
+  context: { params: Promise<{ tenantSlug: string }> }
+) {
+  try {
+    const { tenantSlug } = await context.params;
+    const tenant =
+      (await SupabaseStore.getTenantBySlug(tenantSlug)) ||
+      (await db.getResolvedTenant(tenantSlug, true));
+    if (!tenant) {
+      return NextResponse.json({ success: false, error: 'Tenant not found' }, { status: 404 });
+    }
+
+    let recordId: string | null = null;
+    let employeeId: string | null = null;
+    let date: string | null = null;
+
+    const url = new URL(req.url);
+    recordId = url.searchParams.get('recordId') || url.searchParams.get('id');
+    employeeId = url.searchParams.get('employeeId');
+    date = url.searchParams.get('date');
+
+    if (!recordId && req.headers.get('content-type')?.includes('application/json')) {
+      const body = await req.json().catch(() => ({}));
+      recordId = body.recordId || body.id || recordId;
+      employeeId = body.employeeId || employeeId;
+      date = body.date || date;
+    }
+
+    if (!recordId && (!employeeId || !date)) {
+      return NextResponse.json(
+        { success: false, error: 'Record ID or (Employee ID + Date) required to delete' },
+        { status: 400 }
+      );
+    }
+
+    db.deleteAttendanceRecord(
+      tenant.id,
+      recordId || '',
+      employeeId || undefined,
+      date || undefined
+    );
+    await SupabaseStore.deleteAttendance(
+      tenant.id,
+      recordId || '',
+      employeeId || undefined,
+      date || undefined
+    );
+
+    db.invalidateCache(tenant.id);
+    db.invalidateCache(tenantSlug);
+
+    return NextResponse.json(
+      { success: true, message: 'Attendance record deleted successfully' },
+      { headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate' } }
+    );
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Error deleting attendance record';
     return NextResponse.json({ success: false, error: message }, { status: 400 });
   }
 }
