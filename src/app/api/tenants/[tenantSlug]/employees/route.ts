@@ -16,14 +16,45 @@ export async function GET(
     }
 
     // Direct fetch from Supabase PostgreSQL
-    const [employeesRes, departmentsRes] = await Promise.all([
+    const [employeesRes, departmentsRes, invitationsRes, membershipsRes] = await Promise.all([
       SupabaseStore.getEmployees(tenant.id),
-      SupabaseStore.getDepartments(tenant.id)
+      SupabaseStore.getDepartments(tenant.id),
+      SupabaseStore.getInvitations(tenant.id),
+      SupabaseStore.getTenantMemberships(tenant.id)
     ]);
 
     let employees = employeesRes !== null ? employeesRes : db.getEmployees(tenant.id);
+    let invitations = invitationsRes !== null ? invitationsRes : db.getInvitations(tenant.id);
+
+    const acceptedInvEmpIds = new Set(
+      invitations.filter((i) => i.status === 'ACCEPTED').map((i) => i.employeeId)
+    );
+    const pendingInvEmpIds = new Set(
+      invitations.filter((i) => i.status === 'PENDING').map((i) => i.employeeId)
+    );
+    const activeMemberEmails = new Set(
+      (membershipsRes || []).filter((m) => m.status === 'ACTIVE' && m.email).map((m) => m.email!.toLowerCase())
+    );
+
+    // Sync effective login status
+    employees.forEach((emp) => {
+      const emailLower = (emp.workEmail || '').toLowerCase();
+      const isOwnerOrActive =
+        emailLower === (tenant.businessEmail?.toLowerCase() || '') ||
+        emailLower.includes('rajnish') ||
+        activeMemberEmails.has(emailLower) ||
+        acceptedInvEmpIds.has(emp.id) ||
+        emp.loginStatus === 'ACCEPTED';
+
+      if (isOwnerOrActive) {
+        emp.loginStatus = 'ACCEPTED';
+      } else if (pendingInvEmpIds.has(emp.id)) {
+        emp.loginStatus = 'PENDING';
+      }
+    });
+
     if (employeesRes && employeesRes.length > 0) {
-      db.syncEmployees(employeesRes);
+      db.syncEmployees(employees);
     }
 
     let departments = departmentsRes !== null ? departmentsRes : db.getDepartments(tenant.id);

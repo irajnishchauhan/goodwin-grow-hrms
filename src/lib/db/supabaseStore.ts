@@ -540,14 +540,44 @@ export class SupabaseStore {
 
     if (error || !data) return null;
 
-    return data.map((d) => ({
-      id: d.id,
-      tenantId: d.tenant_id,
-      departmentId: d.department_id,
-      title: d.title,
-      gradeLevel: d.grade_level
-    }));
+    return data.map((d) => {
+      let gl = 'L1';
+      if (d.level !== undefined && d.level !== null) {
+        gl = typeof d.level === 'number' ? `L${d.level}` : (String(d.level).startsWith('L') ? String(d.level) : `L${d.level}`);
+      } else if (d.grade_level) {
+        gl = d.grade_level;
+      }
+      return {
+        id: d.id,
+        tenantId: d.tenant_id,
+        departmentId: d.department_id,
+        title: d.title,
+        gradeLevel: gl
+      };
+    });
   }
+
+  public static async saveDesignation(desig: Designation): Promise<boolean> {
+    const supabase = getSupabaseAdmin();
+    if (!supabase) return false;
+
+    const numericLevel = parseInt(desig.gradeLevel.replace(/\D/g, ''), 10) || 1;
+
+    const { error } = await supabase.from('designations').upsert({
+      id: desig.id,
+      tenant_id: desig.tenantId,
+      department_id: desig.departmentId || null,
+      title: desig.title,
+      level: numericLevel
+    });
+
+    if (error) {
+      console.warn('Supabase saveDesignation error:', error.message);
+      return false;
+    }
+    return true;
+  }
+
 
   // --------------------------------------------------------------------------
   // SHIFTS & HOLIDAYS
@@ -1256,4 +1286,29 @@ export class SupabaseStore {
     }
     return true;
   }
+
+  public static async getTenantMemberships(
+    tenantId: string
+  ): Promise<{ userId: string; role: string; status: string; email?: string }[]> {
+    const supabase = getSupabaseAdmin();
+    if (!supabase) return [];
+
+    try {
+      const { data, error } = await supabase
+        .from('tenant_memberships')
+        .select('user_id, role, status, users(email)')
+        .eq('tenant_id', tenantId);
+
+      if (error || !data) return [];
+      return data.map((m: any) => ({
+        userId: m.user_id,
+        role: m.role,
+        status: m.status,
+        email: m.users?.email
+      }));
+    } catch {
+      return [];
+    }
+  }
 }
+

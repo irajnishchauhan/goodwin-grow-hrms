@@ -27,6 +27,9 @@ export async function GET(
     if (shiftsRes && shiftsRes.length > 0) {
       db.syncShifts(shiftsRes);
     }
+    if (designationsRes && designationsRes.length > 0) {
+      db.syncDesignations(designationsRes);
+    }
 
     const departments = departmentsRes !== null ? departmentsRes : db.getDepartments(tenant.id);
     const designations = designationsRes !== null ? designationsRes : db.getDesignations(tenant.id);
@@ -119,6 +122,17 @@ export async function POST(
         await SupabaseStore.deleteDepartment(tenant.id, departmentId);
         return NextResponse.json({ success: true, message: 'Department deleted' }, noStoreHeader);
       }
+
+      case 'update-designation': {
+        const { designationId, gradeLevel, title, departmentId } = body;
+        if (!designationId) return NextResponse.json({ success: false, error: 'Designation ID is required' }, { status: 400 });
+        const desig = db.updateDesignation(tenant.id, designationId, { gradeLevel, title, departmentId });
+        if (desig) {
+          await SupabaseStore.saveDesignation(desig);
+        }
+        return NextResponse.json({ success: true, message: 'Designation updated', data: desig }, noStoreHeader);
+      }
+
 
       case 'update-shift': {
         const { shiftId, ...shiftData } = body;

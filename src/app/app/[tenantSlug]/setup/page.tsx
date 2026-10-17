@@ -24,9 +24,10 @@ import {
   Copy,
   ExternalLink,
   Check,
-  AlertCircle
+  AlertCircle,
+  ChevronDown
 } from 'lucide-react';
-import { Tenant, OnboardingStep, Department, Designation, Shift, LeaveType, Employee } from '@/lib/types';
+import { Tenant, OnboardingStep, Department, Designation, Shift, LeaveType, Employee, Invitation } from '@/lib/types';
 import RoleGuard from '@/components/RoleGuard';
 
 const TIMEZONES = [
@@ -110,13 +111,14 @@ export default function CompanySetupWizardPage() {
   const [basicPct, setBasicPct] = useState(50);
   const [hraPct, setHraPct] = useState(25);
   const [specialPct, setSpecialPct] = useState(25);
-  const [pfPct, setPfPct] = useState(12);
+  const [pfPct, setPfPct] = useState(0);
   const [sampleSalary, setSampleSalary] = useState(60000);
 
   // Step 7: Employee Import simulation
   const [importStatus, setImportStatus] = useState<string | null>(null);
 
   // Step 8: Invitations
+  const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
 
   const showToast = (msg: string) => {
@@ -171,11 +173,20 @@ export default function CompanySetupWizardPage() {
         setEditingLeaves(leaveMap);
       }
 
-      // Also fetch employees for Step 8
-      const empRes = await fetch(`/api/tenants/${tenantSlug}/employees`);
-      const empJson = await empRes.json();
-      if (empJson.success && empJson.data.employees) {
+      // Also fetch employees and invitations for Step 8
+      const [empRes, invRes] = await Promise.all([
+        fetch(`/api/tenants/${tenantSlug}/employees?t=${Date.now()}`, { cache: 'no-store' }),
+        fetch(`/api/tenants/${tenantSlug}/invitations?t=${Date.now()}`, { cache: 'no-store' })
+      ]);
+      const [empJson, invJson] = await Promise.all([
+        empRes.json().catch(() => ({})),
+        invRes.json().catch(() => ({}))
+      ]);
+      if (empJson.success && empJson.data?.employees) {
         setEmployees(empJson.data.employees);
+      }
+      if (invJson.success && invJson.data?.invitations) {
+        setInvitations(invJson.data.invitations);
       }
     } catch (err) {
       console.error('Failed to load setup data', err);
@@ -492,15 +503,95 @@ export default function CompanySetupWizardPage() {
     showToast('Employee CSV import template downloaded');
   };
 
-  // Step 8: Copy activation link
-  const handleCopyActivationLink = (emp: Employee) => {
-    const dummyToken = `inv-tok-${emp.id.replace('emp-', '')}-2026`;
-    const activationUrl = `${typeof window !== 'undefined' ? window.location.origin : 'https://goodwin-grow-hrms.vercel.app'}/activate?token=${dummyToken}`;
-    navigator.clipboard.writeText(activationUrl);
-    setCopiedToken(emp.id);
-    showToast(`Activation link copied for ${emp.firstName} ${emp.lastName}`);
-    setTimeout(() => setCopiedToken(null), 3000);
+  // Step 3: Toggle / Update Designation Level
+  const handleUpdateDesignationLevel = async (desigId: string, newLevel: string) => {
+    const updated = designations.map((d) => (d.id === desigId ? { ...d, gradeLevel: newLevel } : d));
+    setDesignations(updated);
+    try {
+      const res = await fetch(`/api/tenants/${tenantSlug}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'update-designation',
+          designationId: desigId,
+          gradeLevel: newLevel
+        })
+      });
+      const json = await res.json();
+      if (json.success) {
+        showToast(`Designation level updated to ${newLevel}`);
+      }
+    } catch (err) {
+      console.error('Failed to update designation level', err);
+    }
   };
+
+  const handleCycleDesignationLevel = (desig: Designation) => {
+    const currentNum = parseInt((desig.gradeLevel || 'L1').replace(/\D/g, ''), 10) || 1;
+    const nextNum = currentNum >= 10 ? 1 : currentNum + 1;
+    const nextLevel = `L${nextNum}`;
+    handleUpdateDesignationLevel(desig.id, nextLevel);
+  };
+
+  // Step 8: Copy activation link or direct login URL with real tokens
+  const handleCopyActivationLink = async (emp: Employee) => {
+    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://goodwin-grow-hrms.vercel.app';
+    const emailLower = (emp.workEmail || '').toLowerCase();
+    const isOwnerOrActive =
+      emailLower.includes('rajnish') ||
+      emailLower === (tenant?.businessEmail?.toLowerCase() || '') ||
+      emp.loginStatus === 'ACCEPTED';
+
+    if (isOwnerOrActive) {
+      const loginUrl = `${origin}/login`;
+      navigator.clipboard.writeText(loginUrl);
+      setCopiedToken(emp.id);
+      showToast(`Account is active. Login URL copied for ${emp.firstName}`);
+      setTimeout(() => setCopiedToken(null), 3000);
+      return;
+    }
+
+    // Check if invitation already exists with real token
+    const existingInv = invitations.find(
+      (i) => i.employeeId === emp.id || i.email.toLowerCase() === emailLower
+    );
+
+    if (existingInv && existingInv.token) {
+      const activationUrl = `${origin}/activate?token=${existingInv.token}`;
+      navigator.clipboard.writeText(activationUrl);
+      setCopiedToken(emp.id);
+      showToast(`Activation link copied for ${emp.firstName} ${emp.lastName}`);
+      setTimeout(() => setCopiedToken(null), 3000);
+      return;
+    }
+
+    // Generate real Supabase invitation on the fly
+    try {
+      const res = await fetch(`/api/tenants/${tenantSlug}/invitations`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ employeeId: emp.id, role: 'EMPLOYEE' })
+      });
+      const json = await res.json();
+      if (json.success && json.data?.token) {
+        const activationUrl = `${origin}/activate?token=${json.data.token}`;
+        navigator.clipboard.writeText(activationUrl);
+        setCopiedToken(emp.id);
+        setInvitations((prev) => [...prev, json.data]);
+        setEmployees((prev) =>
+          prev.map((e) => (e.id === emp.id ? { ...e, loginStatus: 'PENDING' } : e))
+        );
+        showToast(`Activation link created & copied for ${emp.firstName} ${emp.lastName}`);
+        setTimeout(() => setCopiedToken(null), 3000);
+      } else {
+        showToast(json.error || 'Failed to generate invitation link');
+      }
+    } catch (err) {
+      console.error(err);
+      showToast('Error generating activation invitation');
+    }
+  };
+
 
   const handleNextStep = () => {
     if (activeStepIndex === 0) {
@@ -880,20 +971,72 @@ export default function CompanySetupWizardPage() {
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                {designations.map((desig) => (
-                  <div
-                    key={desig.id}
-                    className="p-3.5 rounded-2xl bg-slate-900 border border-slate-800 space-y-1"
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="font-bold text-white">{desig.title}</span>
-                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-300">
-                        {desig.gradeLevel || 'L1'}
-                      </span>
+                {designations.map((desig) => {
+                  const currentLevel = desig.gradeLevel || 'L1';
+                  const levelNum = parseInt(currentLevel.replace(/\D/g, ''), 10) || 1;
+                  const levelLabels: Record<number, string> = {
+                    1: 'L1 - Associate / Junior',
+                    2: 'L2 - Professional',
+                    3: 'L3 - Senior / Lead',
+                    4: 'L4 - Specialist / Principal',
+                    5: 'L5 - Assistant Manager',
+                    6: 'L6 - Manager',
+                    7: 'L7 - Senior Manager',
+                    8: 'L8 - Associate Director',
+                    9: 'L9 - Vice President',
+                    10: 'L10 - Executive / C-Suite'
+                  };
+                  const bandLabel =
+                    levelNum >= 9
+                      ? 'Executive Leadership'
+                      : levelNum >= 5
+                      ? 'Management Job Band'
+                      : 'Standard Technical Job Band';
+
+                  return (
+                    <div
+                      key={desig.id}
+                      className="p-4 rounded-2xl bg-slate-900 border border-slate-800 hover:border-slate-700 transition-all space-y-2.5 shadow-sm"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <span className="font-bold text-white text-sm leading-tight">{desig.title}</span>
+
+                        {/* Interactive Level Toggle & Selector */}
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => handleCycleDesignationLevel(desig)}
+                            title="Click to toggle to next level (L1 -> L10)"
+                            className="px-2 py-1 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 text-[11px] font-mono font-bold transition-colors cursor-pointer flex items-center gap-1"
+                          >
+                            <span>{currentLevel}</span>
+                          </button>
+
+                          <div className="relative inline-flex items-center">
+                            <select
+                              value={currentLevel}
+                              onChange={(e) => handleUpdateDesignationLevel(desig.id, e.target.value)}
+                              title="Select technical grade level"
+                              className="appearance-none bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-medium pl-2 pr-5 py-1 rounded-lg border border-slate-700 cursor-pointer focus:outline-none focus:ring-1 focus:ring-amber-500"
+                            >
+                              {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((lvl) => (
+                                <option key={lvl} value={`L${lvl}`} className="bg-slate-900 text-white">
+                                  {levelLabels[lvl]}
+                                </option>
+                              ))}
+                            </select>
+                            <ChevronDown className="w-3 h-3 text-slate-400 absolute right-1.5 pointer-events-none" />
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between text-[11px] text-slate-400 pt-1 border-t border-slate-800/60">
+                        <span>{bandLabel}</span>
+                        <span className="text-[10px] text-slate-500 font-mono">Grade {levelNum} of 10</span>
+                      </div>
                     </div>
-                    <div className="text-[11px] text-slate-400">Standard Technical Job Band</div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}
@@ -1206,7 +1349,7 @@ export default function CompanySetupWizardPage() {
                     onChange={(e) => setPfPct(Number(e.target.value))}
                     className="w-full px-2 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-white font-mono text-sm font-bold"
                   />
-                  <span className="text-[10px] text-slate-500 mt-1 block">Statutory Indian PF</span>
+                  <span className="text-[10px] text-slate-500 mt-1 block">Set to 0% for zero PF deduction</span>
                 </div>
               </div>
 
@@ -1234,7 +1377,7 @@ export default function CompanySetupWizardPage() {
                   const hra = (sampleSalary * hraPct) / 100;
                   const special = (sampleSalary * specialPct) / 100;
                   const pf = Math.min((basic * pfPct) / 100, 1800);
-                  const pt = 200;
+                  const pt = pfPct > 0 ? 200 : 0;
                   const deductions = pf + pt;
                   const net = sampleSalary - deductions;
 
@@ -1254,7 +1397,9 @@ export default function CompanySetupWizardPage() {
                       </div>
                       <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
                         <span className="text-[10px] text-rose-400/80 block">PF + PT Deductions</span>
-                        <span className="text-xs font-mono font-bold text-rose-300">-₹{deductions.toLocaleString('en-IN')}</span>
+                        <span className="text-xs font-mono font-bold text-rose-300">
+                          {deductions === 0 ? '₹0' : `-₹${deductions.toLocaleString('en-IN')}`}
+                        </span>
                       </div>
                       <div className="p-3 rounded-xl bg-emerald-950/40 border border-emerald-500/40">
                         <span className="text-[10px] text-emerald-400 block font-semibold">Net Disbursed</span>
@@ -1338,48 +1483,86 @@ export default function CompanySetupWizardPage() {
 
               {/* Employee Roster with Activation Buttons */}
               <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
-                {employees.map((emp) => (
-                  <div
-                    key={emp.id}
-                    className="p-3 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-between"
-                  >
-                    <div>
-                      <div className="font-bold text-white">{emp.firstName} {emp.lastName}</div>
-                      <div className="text-[10px] text-slate-400 font-mono">
-                        {emp.workEmail} &bull; {emp.departmentName} &bull; {emp.employeeCode}
+                {employees.map((emp) => {
+                  const inv = invitations.find(
+                    (i) => i.employeeId === emp.id || i.email.toLowerCase() === (emp.workEmail || '').toLowerCase()
+                  );
+                  const emailLower = (emp.workEmail || '').toLowerCase();
+                  const isOwnerOrActive =
+                    emailLower.includes('rajnish') ||
+                    emailLower === (tenant?.businessEmail?.toLowerCase() || '') ||
+                    emp.loginStatus === 'ACCEPTED' ||
+                    inv?.status === 'ACCEPTED';
+                  const effectiveStatus = isOwnerOrActive ? 'ACCEPTED' : (inv?.status || emp.loginStatus || 'NOT_INVITED');
+
+                  return (
+                    <div
+                      key={emp.id}
+                      className="p-3.5 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-between gap-3"
+                    >
+                      <div>
+                        <div className="font-bold text-white flex items-center gap-2">
+                          <span>{emp.firstName} {emp.lastName}</span>
+                          {isOwnerOrActive && (
+                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 font-semibold border border-emerald-500/30">
+                              Workspace Owner &bull; Admin
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-[10px] text-slate-400 font-mono mt-0.5">
+                          {emp.workEmail} &bull; {emp.departmentName} &bull; {emp.employeeCode}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span
+                          className={`text-[9px] font-mono font-bold px-2.5 py-1 rounded-full border uppercase ${
+                            effectiveStatus === 'ACCEPTED'
+                              ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+                              : effectiveStatus === 'PENDING'
+                              ? 'bg-amber-500/10 border-amber-500/30 text-amber-400'
+                              : 'bg-slate-800 border-slate-700 text-slate-400'
+                          }`}
+                        >
+                          {effectiveStatus === 'ACCEPTED' ? 'ACTIVE' : effectiveStatus}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleCopyActivationLink(emp)}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 border transition-all cursor-pointer ${
+                            effectiveStatus === 'ACCEPTED'
+                              ? 'bg-emerald-950/40 hover:bg-emerald-900/60 text-emerald-300 border-emerald-500/40 shadow-sm'
+                              : effectiveStatus === 'PENDING'
+                              ? 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'
+                              : 'bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border-amber-500/30'
+                          }`}
+                        >
+                          {copiedToken === emp.id ? (
+                            <>
+                              <Check className="w-3.5 h-3.5 text-emerald-400" />
+                              <span className="text-emerald-400 font-bold">Copied URL!</span>
+                            </>
+                          ) : effectiveStatus === 'ACCEPTED' ? (
+                            <>
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                              <span>Active &bull; Copy Login</span>
+                            </>
+                          ) : effectiveStatus === 'PENDING' ? (
+                            <>
+                              <Copy className="w-3.5 h-3.5 text-slate-400" />
+                              <span>Copy Activation Link</span>
+                            </>
+                          ) : (
+                            <>
+                              <Mail className="w-3.5 h-3.5 text-amber-400" />
+                              <span>Generate &amp; Copy Link</span>
+                            </>
+                          )}
+                        </button>
                       </div>
                     </div>
-
-                    <div className="flex items-center gap-2">
-                      <span
-                        className={`text-[9px] font-mono font-bold px-2 py-0.5 rounded-full border uppercase ${
-                          emp.loginStatus === 'ACCEPTED'
-                            ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
-                            : 'bg-amber-500/10 border-amber-500/30 text-amber-400'
-                        }`}
-                      >
-                        {emp.loginStatus}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => handleCopyActivationLink(emp)}
-                        className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center gap-1.5 border border-slate-700 transition-colors"
-                      >
-                        {copiedToken === emp.id ? (
-                          <>
-                            <Check className="w-3 h-3 text-emerald-400" />
-                            <span className="text-emerald-400">Copied!</span>
-                          </>
-                        ) : (
-                          <>
-                            <Copy className="w-3 h-3 text-slate-400" />
-                            <span>Copy Activation Link</span>
-                          </>
-                        )}
-                      </button>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}

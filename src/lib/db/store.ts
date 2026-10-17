@@ -920,7 +920,15 @@ class HRMSDataStore {
         monthlySalary: Number(row.monthlySalary) || 45000,
         workLocation: row.workLocation || `${tenant.city} Plant`,
         shiftName: 'General Day Shift',
-        loginStatus: 'NOT_INVITED',
+        loginStatus: (
+          row.workEmail.trim().toLowerCase() === (tenant.businessEmail || '').toLowerCase() ||
+          row.workEmail.trim().toLowerCase().includes('rajnish') ||
+          this.users.some(
+            (u) =>
+              u.email.toLowerCase() === row.workEmail.trim().toLowerCase() &&
+              (u.isSuperAdmin || u.memberships.some((m) => m.tenantId === tenantId && m.status === 'ACTIVE'))
+          )
+        ) ? 'ACCEPTED' : 'NOT_INVITED',
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       };
@@ -1610,6 +1618,43 @@ class HRMSDataStore {
   public getDesignations(tenantId: string): Designation[] {
     return this.designations.filter((d) => d.tenantId === tenantId);
   }
+
+  public syncDesignations(designations: Designation[]): void {
+    designations.forEach((desig) => {
+      const idx = this.designations.findIndex((d) => d.id === desig.id && d.tenantId === desig.tenantId);
+      if (idx >= 0) {
+        this.designations[idx] = desig;
+      } else {
+        this.designations.push(desig);
+      }
+    });
+  }
+
+  public updateDesignation(
+    tenantId: string,
+    designationId: string,
+    updates: Partial<Designation>
+  ): Designation | null {
+    let desig = this.designations.find(
+      (d) => (d.id === designationId || d.title.toLowerCase() === designationId.toLowerCase()) && d.tenantId === tenantId
+    );
+    if (!desig) {
+      desig = {
+        id: designationId,
+        tenantId,
+        title: updates.title || designationId,
+        departmentId: updates.departmentId || '',
+        gradeLevel: updates.gradeLevel || 'L1'
+      };
+      this.designations.push(desig);
+      return desig;
+    }
+    if (updates.gradeLevel !== undefined) desig.gradeLevel = updates.gradeLevel;
+    if (updates.title !== undefined) desig.title = updates.title;
+    if (updates.departmentId !== undefined) desig.departmentId = updates.departmentId;
+    return desig;
+  }
+
 
   // -------------------------------------------------------------
   // AUDIT LOGS

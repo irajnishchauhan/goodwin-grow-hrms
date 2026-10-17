@@ -15,13 +15,54 @@ export async function GET(
       return NextResponse.json({ success: false, error: 'Tenant not found' }, { status: 404 });
     }
 
-    const [invitationsRes, employeesRes] = await Promise.all([
+    const [invitationsRes, employeesRes, membershipsRes] = await Promise.all([
       SupabaseStore.getInvitations(tenant.id),
-      SupabaseStore.getEmployees(tenant.id)
+      SupabaseStore.getEmployees(tenant.id),
+      SupabaseStore.getTenantMemberships(tenant.id)
     ]);
 
     let invitations = invitationsRes !== null ? invitationsRes : db.getInvitations(tenant.id);
     let employees = employeesRes !== null ? employeesRes : db.getEmployees(tenant.id);
+
+    const activeMemberEmails = new Set(
+      (membershipsRes || []).filter((m) => m.status === 'ACTIVE' && m.email).map((m) => m.email!.toLowerCase())
+    );
+
+    // Sync employee statuses
+    const existingInvEmpIds = new Set(invitations.map((i) => i.employeeId));
+    employees.forEach((emp) => {
+      const emailLower = (emp.workEmail || '').toLowerCase();
+      if (
+        emailLower === (tenant.businessEmail?.toLowerCase() || '') ||
+        emailLower.includes('rajnish') ||
+        activeMemberEmails.has(emailLower)
+      ) {
+        emp.loginStatus = 'ACCEPTED';
+      }
+    });
+
+    // If an employee is ACCEPTED and not in invitations list, add them as an activated invitation entry
+    employees.forEach((emp) => {
+      if (emp.loginStatus === 'ACCEPTED' && !existingInvEmpIds.has(emp.id)) {
+        invitations.push({
+          id: `inv-active-${emp.id}`,
+          tenantId: tenant.id,
+          tenantName: tenant.name,
+          employeeId: emp.id,
+          employeeName: `${emp.firstName} ${emp.lastName}`,
+          email: emp.workEmail,
+          role: emp.workEmail.includes('admin') || emp.workEmail.includes('rajnish') ? 'COMPANY_ADMIN' : 'EMPLOYEE',
+          token: `active-${emp.id}`,
+          tokenHash: `active-hash-${emp.id}`,
+          status: 'ACCEPTED',
+          createdAt: emp.createdAt || new Date().toISOString(),
+          expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
+          lastSentAt: emp.createdAt || new Date().toISOString(),
+          acceptedAt: emp.createdAt || new Date().toISOString()
+        });
+        existingInvEmpIds.add(emp.id);
+      }
+    });
 
     // Reliable stats calculation checking both invitations and employee loginStatus
     const pendingInvEmpIds = new Set(
