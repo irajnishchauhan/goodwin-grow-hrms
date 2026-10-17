@@ -1334,18 +1334,58 @@ class HRMSDataStore {
     employeeId?: string,
     date?: string
   ): boolean {
-    const idx = this.attendance.findIndex((a) => {
-      if (a.tenantId !== tenantId) return false;
-      if (recordId && a.id === recordId) return true;
-      if (employeeId && date && a.employeeId === employeeId && a.date === date) return true;
-      return false;
+    const beforeLen = this.attendance.length;
+    this.attendance = this.attendance.filter((a) => {
+      if (a.tenantId !== tenantId) return true;
+      if (recordId && a.id === recordId) return false;
+      if (employeeId && date && a.employeeId === employeeId && a.date === date) return false;
+      return true;
+    });
+    return this.attendance.length < beforeLen;
+  }
+
+  public deleteAttendanceRecords(
+    tenantId: string,
+    items?: { recordId?: string; employeeId?: string; date?: string }[],
+    deleteAllForDate?: string
+  ): number {
+    const beforeLen = this.attendance.length;
+    if (deleteAllForDate) {
+      this.attendance = this.attendance.filter(
+        (a) => !(a.tenantId === tenantId && a.date === deleteAllForDate)
+      );
+      return beforeLen - this.attendance.length;
+    }
+
+    if (!items || items.length === 0) return 0;
+
+    const recordIdSet = new Set(
+      items
+        .map((i) => i.recordId)
+        .filter(
+          (id): id is string =>
+            typeof id === 'string' &&
+            id.length > 0 &&
+            !id.startsWith('absent-') &&
+            !id.startsWith('leave-') &&
+            !id.startsWith('off-')
+        )
+    );
+
+    const empDateSet = new Set(
+      items
+        .filter((i) => i.employeeId && i.date)
+        .map((i) => `${i.employeeId}::${i.date}`)
+    );
+
+    this.attendance = this.attendance.filter((a) => {
+      if (a.tenantId !== tenantId) return true;
+      if (recordIdSet.has(a.id)) return false;
+      if (empDateSet.has(`${a.employeeId}::${a.date}`)) return false;
+      return true;
     });
 
-    if (idx !== -1) {
-      this.attendance.splice(idx, 1);
-      return true;
-    }
-    return false;
+    return beforeLen - this.attendance.length;
   }
 
   public syncAttendance(records: AttendanceRecord[]): void {

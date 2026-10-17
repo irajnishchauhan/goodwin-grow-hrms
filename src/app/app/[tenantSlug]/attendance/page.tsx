@@ -25,7 +25,8 @@ import {
   Edit2,
   Trash2,
   Settings,
-  Plus
+  Plus,
+  CheckSquare
 } from 'lucide-react';
 import {
   AttendanceRecord,
@@ -44,7 +45,7 @@ export default function TenantAttendancePage() {
   const searchParams = useSearchParams();
   const tenantSlug = params.tenantSlug as string;
 
-  const { user, isEmployeeOnly, isCompanyAdmin } = useCurrentUser(tenantSlug);
+  const { user, isEmployeeOnly, isCompanyAdmin, isSuperAdmin } = useCurrentUser(tenantSlug);
 
   // Core Attendance & Roster State
   const [selectedDate, setSelectedDate] = useState(
@@ -90,15 +91,24 @@ export default function TenantAttendancePage() {
   // Tab View: Daily Roster | Regularizations | Shift Schedules & Grace Policies
   const [activeTab, setActiveTab] = useState<'attendance' | 'regularizations' | 'shifts'>('attendance');
 
-  // Super Admin Detection (admin@goodwingrow.ai or rajnish.chauhan@goodwinbatteries.com or super_admin/company_admin)
-  const isSuperAdmin = Boolean(
+  // Super Admin & Company Admin Detection (admin@goodwingrow.ai or rajnish or super_admin / company_admin)
+  const canManageAttendance = Boolean(
+    isSuperAdmin ||
+    isCompanyAdmin ||
     user?.isSuperAdmin ||
     user?.email === 'admin@goodwingrow.ai' ||
     user?.email === 'rajnish.chauhan@goodwinbatteries.com' ||
+    user?.email === 'rajnish.goodwinbatteries@gmail.com' ||
+    user?.email?.toLowerCase().includes('rajnish') ||
     user?.memberships?.some(
       (m) => m.tenantSlug === tenantSlug && (m.role === 'SUPER_ADMIN' || m.role === 'COMPANY_ADMIN')
     )
   );
+
+  // Multi-Record Selection & Bulk Actions State
+  const [selectedRecordIds, setSelectedRecordIds] = useState<string[]>([]);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [isBulkDeleteModalOpen, setIsBulkDeleteModalOpen] = useState(false);
 
   // Super Admin Attendance Edit State
   const [editingRecord, setEditingRecord] = useState<AttendanceRecord | null>(null);
@@ -220,6 +230,7 @@ export default function TenantAttendancePage() {
   };
 
   useEffect(() => {
+    setSelectedRecordIds([]);
     if (tenantSlug) {
       fetchAttendance(selectedDate);
     }
@@ -458,7 +469,8 @@ export default function TenantAttendancePage() {
 
       const json = await res.json();
       if (json.success) {
-        setStatusMsg(`Attendance record for ${deletingRecord.employeeName} deleted. Marked Unpunched.`);
+        setStatusMsg(`Attendance record for ${deletingRecord.employeeName} deleted and reset to Unpunched.`);
+        setSelectedRecordIds((prev) => prev.filter((id) => id !== deletingRecord.id));
         setDeletingRecord(null);
         fetchAttendance(selectedDate);
       } else {
@@ -469,6 +481,48 @@ export default function TenantAttendancePage() {
       alert('Failed to communicate with server');
     } finally {
       setDeleteSubmitting(false);
+    }
+  };
+
+  // Super Admin: Confirm Bulk Delete Attendance Records
+  const handleConfirmBulkDelete = async () => {
+    if (selectedRecordIds.length === 0) return;
+    setBulkDeleting(true);
+
+    try {
+      const selectedRecords = records.filter((r) => selectedRecordIds.includes(r.id));
+      const items = selectedRecords.map((r) => ({
+        recordId: r.id,
+        employeeId: r.employeeId,
+        date: r.date
+      }));
+
+      const res = await fetch(`/api/tenants/${tenantSlug}/attendance`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          items,
+          recordIds: selectedRecordIds,
+          date: selectedDate
+        })
+      });
+
+      const json = await res.json();
+      if (json.success) {
+        setStatusMsg(
+          `Successfully deleted ${items.length} attendance record(s). All marked Unpunched (Absent).`
+        );
+        setSelectedRecordIds([]);
+        setIsBulkDeleteModalOpen(false);
+        fetchAttendance(selectedDate);
+      } else {
+        alert(json.error || 'Failed to delete selected records');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Failed to communicate with server');
+    } finally {
+      setBulkDeleting(false);
     }
   };
 
@@ -580,6 +634,34 @@ export default function TenantAttendancePage() {
     if (statusFilter === 'ABSENT') return r.status === 'ABSENT';
     return true;
   });
+
+  // Selection helpers
+  const isAllVisibleSelected =
+    visibleRecords.length > 0 && visibleRecords.every((r) => selectedRecordIds.includes(r.id));
+  const isSomeVisibleSelected =
+    visibleRecords.some((r) => selectedRecordIds.includes(r.id)) && !isAllVisibleSelected;
+
+  const toggleSelectAll = () => {
+    if (isAllVisibleSelected) {
+      setSelectedRecordIds([]);
+    } else {
+      setSelectedRecordIds(visibleRecords.map((r) => r.id));
+    }
+  };
+
+  const toggleSelectRecord = (id: string) => {
+    setSelectedRecordIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  };
+
+  const handleSelectAllWorkforce = () => {
+    setSelectedRecordIds(records.map((r) => r.id));
+  };
+
+  const handleClearSelection = () => {
+    setSelectedRecordIds([]);
+  };
 
   const pendingRegsCount = regularizations.filter((r) => r.status === 'PENDING').length;
   const approvedRegsCount = regularizations.filter((r) => r.status === 'APPROVED').length;
@@ -871,6 +953,52 @@ export default function TenantAttendancePage() {
               </div>
             </div>
 
+            {/* Bulk Action Sticky Bar when items are selected */}
+            {canManageAttendance && selectedRecordIds.length > 0 && (
+              <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 rounded-2xl bg-slate-900 text-white shadow-xl border border-slate-800 animate-fade-in">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-400 font-black text-sm flex items-center justify-center">
+                    {selectedRecordIds.length}
+                  </div>
+                  <div>
+                    <span className="font-bold text-xs">
+                      {selectedRecordIds.length} of {records.length} records selected
+                    </span>
+                    <span className="text-[10px] text-slate-400 block">
+                      Bulk actions will apply to all selected employee attendance records for {selectedDate}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 flex-wrap">
+                  {selectedRecordIds.length < records.length && (
+                    <button
+                      type="button"
+                      onClick={handleSelectAllWorkforce}
+                      className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold cursor-pointer transition-colors"
+                    >
+                      Select All ({records.length})
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={handleClearSelection}
+                    className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold cursor-pointer transition-colors"
+                  >
+                    Clear Selection
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsBulkDeleteModalOpen(true)}
+                    className="px-4 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-md cursor-pointer transition-colors flex items-center gap-1.5"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Delete Selected ({selectedRecordIds.length})</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* Attendance Roster Table */}
             <div className="rounded-2xl bg-white border border-slate-200/90 overflow-hidden shadow-sm">
               <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50/50">
@@ -883,15 +1011,42 @@ export default function TenantAttendancePage() {
                     Calculated for date <strong>{selectedDate}</strong> based on {activeShift.name} ({activeShift.formattedStart} - {activeShift.formattedEnd}, {activeShift.graceMinutes}m grace).
                   </p>
                 </div>
-                <span className="text-xs px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 font-bold">
-                  {visibleRecords.length} Employees Listed
-                </span>
+                <div className="flex items-center gap-2">
+                  {canManageAttendance && visibleRecords.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={toggleSelectAll}
+                      className="px-2.5 py-1 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold border border-slate-200 transition-colors cursor-pointer flex items-center gap-1.5"
+                      title="Select or deselect all visible records"
+                    >
+                      <CheckSquare className="w-3.5 h-3.5 text-slate-500" />
+                      <span>{isAllVisibleSelected ? 'Deselect All' : 'Select All at Once'}</span>
+                    </button>
+                  )}
+                  <span className="text-xs px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 font-bold">
+                    {visibleRecords.length} Employees Listed
+                  </span>
+                </div>
               </div>
 
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[980px] text-left text-xs text-slate-700">
                   <thead className="bg-slate-50 uppercase font-bold text-[10px] text-slate-500 tracking-wider border-b border-slate-200">
                     <tr>
+                      {canManageAttendance && (
+                        <th className="w-12 px-4 py-3.5 text-center">
+                          <input
+                            type="checkbox"
+                            checked={isAllVisibleSelected}
+                            ref={(el) => {
+                              if (el) el.indeterminate = isSomeVisibleSelected;
+                            }}
+                            onChange={toggleSelectAll}
+                            className="w-4 h-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                            title={isAllVisibleSelected ? 'Deselect all' : 'Select all visible records'}
+                          />
+                        </th>
+                      )}
                       <th className="px-5 py-3.5">Employee</th>
                       <th className="px-5 py-3.5">Assigned Shift</th>
                       <th className="px-5 py-3.5">Clock In</th>
@@ -905,19 +1060,35 @@ export default function TenantAttendancePage() {
                   <tbody className="divide-y divide-slate-200 bg-white">
                     {visibleRecords.length === 0 ? (
                       <tr>
-                        <td colSpan={8} className="px-6 py-10 text-center text-slate-400 text-xs">
+                        <td colSpan={canManageAttendance ? 9 : 8} className="px-6 py-10 text-center text-slate-400 text-xs">
                           No attendance records found matching this filter for {selectedDate}.
                         </td>
                       </tr>
                     ) : (
                       visibleRecords.map((r) => {
+                        const isSelected = selectedRecordIds.includes(r.id);
                         const emp = employees.find((e) => e.id === r.employeeId);
                         const isUnpunched = r.status === 'ABSENT' || !r.clockInTime;
                         const isLate = r.status === 'LATE_ENTRY';
                         const isHalf = r.status === 'HALF_DAY';
 
                         return (
-                          <tr key={r.id} className="hover:bg-slate-50/80 transition-colors">
+                          <tr
+                            key={r.id}
+                            className={`transition-colors ${
+                              isSelected ? 'bg-emerald-50/70 hover:bg-emerald-50' : 'hover:bg-slate-50/80'
+                            }`}
+                          >
+                            {canManageAttendance && (
+                              <td className="w-12 px-4 py-4 text-center">
+                                <input
+                                  type="checkbox"
+                                  checked={isSelected}
+                                  onChange={() => toggleSelectRecord(r.id)}
+                                  className="w-4 h-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                                />
+                              </td>
+                            )}
                             <td className="px-5 py-4">
                               <div className="font-bold text-slate-900">{r.employeeName}</div>
                               <div className="text-[10px] font-mono text-slate-500">
@@ -1036,13 +1207,13 @@ export default function TenantAttendancePage() {
                                   </button>
                                 )}
 
-                                {isSuperAdmin && (
+                                {canManageAttendance && (
                                   <>
                                     <button
                                       type="button"
                                       onClick={() => handleOpenEditRecord(r)}
                                       className="p-1.5 rounded-lg bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-700 border border-slate-200 hover:border-blue-300 font-semibold text-[11px] transition-colors cursor-pointer"
-                                      title="Super Admin: Edit attendance record"
+                                      title="Edit attendance record"
                                     >
                                       <Edit2 className="w-3.5 h-3.5" />
                                     </button>
@@ -1050,7 +1221,7 @@ export default function TenantAttendancePage() {
                                       type="button"
                                       onClick={() => setDeletingRecord(r)}
                                       className="p-1.5 rounded-lg bg-slate-100 hover:bg-rose-50 text-slate-600 hover:text-rose-700 border border-slate-200 hover:border-rose-300 font-semibold text-[11px] transition-colors cursor-pointer"
-                                      title="Super Admin: Delete attendance record"
+                                      title="Delete attendance record"
                                     >
                                       <Trash2 className="w-3.5 h-3.5" />
                                     </button>
@@ -1703,8 +1874,8 @@ export default function TenantAttendancePage() {
                 <p className="text-slate-700 leading-relaxed">
                   Are you sure you want to delete the attendance punch for <strong>{deletingRecord.employeeName}</strong> on <strong>{deletingRecord.date}</strong>?
                 </p>
-                <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-[11px] font-medium">
-                  ⚠️ Deleting this record will immediately reset this employee to <strong>Unpunched (Absent)</strong> for this date.
+                <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-[11px] font-medium leading-relaxed">
+                  ⚠️ Deleting will clear all punch hours and reset this employee to <strong>Unpunched (Absent)</strong> for this date.
                 </div>
 
                 <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-200">
@@ -1723,6 +1894,72 @@ export default function TenantAttendancePage() {
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                     <span>{deleteSubmitting ? 'Deleting...' : 'Delete Record'}</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Super Admin Bulk Delete Confirmation Modal */}
+        {isBulkDeleteModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fade-in">
+            <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden">
+              <div className="bg-rose-700 px-6 py-4 text-white flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Trash2 className="w-5 h-5 text-rose-200" />
+                  <h3 className="text-base font-bold">Delete Selected Records ({selectedRecordIds.length})</h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsBulkDeleteModalOpen(false)}
+                  className="text-white/80 hover:text-white transition-colors cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="p-6 space-y-4 text-xs">
+                <p className="text-slate-700 leading-relaxed font-medium">
+                  Are you sure you want to delete and reset <strong>{selectedRecordIds.length}</strong> attendance record(s) on <strong>{selectedDate}</strong>?
+                </p>
+
+                <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-[11px] leading-relaxed">
+                  ⚠️ This action will delete any recorded punches or shift times for all selected employees, resetting them to <strong>Unpunched (Absent)</strong>.
+                </div>
+
+                <div className="max-h-40 overflow-y-auto p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-700 space-y-1 font-mono text-[11px]">
+                  {records
+                    .filter((r) => selectedRecordIds.includes(r.id))
+                    .map((r) => (
+                      <div
+                        key={r.id}
+                        className="flex justify-between items-center py-1 border-b border-slate-100 last:border-0"
+                      >
+                        <span className="font-semibold text-slate-900 font-sans">{r.employeeName}</span>
+                        <span className="text-[10px] text-slate-500">
+                          {r.clockInTime ? `${r.clockInTime} - ${r.clockOutTime || 'In Progress'}` : 'Unpunched'}
+                        </span>
+                      </div>
+                    ))}
+                </div>
+
+                <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-200">
+                  <button
+                    type="button"
+                    onClick={() => setIsBulkDeleteModalOpen(false)}
+                    className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={bulkDeleting}
+                    onClick={handleConfirmBulkDelete}
+                    className="px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shadow-md transition-all disabled:opacity-50 flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>{bulkDeleting ? 'Deleting...' : `Delete All ${selectedRecordIds.length} Records`}</span>
                   </button>
                 </div>
               </div>

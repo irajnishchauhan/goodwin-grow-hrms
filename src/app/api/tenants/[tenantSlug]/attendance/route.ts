@@ -398,19 +398,51 @@ export async function DELETE(
     let recordId: string | null = null;
     let employeeId: string | null = null;
     let date: string | null = null;
+    let deleteAllForDate: string | null = null;
 
     const url = new URL(req.url);
     recordId = url.searchParams.get('recordId') || url.searchParams.get('id');
     employeeId = url.searchParams.get('employeeId');
     date = url.searchParams.get('date');
+    deleteAllForDate = url.searchParams.get('deleteAllForDate');
 
-    if (!recordId && req.headers.get('content-type')?.includes('application/json')) {
+    let items: { recordId?: string; employeeId?: string; date?: string }[] = [];
+
+    if (req.headers.get('content-type')?.includes('application/json')) {
       const body = await req.json().catch(() => ({}));
       recordId = body.recordId || body.id || recordId;
       employeeId = body.employeeId || employeeId;
       date = body.date || date;
+      deleteAllForDate = body.deleteAllForDate || deleteAllForDate;
+
+      if (Array.isArray(body.items)) {
+        items = body.items;
+      } else if (Array.isArray(body.recordIds)) {
+        items = body.recordIds.map((id: string) => ({ recordId: id, date: date || undefined }));
+      }
     }
 
+    // Handle Bulk Deletion
+    if (items.length > 0 || deleteAllForDate) {
+      db.deleteAttendanceRecords(tenant.id, items, deleteAllForDate || undefined);
+      await SupabaseStore.deleteAttendanceRecords(tenant.id, items, deleteAllForDate || undefined);
+
+      db.invalidateCache(tenant.id);
+      db.invalidateCache(tenantSlug);
+
+      return NextResponse.json(
+        {
+          success: true,
+          message: deleteAllForDate
+            ? `All attendance records for ${deleteAllForDate} deleted and reset to Unpunched successfully`
+            : `${items.length} attendance record(s) deleted and reset to Unpunched successfully`,
+          count: items.length
+        },
+        { headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate' } }
+      );
+    }
+
+    // Handle Single Record Deletion
     if (!recordId && (!employeeId || !date)) {
       return NextResponse.json(
         { success: false, error: 'Record ID or (Employee ID + Date) required to delete' },
@@ -435,7 +467,7 @@ export async function DELETE(
     db.invalidateCache(tenantSlug);
 
     return NextResponse.json(
-      { success: true, message: 'Attendance record deleted successfully' },
+      { success: true, message: 'Attendance record deleted and reset to Unpunched successfully' },
       { headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate' } }
     );
   } catch (error: unknown) {

@@ -773,6 +773,77 @@ export class SupabaseStore {
     }
   }
 
+  public static async deleteAttendanceRecords(
+    tenantId: string,
+    items?: { recordId?: string; employeeId?: string; date?: string }[],
+    deleteAllForDate?: string
+  ): Promise<boolean> {
+    const supabase = getSupabaseAdmin();
+    if (!supabase) return false;
+
+    try {
+      if (deleteAllForDate) {
+        await supabase
+          .from('attendance')
+          .delete()
+          .eq('tenant_id', tenantId)
+          .eq('date', deleteAllForDate);
+        return true;
+      }
+
+      if (!items || items.length === 0) return true;
+
+      // 1. Delete by real database IDs (exclude synthetic IDs like absent-*, leave-*, off-*)
+      const realIds = items
+        .map((i) => i.recordId)
+        .filter(
+          (id): id is string =>
+            typeof id === 'string' &&
+            id.length > 0 &&
+            !id.startsWith('absent-') &&
+            !id.startsWith('leave-') &&
+            !id.startsWith('off-')
+        );
+
+      if (realIds.length > 0) {
+        await supabase
+          .from('attendance')
+          .delete()
+          .eq('tenant_id', tenantId)
+          .in('id', realIds);
+      }
+
+      // 2. Also delete by (employee_id, date) pairs to guarantee punch removal
+      const dates = Array.from(new Set(items.map((i) => i.date).filter(Boolean)));
+      const empIds = Array.from(new Set(items.map((i) => i.employeeId).filter(Boolean)));
+
+      if (dates.length === 1 && empIds.length > 0) {
+        await supabase
+          .from('attendance')
+          .delete()
+          .eq('tenant_id', tenantId)
+          .eq('date', dates[0])
+          .in('employee_id', empIds);
+      } else {
+        for (const item of items) {
+          if (item.employeeId && item.date) {
+            await supabase
+              .from('attendance')
+              .delete()
+              .eq('tenant_id', tenantId)
+              .eq('employee_id', item.employeeId)
+              .eq('date', item.date);
+          }
+        }
+      }
+
+      return true;
+    } catch (e) {
+      console.warn('Supabase deleteAttendanceRecords exception:', e);
+      return false;
+    }
+  }
+
   // --------------------------------------------------------------------------
   // REGULARIZATION REQUESTS
   // --------------------------------------------------------------------------
