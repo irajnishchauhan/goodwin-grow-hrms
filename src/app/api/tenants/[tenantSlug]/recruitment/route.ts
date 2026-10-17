@@ -13,17 +13,27 @@ export async function GET(
       return NextResponse.json({ success: false, error: 'Tenant workspace not found' }, { status: 404 });
     }
 
+    const cacheKey = `recruitment_${tenant.id}`;
+    const cached = db.getCached<any>(cacheKey);
+    if (cached) {
+      return NextResponse.json({ success: true, data: cached });
+    }
+
     const openings = db.getJobOpenings(tenant.id);
     const applicants = db.getJobApplicants(tenant.id);
 
+    const payload = {
+      openings,
+      applicants,
+      totalOpenings: openings.length,
+      totalApplicants: applicants.length
+    };
+
+    db.setCached(cacheKey, payload, 30000);
+
     return NextResponse.json({
       success: true,
-      data: {
-        openings,
-        applicants,
-        totalOpenings: openings.length,
-        totalApplicants: applicants.length
-      }
+      data: payload
     });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Error fetching recruitment data';
@@ -44,6 +54,7 @@ export async function POST(
 
     const body = await req.json();
     const { type } = body;
+    db.invalidateCache(tenant.id);
 
     if (type === 'APPLICANT') {
       const { jobOpeningId, jobTitle, fullName, email, phone, experienceYears, currentCompany, expectedSalary, stage } = body;

@@ -16,6 +16,12 @@ export async function GET(
 
     const { searchParams } = new URL(req.url);
     const date = searchParams.get('date') || undefined;
+    const cacheKey = `attendance_${tenant.id}_${date || 'today'}`;
+
+    const cached = db.getCached<any>(cacheKey);
+    if (cached) {
+      return NextResponse.json({ success: true, data: cached });
+    }
 
     const [supaRecords, supaEmployees] = await Promise.all([
       SupabaseStore.getAttendance(tenant.id),
@@ -29,13 +35,17 @@ export async function GET(
 
     let employees = supaEmployees && supaEmployees.length > 0 ? supaEmployees : db.getEmployees(tenant.id);
 
+    const payload = {
+      records,
+      presentCount: records.filter((r) => r.status === 'PRESENT' || r.status === 'LATE_ENTRY').length,
+      totalEmployees: employees.length
+    };
+
+    db.setCached(cacheKey, payload, 15000);
+
     return NextResponse.json({
       success: true,
-      data: {
-        records,
-        presentCount: records.filter((r) => r.status === 'PRESENT' || r.status === 'LATE_ENTRY').length,
-        totalEmployees: employees.length
-      }
+      data: payload
     });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Error fetching attendance';
@@ -55,11 +65,16 @@ export async function POST(
     }
 
     const body = await req.json();
-    const { employeeId, action, notes } = body;
+    const employeeId = body.employeeId;
+    const rawAction = body.action || body.type;
+    const notes = body.notes;
 
-    if (!employeeId || !action) {
+    if (!employeeId || !rawAction) {
       return NextResponse.json({ success: false, error: 'Employee ID and action (IN/OUT) required' }, { status: 400 });
     }
+
+    const action: 'IN' | 'OUT' = (rawAction === 'PUNCH_IN' || rawAction === 'IN') ? 'IN' : 'OUT';
+    db.invalidateCache(tenant.id);
 
     // Ensure employee exists in db memory before punching
     let emp = db.getEmployeeById(tenant.id, employeeId);

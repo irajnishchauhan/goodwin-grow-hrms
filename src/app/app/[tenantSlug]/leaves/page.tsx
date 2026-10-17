@@ -41,20 +41,26 @@ export default function TenantLeavesPage() {
 
   const fetchLeaveData = async () => {
     try {
-      const res = await fetch(`/api/tenants/${tenantSlug}/leaves`);
-      const json = await res.json();
+      const [res, empRes] = await Promise.all([
+        fetch(`/api/tenants/${tenantSlug}/leaves`),
+        fetch(`/api/tenants/${tenantSlug}/employees`)
+      ]);
+
+      const [json, empJson] = await Promise.all([
+        res.json().catch(() => ({})),
+        empRes.json().catch(() => ({}))
+      ]);
+
       if (json.success) {
-        setApplications(json.data.applications);
-        setLeaveTypes(json.data.leaveTypes);
-        if (json.data.leaveTypes.length > 0 && !leaveTypeId) {
+        setApplications(json.data.applications || []);
+        setLeaveTypes(json.data.leaveTypes || []);
+        if (json.data.leaveTypes?.length > 0 && !leaveTypeId) {
           setLeaveTypeId(json.data.leaveTypes[0].id);
         }
       }
 
-      const empRes = await fetch(`/api/tenants/${tenantSlug}/employees`);
-      const empJson = await empRes.json();
       if (empJson.success) {
-        const emps: Employee[] = empJson.data.employees;
+        const emps: Employee[] = empJson.data.employees || [];
         setEmployees(emps);
         setTenant(empJson.data.tenant);
         if (emps.length > 0) {

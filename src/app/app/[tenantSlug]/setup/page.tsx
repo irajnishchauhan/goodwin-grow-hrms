@@ -86,6 +86,7 @@ export default function CompanySetupWizardPage() {
   const [state, setState] = useState('');
   const [country, setCountry] = useState('India');
   const [postalCode, setPostalCode] = useState('');
+  const [currency, setCurrency] = useState('INR');
   const [primaryColor, setPrimaryColor] = useState('#D97706');
 
   // Step 2: Department form state
@@ -143,6 +144,7 @@ export default function CompanySetupWizardPage() {
         setState(t.state || '');
         setCountry(t.country || 'India');
         setPostalCode(t.postalCode || '');
+        setCurrency(t.currency || 'INR');
         setPrimaryColor(t.primaryColor || '#D97706');
         setChecklist(t.onboardingChecklist || []);
 
@@ -224,6 +226,7 @@ export default function CompanySetupWizardPage() {
           industry,
           timezone,
           financialYear,
+          currency,
           businessEmail,
           businessPhone,
           registeredAddress,
@@ -238,6 +241,7 @@ export default function CompanySetupWizardPage() {
       if (json.success) {
         setTenant(json.data.tenant);
         showToast('Company profile & operating calendar saved');
+        router.refresh();
 
         // Mark step 1 completed
         if (!checklist[0]?.completed) {
@@ -363,6 +367,27 @@ export default function CompanySetupWizardPage() {
     }
   };
 
+  // Step 4: Delete Shift
+  const handleDeleteShift = async (shiftId: string, shiftName: string) => {
+    try {
+      const res = await fetch(`/api/tenants/${tenantSlug}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'delete-shift',
+          shiftId
+        })
+      });
+      const json = await res.json();
+      if (json.success) {
+        setShifts(shifts.filter((s) => s.id !== shiftId));
+        showToast(`Shift "${shiftName}" removed`);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   // Step 5: Save Leave Policy
   const handleSaveLeaveType = async (ltId: string) => {
     const days = editingLeaves[ltId];
@@ -412,6 +437,27 @@ export default function CompanySetupWizardPage() {
         setNewLeaveName('');
         setNewLeaveCode('');
         showToast(`Leave policy "${added.name}" created`);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  // Step 5: Delete Leave Type
+  const handleDeleteLeaveType = async (ltId: string, ltName: string) => {
+    try {
+      const res = await fetch(`/api/tenants/${tenantSlug}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'delete-leave-type',
+          leaveTypeId: ltId
+        })
+      });
+      const json = await res.json();
+      if (json.success) {
+        setLeaveTypes(leaveTypes.filter((lt) => lt.id !== ltId));
+        showToast(`Leave policy "${ltName}" removed`);
       }
     } catch (err) {
       console.error(err);
@@ -860,11 +906,23 @@ export default function CompanySetupWizardPage() {
                     <div key={s.id} className="p-4 rounded-2xl bg-slate-900 border border-slate-800 space-y-3">
                       <div className="flex items-center justify-between">
                         <span className="font-bold text-white text-sm">{s.name}</span>
-                        {s.isDefault && (
-                          <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[10px] font-semibold">
-                            Default Shift
-                          </span>
-                        )}
+                        <div className="flex items-center gap-2">
+                          {s.isDefault && (
+                            <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[10px] font-semibold">
+                              Default Shift
+                            </span>
+                          )}
+                          {shifts.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteShift(s.id, s.name)}
+                              className="text-slate-500 hover:text-rose-400 p-1 rounded-lg hover:bg-slate-800 transition-colors"
+                              title="Delete shift"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
                       </div>
 
                       <div className="grid grid-cols-3 gap-2">
@@ -984,9 +1042,21 @@ export default function CompanySetupWizardPage() {
                     <div key={lt.id} className="p-4 rounded-2xl bg-slate-900 border border-slate-800 space-y-3">
                       <div className="flex items-center justify-between">
                         <span className="font-bold text-white text-sm">{lt.name}</span>
-                        <span className="font-mono text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-300">
-                          {lt.code}
-                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-mono text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-300">
+                            {lt.code}
+                          </span>
+                          {leaveTypes.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteLeaveType(lt.id, lt.name)}
+                              className="text-slate-500 hover:text-rose-400 p-1 rounded-lg hover:bg-slate-800 transition-colors"
+                              title="Delete leave policy"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
                       </div>
 
                       <div>

@@ -40,33 +40,35 @@ export default function TenantOverviewPage() {
 
   const fetchWorkspaceData = async () => {
     try {
-      // 1. Fetch employees
-      const empRes = await fetch(`/api/tenants/${tenantSlug}/employees`);
-      const empJson = await empRes.json();
+      const [empRes, leaveRes, attRes, payRes] = await Promise.all([
+        fetch(`/api/tenants/${tenantSlug}/employees`),
+        fetch(`/api/tenants/${tenantSlug}/leaves`),
+        fetch(`/api/tenants/${tenantSlug}/attendance`),
+        fetch(`/api/tenants/${tenantSlug}/payroll`)
+      ]);
+
+      const [empJson, leaveJson, attJson, payJson] = await Promise.all([
+        empRes.json().catch(() => ({})),
+        leaveRes.json().catch(() => ({})),
+        attRes.json().catch(() => ({})),
+        payRes.json().catch(() => ({}))
+      ]);
+
       if (empJson.success) {
         setTenant(empJson.data.tenant);
-        setEmployees(empJson.data.employees);
+        setEmployees(empJson.data.employees || []);
       }
 
-      // 2. Fetch leaves
-      const leaveRes = await fetch(`/api/tenants/${tenantSlug}/leaves`);
-      const leaveJson = await leaveRes.json();
       if (leaveJson.success) {
-        setLeaves(leaveJson.data.applications);
+        setLeaves(leaveJson.data.applications || []);
       }
 
-      // 3. Fetch attendance
-      const attRes = await fetch(`/api/tenants/${tenantSlug}/attendance`);
-      const attJson = await attRes.json();
       if (attJson.success) {
-        setAttendance(attJson.data.records);
+        setAttendance(attJson.data.records || []);
       }
 
-      // 4. Fetch payroll
-      const payRes = await fetch(`/api/tenants/${tenantSlug}/payroll`);
-      const payJson = await payRes.json();
       if (payJson.success) {
-        setSlips(payJson.data.slips);
+        setSlips(payJson.data.slips || []);
       }
     } catch (e) {
       console.error(e);

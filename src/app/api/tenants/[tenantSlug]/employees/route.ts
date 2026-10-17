@@ -13,6 +13,12 @@ export async function GET(
       return NextResponse.json({ success: false, error: 'Tenant workspace not found' }, { status: 404 });
     }
 
+    const cacheKey = `employees_page_${tenant.id}`;
+    const cached = db.getCached<any>(cacheKey);
+    if (cached) {
+      return NextResponse.json({ success: true, data: cached });
+    }
+
     // High speed parallel fetching from Supabase
     const [employeesRes, departmentsRes] = await Promise.all([
       SupabaseStore.getEmployees(tenant.id),
@@ -26,15 +32,19 @@ export async function GET(
 
     let departments = departmentsRes && departmentsRes.length > 0 ? departmentsRes : db.getDepartments(tenant.id);
 
+    const payload = {
+      tenant,
+      employees,
+      departments,
+      totalCount: employees.length,
+      capacity: tenant.maxEmployees
+    };
+
+    db.setCached(cacheKey, payload, 30000);
+
     return NextResponse.json({
       success: true,
-      data: {
-        tenant,
-        employees,
-        departments,
-        totalCount: employees.length,
-        capacity: tenant.maxEmployees
-      }
+      data: payload
     });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Error fetching employees';
@@ -62,6 +72,8 @@ export async function POST(
         { status: 400 }
       );
     }
+
+    db.invalidateCache(tenant.id);
 
     const newEmp = db.createEmployee(tenant.id, {
       firstName,
@@ -109,6 +121,7 @@ export async function DELETE(
       return NextResponse.json({ success: false, error: 'Employee ID is required' }, { status: 400 });
     }
 
+    db.invalidateCache(tenant.id);
     const deleted = db.deleteEmployee(tenant.id, employeeId);
     await SupabaseStore.deleteEmployee(tenant.id, employeeId);
 
@@ -135,28 +148,29 @@ export async function PATCH(
     }
 
     const body = await req.json();
+    db.invalidateCache(tenant.id);
 
     // Batch update mode (e.g. from the Organization Hierarchy Assigner)
     if (body.updates && Array.isArray(body.updates)) {
-      for (const item of body.updates) {
-        if (!item.id) continue;
-        db.updateEmployee(tenant.id, item.id, {
-          reportingManagerId: item.reportingManagerId ?? null,
-          reportingManagerName: item.reportingManagerName ?? 'Executive Management'
-        });
-        await SupabaseStore.updateEmployee(tenant.id, item.id, {
-          reportingManagerId: item.reportingManagerId ?? null,
-          reportingManagerName: item.reportingManagerName ?? 'Executive Management'
-        });
-      }
+      await Promise.all(
+        body.updates.map(async (item: any) => {
+          if (!item.id) return;
+          const patch = {
+            reportingManagerId: item.reportingManagerId ?? null,
+            reportingManagerName: item.reportingManagerName ?? 'Executive Management'
+          };
+          db.updateEmployee(tenant.id, item.id, patch);
+          await SupabaseStore.updateEmployee(tenant.id, item.id, patch);
+        })
+      );
 
       if (body.rootLeaderId !== undefined) {
         tenant.orgTreeRootId = body.rootLeaderId;
         db.upsertTenant(tenant);
+        await SupabaseStore.saveTenant(tenant);
       }
 
-      const refreshedEmployees =
-        (await SupabaseStore.getEmployees(tenant.id)) || db.getEmployees(tenant.id);
+      const refreshedEmployees = db.getEmployees(tenant.id);
 
       return NextResponse.json({
         success: true,
@@ -169,26 +183,13 @@ export async function PATCH(
     }
 
     // Single employee update mode
-    const { employeeId, reportingManagerId, reportingManagerName, designationTitle, departmentId, departmentName } = body;
+    const { employeeId, ...updates } = body;
     if (!employeeId) {
       return NextResponse.json({ success: false, error: 'Employee ID is required' }, { status: 400 });
     }
 
-    const updatedEmp = db.updateEmployee(tenant.id, employeeId, {
-      ...(reportingManagerId !== undefined && { reportingManagerId }),
-      ...(reportingManagerName !== undefined && { reportingManagerName }),
-      ...(designationTitle !== undefined && { designationTitle }),
-      ...(departmentId !== undefined && { departmentId }),
-      ...(departmentName !== undefined && { departmentName })
-    });
-
-    await SupabaseStore.updateEmployee(tenant.id, employeeId, {
-      ...(reportingManagerId !== undefined && { reportingManagerId }),
-      ...(reportingManagerName !== undefined && { reportingManagerName }),
-      ...(designationTitle !== undefined && { designationTitle }),
-      ...(departmentId !== undefined && { departmentId }),
-      ...(departmentName !== undefined && { departmentName })
-    });
+    const updatedEmp = db.updateEmployee(tenant.id, employeeId, updates);
+    await SupabaseStore.updateEmployee(tenant.id, employeeId, updates);
 
     return NextResponse.json({
       success: true,

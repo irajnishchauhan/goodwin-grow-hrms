@@ -192,36 +192,44 @@ export default function EmployeeSelfServiceDashboard() {
 
   const loadEmployeeDetails = async (empId: string) => {
     try {
-      // 1. Fetch attendance records
-      const attRes = await fetch(`/api/tenants/${tenantSlug}/attendance`);
-      const attJson = await attRes.json();
+      const [attRes, leavesRes, payRes, docRes] = await Promise.all([
+        fetch(`/api/tenants/${tenantSlug}/attendance`),
+        fetch(`/api/tenants/${tenantSlug}/leaves`),
+        fetch(`/api/tenants/${tenantSlug}/payroll`),
+        fetch(`/api/tenants/${tenantSlug}/documents?employeeId=${empId}`)
+      ]);
+
+      const [attJson, leavesJson, payJson, docJson] = await Promise.all([
+        attRes.json().catch(() => ({})),
+        leavesRes.json().catch(() => ({})),
+        payRes.json().catch(() => ({})),
+        docRes.json().catch(() => ({}))
+      ]);
+
+      // 1. Process attendance
       if (attJson.success) {
         const today = new Date().toISOString().split('T')[0];
         const records = attJson.data?.records || [];
         const todayRec = records.find(
           (r: any) => r.employeeId === empId && r.date === today
         );
-        
+
         if (todayRec) {
-          // If clocked out, they are no longer clocked in
           setIsClockedIn(!todayRec.clockOutTime);
           setClockInTime(todayRec.clockInTime || null);
           setClockOutTime(todayRec.clockOutTime || null);
         } else {
-          // Not punched today
           setIsClockedIn(false);
           setClockInTime(null);
           setClockOutTime(null);
         }
       }
 
-      // 2. Fetch leaves
-      const leavesRes = await fetch(`/api/tenants/${tenantSlug}/leaves`);
-      const leavesJson = await leavesRes.json();
+      // 2. Process leaves
       if (leavesJson.success) {
         const fetchedTypes = leavesJson.data?.leaveTypes || [];
         setLeaveTypes(fetchedTypes);
-        
+
         const effectiveTypes = fetchedTypes.length > 0 ? fetchedTypes : fallbackLeaveTypes;
         if (effectiveTypes.length > 0) {
           setSelectedLeaveTypeId((prev) => prev || effectiveTypes[0].id);
@@ -232,17 +240,13 @@ export default function EmployeeSelfServiceDashboard() {
         );
       }
 
-      // 3. Fetch payslips
-      const payRes = await fetch(`/api/tenants/${tenantSlug}/payroll`);
-      const payJson = await payRes.json();
+      // 3. Process payslips
       if (payJson.success) {
         const empSlips = (payJson.data?.slips || []).filter((s: SalarySlip) => s.employeeId === empId);
         setPayslips(empSlips);
       }
 
-      // 4. Fetch documents
-      const docRes = await fetch(`/api/tenants/${tenantSlug}/documents?employeeId=${empId}`);
-      const docJson = await docRes.json();
+      // 4. Process documents
       if (docJson.success) {
         setDocuments(docJson.data?.documents || []);
       }

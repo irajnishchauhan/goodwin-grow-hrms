@@ -15,6 +15,12 @@ export async function GET(
 
     const { searchParams } = new URL(req.url);
     const month = searchParams.get('month') || undefined;
+    const cacheKey = `payroll_${tenant.id}_${month || 'all'}`;
+
+    const cached = db.getCached<any>(cacheKey);
+    if (cached) {
+      return NextResponse.json({ success: true, data: cached });
+    }
 
     let slips = await SupabaseStore.getSalarySlips(tenant.id);
     if (!slips || slips.length === 0) {
@@ -25,14 +31,18 @@ export async function GET(
 
     const totalDisbursed = slips.reduce((sum, s) => sum + s.netPay, 0);
 
+    const payload = {
+      currency: tenant.currency,
+      slips,
+      totalNetDisbursed: totalDisbursed,
+      totalSlipsCount: slips.length
+    };
+
+    db.setCached(cacheKey, payload, 30000);
+
     return NextResponse.json({
       success: true,
-      data: {
-        currency: tenant.currency,
-        slips,
-        totalNetDisbursed: totalDisbursed,
-        totalSlipsCount: slips.length
-      }
+      data: payload
     });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Error fetching payroll';
@@ -53,6 +63,7 @@ export async function POST(
 
     const body = await req.json();
     const { month } = body;
+    db.invalidateCache(tenant.id);
 
     const [supaEmps, supaAtt] = await Promise.all([
       SupabaseStore.getEmployees(tenant.id),

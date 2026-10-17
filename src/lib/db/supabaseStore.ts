@@ -116,7 +116,8 @@ export class SupabaseStore {
       subscriptionRenewal: t.subscription_renewal,
       billingContact: t.billing_contact,
       trialStatus: t.trial_status,
-      onboardingChecklist: t.onboarding_checklist || [],
+      onboardingChecklist: (t.onboarding_checklist || []).filter((s: any) => s.id !== '__org_root__'),
+      orgTreeRootId: (t.onboarding_checklist || []).find((s: any) => s.id === '__org_root__')?.title,
       createdAt: t.created_at,
       updatedAt: t.updated_at
     };
@@ -165,7 +166,8 @@ export class SupabaseStore {
       subscriptionRenewal: t.subscription_renewal,
       billingContact: t.billing_contact,
       trialStatus: t.trial_status,
-      onboardingChecklist: t.onboarding_checklist || [],
+      onboardingChecklist: (t.onboarding_checklist || []).filter((s: any) => s.id !== '__org_root__'),
+      orgTreeRootId: (t.onboarding_checklist || []).find((s: any) => s.id === '__org_root__')?.title,
       createdAt: t.created_at,
       updatedAt: t.updated_at
     };
@@ -174,6 +176,17 @@ export class SupabaseStore {
   public static async saveTenant(tenant: Tenant): Promise<boolean> {
     const supabase = getSupabaseAdmin();
     if (!supabase) return false;
+
+    const checklistWithMeta = [...(tenant.onboardingChecklist || []).filter((s: any) => s.id !== '__org_root__')];
+    if (tenant.orgTreeRootId) {
+      checklistWithMeta.push({
+        id: '__org_root__',
+        title: tenant.orgTreeRootId,
+        description: 'Organization Root Leader',
+        completed: true,
+        route: ''
+      });
+    }
 
     const { error } = await supabase.from('tenants').upsert({
       id: tenant.id,
@@ -203,7 +216,7 @@ export class SupabaseStore {
       subscription_renewal: tenant.subscriptionRenewal,
       billing_contact: tenant.billingContact,
       trial_status: tenant.trialStatus,
-      onboarding_checklist: tenant.onboardingChecklist,
+      onboarding_checklist: checklistWithMeta,
       updated_at: new Date().toISOString()
     });
 
@@ -420,6 +433,19 @@ export class SupabaseStore {
     const payload: Record<string, unknown> = {
       updated_at: new Date().toISOString()
     };
+    if (updates.firstName !== undefined) payload.first_name = updates.firstName;
+    if (updates.lastName !== undefined) payload.last_name = updates.lastName;
+    if (updates.workEmail !== undefined) payload.work_email = updates.workEmail;
+    if (updates.phone !== undefined) payload.phone = updates.phone;
+    if (updates.gender !== undefined) payload.gender = updates.gender;
+    if (updates.status !== undefined) payload.status = updates.status;
+    if (updates.loginStatus !== undefined) payload.login_status = updates.loginStatus;
+    if (updates.monthlySalary !== undefined) payload.monthly_salary = updates.monthlySalary;
+    if (updates.panOrTaxId !== undefined) payload.pan_or_tax_id = updates.panOrTaxId;
+    if (updates.bankAccountNumber !== undefined) payload.bank_account_number = updates.bankAccountNumber;
+    if (updates.bankName !== undefined) payload.bank_name = updates.bankName;
+    if (updates.workLocation !== undefined) payload.work_location = updates.workLocation;
+    if (updates.shiftName !== undefined) payload.shift_name = updates.shiftName;
     if (updates.reportingManagerId !== undefined) {
       payload.reporting_manager_id = updates.reportingManagerId;
     }
@@ -485,6 +511,23 @@ export class SupabaseStore {
     return !error;
   }
 
+  public static async deleteDepartment(tenantId: string, departmentId: string): Promise<boolean> {
+    const supabase = getSupabaseAdmin();
+    if (!supabase) return false;
+
+    const { error } = await supabase
+      .from('departments')
+      .delete()
+      .eq('tenant_id', tenantId)
+      .eq('id', departmentId);
+
+    if (error) {
+      console.warn('Supabase deleteDepartment error:', error.message);
+      return false;
+    }
+    return true;
+  }
+
   public static async getDesignations(tenantId: string): Promise<Designation[] | null> {
     const supabase = getSupabaseAdmin();
     if (!supabase) return null;
@@ -529,6 +572,44 @@ export class SupabaseStore {
       isDefault: s.is_default,
       color: s.color || '#3B82F6'
     }));
+  }
+
+  public static async saveShift(shift: Shift): Promise<boolean> {
+    const supabase = getSupabaseAdmin();
+    if (!supabase) return false;
+
+    const { error } = await supabase.from('shifts').upsert({
+      id: shift.id,
+      tenant_id: shift.tenantId,
+      name: shift.name,
+      start_time: shift.startTime,
+      end_time: shift.endTime,
+      grace_minutes: shift.graceMinutes,
+      is_default: shift.isDefault
+    });
+
+    if (error) {
+      console.warn('Supabase saveShift error:', error.message);
+      return false;
+    }
+    return true;
+  }
+
+  public static async deleteShift(tenantId: string, shiftId: string): Promise<boolean> {
+    const supabase = getSupabaseAdmin();
+    if (!supabase) return false;
+
+    const { error } = await supabase
+      .from('shifts')
+      .delete()
+      .eq('tenant_id', tenantId)
+      .eq('id', shiftId);
+
+    if (error) {
+      console.warn('Supabase deleteShift error:', error.message);
+      return false;
+    }
+    return true;
   }
 
   public static async getHolidays(tenantId: string): Promise<Holiday[] | null> {
@@ -648,6 +729,23 @@ export class SupabaseStore {
 
     if (error) {
       console.warn('Supabase saveLeaveType error:', error.message);
+      return false;
+    }
+    return true;
+  }
+
+  public static async deleteLeaveType(tenantId: string, leaveTypeId: string): Promise<boolean> {
+    const supabase = getSupabaseAdmin();
+    if (!supabase) return false;
+
+    const { error } = await supabase
+      .from('leave_types')
+      .delete()
+      .eq('tenant_id', tenantId)
+      .eq('id', leaveTypeId);
+
+    if (error) {
+      console.warn('Supabase deleteLeaveType error:', error.message);
       return false;
     }
     return true;

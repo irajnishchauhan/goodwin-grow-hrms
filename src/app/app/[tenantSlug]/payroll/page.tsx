@@ -34,14 +34,20 @@ export default function TenantPayrollPage() {
 
   const fetchPayroll = async () => {
     try {
-      const res = await fetch(`/api/tenants/${tenantSlug}/payroll`);
-      const json = await res.json();
+      const [res, empRes] = await Promise.all([
+        fetch(`/api/tenants/${tenantSlug}/payroll`),
+        fetch(`/api/tenants/${tenantSlug}/employees`)
+      ]);
+
+      const [json, empJson] = await Promise.all([
+        res.json().catch(() => ({})),
+        empRes.json().catch(() => ({}))
+      ]);
+
       if (json.success) {
-        setSlips(json.data.slips);
+        setSlips(json.data.slips || []);
       }
 
-      const empRes = await fetch(`/api/tenants/${tenantSlug}/employees`);
-      const empJson = await empRes.json();
       if (empJson.success) {
         setTenant(empJson.data.tenant);
         setEmployees(empJson.data.employees || []);

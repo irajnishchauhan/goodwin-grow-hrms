@@ -330,6 +330,31 @@ class HRMSDataStore {
   }
 
   private tenantCache: Map<string, { tenant: Tenant; expiresAt: number }> = new Map();
+  private moduleCache: Map<string, { data: any; expiresAt: number }> = new Map();
+
+  public getCached<T>(key: string): T | null {
+    const cached = this.moduleCache.get(key);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.data as T;
+    }
+    return null;
+  }
+
+  public setCached(key: string, data: any, ttlMs: number = 30000): void {
+    this.moduleCache.set(key, { data, expiresAt: Date.now() + ttlMs });
+  }
+
+  public invalidateCache(prefix?: string): void {
+    if (!prefix) {
+      this.moduleCache.clear();
+      return;
+    }
+    for (const key of this.moduleCache.keys()) {
+      if (key.startsWith(prefix) || key.includes(prefix)) {
+        this.moduleCache.delete(key);
+      }
+    }
+  }
 
   public getTenantById(tenantId: string): Tenant | null {
     const cached = this.tenantCache.get(tenantId);
@@ -934,7 +959,10 @@ class HRMSDataStore {
   }
 
   public syncEmployees(employees: Employee[]): void {
-    employees.forEach((emp) => this.upsertEmployee(emp));
+    if (!employees || employees.length === 0) return;
+    const tenantId = employees[0].tenantId;
+    this.employees = this.employees.filter((e) => e.tenantId !== tenantId).concat(employees);
+    this.invalidateCache(`employees_${tenantId}`);
   }
 
   public createEmployee(
@@ -1020,6 +1048,7 @@ class HRMSDataStore {
     const index = this.employees.findIndex((e) => e.id === employeeId && e.tenantId === tenantId);
     if (index === -1) return false;
     this.employees.splice(index, 1);
+    this.invalidateCache(`employees_${tenantId}`);
     return true;
   }
 

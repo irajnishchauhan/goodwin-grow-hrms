@@ -13,6 +13,12 @@ export async function GET(
       return NextResponse.json({ success: false, error: 'Tenant workspace not found' }, { status: 404 });
     }
 
+    const cacheKey = `shifts_${tenant.id}`;
+    const cached = db.getCached<any>(cacheKey);
+    if (cached) {
+      return NextResponse.json({ success: true, data: cached });
+    }
+
     let [shifts, holidays] = await Promise.all([
       SupabaseStore.getShifts(tenant.id),
       SupabaseStore.getHolidays(tenant.id)
@@ -26,13 +32,17 @@ export async function GET(
 
     const regularizations = db.getRegularizations(tenant.id);
 
+    const payload = {
+      shifts,
+      holidays,
+      regularizations
+    };
+
+    db.setCached(cacheKey, payload, 30000);
+
     return NextResponse.json({
       success: true,
-      data: {
-        shifts,
-        holidays,
-        regularizations
-      }
+      data: payload
     });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Error fetching shift/holiday data';
@@ -53,6 +63,7 @@ export async function POST(
 
     const body = await req.json();
     const { type } = body;
+    db.invalidateCache(tenant.id);
 
     if (type === 'REGULARIZATION') {
       const { employeeId, attendanceDate, requestedClockIn, requestedClockOut, reason } = body;
@@ -75,6 +86,7 @@ export async function POST(
         isDefault: false,
         color: color || '#3B82F6'
       });
+      await SupabaseStore.saveShift(shift);
       return NextResponse.json({ success: true, data: shift, message: 'New shift policy created' });
     }
   } catch (error: unknown) {
@@ -96,6 +108,7 @@ export async function PATCH(
 
     const body = await req.json();
     const { regularizationId, status, reviewedBy } = body;
+    db.invalidateCache(tenant.id);
 
     const updated = db.updateRegularizationStatus(tenant.id, regularizationId, status, reviewedBy || 'Manager');
     return NextResponse.json({

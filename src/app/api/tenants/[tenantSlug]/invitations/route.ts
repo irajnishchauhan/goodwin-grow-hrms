@@ -13,6 +13,12 @@ export async function GET(
       return NextResponse.json({ success: false, error: 'Tenant not found' }, { status: 404 });
     }
 
+    const cacheKey = `invitations_${tenant.id}`;
+    const cached = db.getCached<any>(cacheKey);
+    if (cached) {
+      return NextResponse.json({ success: true, data: cached });
+    }
+
     const [invitationsRes, employeesRes] = await Promise.all([
       SupabaseStore.getInvitations(tenant.id),
       SupabaseStore.getEmployees(tenant.id)
@@ -39,18 +45,22 @@ export async function GET(
 
     const notInvitedCount = Math.max(0, employees.length - activatedCount - pendingCount);
 
+    const payload = {
+      invitations,
+      stats: {
+        totalEmployees: employees.length,
+        activatedCount,
+        pendingCount,
+        notInvitedCount,
+        activationRate: employees.length > 0 ? Math.round((activatedCount / employees.length) * 100) : 0
+      }
+    };
+
+    db.setCached(cacheKey, payload, 20000);
+
     return NextResponse.json({
       success: true,
-      data: {
-        invitations,
-        stats: {
-          totalEmployees: employees.length,
-          activatedCount,
-          pendingCount,
-          notInvitedCount,
-          activationRate: employees.length > 0 ? Math.round((activatedCount / employees.length) * 100) : 0
-        }
-      }
+      data: payload
     });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Error fetching invitations';
@@ -71,6 +81,7 @@ export async function POST(
 
     const body = await req.json();
     const { employeeId, role } = body;
+    db.invalidateCache(tenant.id);
 
     if (!employeeId) {
       return NextResponse.json({ success: false, error: 'Employee ID is required' }, { status: 400 });

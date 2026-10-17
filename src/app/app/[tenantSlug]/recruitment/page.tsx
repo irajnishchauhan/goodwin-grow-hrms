@@ -48,15 +48,21 @@ export default function TenantRecruitmentPage() {
 
   const fetchRecruitment = async () => {
     try {
-      const res = await fetch(`/api/tenants/${tenantSlug}/recruitment`);
-      const json = await res.json();
+      const [res, empRes] = await Promise.all([
+        fetch(`/api/tenants/${tenantSlug}/recruitment`),
+        fetch(`/api/tenants/${tenantSlug}/employees`)
+      ]);
+
+      const [json, empJson] = await Promise.all([
+        res.json().catch(() => ({})),
+        empRes.json().catch(() => ({}))
+      ]);
+
       if (json.success) {
-        setOpenings(json.data.openings);
-        setApplicants(json.data.applicants);
+        setOpenings(json.data.openings || []);
+        setApplicants(json.data.applicants || []);
       }
 
-      const empRes = await fetch(`/api/tenants/${tenantSlug}/employees`);
-      const empJson = await empRes.json();
       if (empJson.success) {
         setTenant(empJson.data.tenant);
       }

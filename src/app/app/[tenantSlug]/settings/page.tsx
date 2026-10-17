@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import {
   Settings,
   Building2,
@@ -67,6 +67,7 @@ export default function TenantSettingsPage() {
   const params = useParams();
   const tenantSlug = params.tenantSlug as string;
 
+  const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [tenant, setTenant] = useState<Tenant | null>(null);
@@ -156,6 +157,7 @@ export default function TenantSettingsPage() {
       if (json.success && json.data?.tenant) {
         setTenant(json.data.tenant);
         setSavedMsg(true);
+        router.refresh();
         setTimeout(() => setSavedMsg(false), 4000);
       } else {
         alert(json.error || 'Failed to save settings');

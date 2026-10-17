@@ -13,6 +13,12 @@ export async function GET(
       return NextResponse.json({ success: false, error: 'Tenant workspace not found' }, { status: 404 });
     }
 
+    const cacheKey = `tenant_overview_${tenant.id}`;
+    const cached = db.getCached<any>(cacheKey);
+    if (cached) {
+      return NextResponse.json({ success: true, data: cached });
+    }
+
     // High speed parallel fetching from Supabase
     const [departmentsRes, designationsRes, shiftsRes, leaveTypesRes, employeesRes] = await Promise.all([
       SupabaseStore.getDepartments(tenant.id),
@@ -28,16 +34,20 @@ export async function GET(
     const leaveTypes = leaveTypesRes && leaveTypesRes.length > 0 ? leaveTypesRes : db.getLeaveTypes(tenant.id);
     const employees = employeesRes && employeesRes.length > 0 ? employeesRes : db.getEmployees(tenant.id);
 
+    const payload = {
+      tenant,
+      departments,
+      designations,
+      shifts,
+      leaveTypes,
+      employeeCount: employees.length
+    };
+
+    db.setCached(cacheKey, payload, 30000);
+
     return NextResponse.json({
       success: true,
-      data: {
-        tenant,
-        departments,
-        designations,
-        shifts,
-        leaveTypes,
-        employeeCount: employees.length
-      }
+      data: payload
     });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Error fetching tenant configuration';
@@ -58,6 +68,7 @@ export async function PUT(
 
     const body = await req.json();
     const updatedTenant = db.updateTenant(tenant.id, body);
+    db.invalidateCache(tenant.id);
     await SupabaseStore.saveTenant(updatedTenant);
 
     return NextResponse.json({
@@ -84,6 +95,7 @@ export async function POST(
 
     const body = await req.json();
     const { action } = body;
+    db.invalidateCache(tenant.id);
 
     switch (action) {
       case 'add-department': {
@@ -98,12 +110,14 @@ export async function POST(
         const { departmentId } = body;
         if (!departmentId) return NextResponse.json({ success: false, error: 'Department ID is required' }, { status: 400 });
         const success = db.deleteDepartment(tenant.id, departmentId);
+        await SupabaseStore.deleteDepartment(tenant.id, departmentId);
         return NextResponse.json({ success, message: success ? 'Department deleted' : 'Department not found' });
       }
 
       case 'update-shift': {
         const { shiftId, ...shiftData } = body;
         const shift = db.updateShift(tenant.id, shiftId, shiftData);
+        await SupabaseStore.saveShift(shift);
         return NextResponse.json({ success: true, message: 'Shift updated', data: shift });
       }
 
@@ -117,12 +131,22 @@ export async function POST(
           isDefault: Boolean(isDefault),
           color: color || '#3B82F6'
         });
+        await SupabaseStore.saveShift(shift);
         return NextResponse.json({ success: true, message: 'Shift added', data: shift });
+      }
+
+      case 'delete-shift': {
+        const { shiftId } = body;
+        if (!shiftId) return NextResponse.json({ success: false, error: 'Shift ID is required' }, { status: 400 });
+        const success = db.deleteShift(tenant.id, shiftId);
+        await SupabaseStore.deleteShift(tenant.id, shiftId);
+        return NextResponse.json({ success, message: 'Shift deleted' });
       }
 
       case 'update-leave-type': {
         const { leaveTypeId, ...leaveData } = body;
         const lt = db.updateLeaveType(tenant.id, leaveTypeId, leaveData);
+        await SupabaseStore.saveLeaveType(lt);
         return NextResponse.json({ success: true, message: 'Leave policy updated', data: lt });
       }
 
@@ -135,7 +159,16 @@ export async function POST(
           color: color || '#3B82F6',
           isPaid: isPaid ?? true
         });
+        await SupabaseStore.saveLeaveType(lt);
         return NextResponse.json({ success: true, message: 'Leave policy created', data: lt });
+      }
+
+      case 'delete-leave-type': {
+        const { leaveTypeId } = body;
+        if (!leaveTypeId) return NextResponse.json({ success: false, error: 'Leave Type ID is required' }, { status: 400 });
+        const success = db.deleteLeaveType(tenant.id, leaveTypeId);
+        await SupabaseStore.deleteLeaveType(tenant.id, leaveTypeId);
+        return NextResponse.json({ success, message: 'Leave type deleted' });
       }
 
       case 'toggle-step': {

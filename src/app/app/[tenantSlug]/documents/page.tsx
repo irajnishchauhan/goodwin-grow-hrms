@@ -35,18 +35,24 @@ export default function TenantDocumentsPage() {
 
   const fetchDocs = async () => {
     try {
-      const res = await fetch(`/api/tenants/${tenantSlug}/documents`);
-      const json = await res.json();
+      const [res, empRes] = await Promise.all([
+        fetch(`/api/tenants/${tenantSlug}/documents`),
+        fetch(`/api/tenants/${tenantSlug}/employees`)
+      ]);
+
+      const [json, empJson] = await Promise.all([
+        res.json().catch(() => ({})),
+        empRes.json().catch(() => ({}))
+      ]);
+
       if (json.success) {
-        setDocuments(json.data.documents);
+        setDocuments(json.data.documents || []);
       }
 
-      const empRes = await fetch(`/api/tenants/${tenantSlug}/employees`);
-      const empJson = await empRes.json();
       if (empJson.success) {
-        setEmployees(empJson.data.employees);
+        setEmployees(empJson.data.employees || []);
         setTenant(empJson.data.tenant);
-        if (empJson.data.employees.length > 0 && !empId) {
+        if (empJson.data.employees?.length > 0 && !empId) {
           setEmpId(empJson.data.employees[0].id);
         }
       }

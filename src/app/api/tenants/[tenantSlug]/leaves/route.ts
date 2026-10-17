@@ -14,6 +14,12 @@ export async function GET(
       return NextResponse.json({ success: false, error: 'Tenant not found' }, { status: 404 });
     }
 
+    const cacheKey = `leaves_${tenant.id}`;
+    const cached = db.getCached<any>(cacheKey);
+    if (cached) {
+      return NextResponse.json({ success: true, data: cached });
+    }
+
     let [leaveTypes, applications] = await Promise.all([
       SupabaseStore.getLeaveTypes(tenant.id),
       SupabaseStore.getLeaveApplications(tenant.id)
@@ -74,14 +80,18 @@ export async function GET(
       applications = db.getLeaveApplications(tenant.id);
     }
 
+    const payload = {
+      leaveTypes,
+      applications,
+      pendingCount: applications.filter((a) => a.status === 'PENDING').length,
+      approvedCount: applications.filter((a) => a.status === 'APPROVED').length
+    };
+
+    db.setCached(cacheKey, payload, 20000);
+
     return NextResponse.json({
       success: true,
-      data: {
-        leaveTypes,
-        applications,
-        pendingCount: applications.filter((a) => a.status === 'PENDING').length,
-        approvedCount: applications.filter((a) => a.status === 'APPROVED').length
-      }
+      data: payload
     });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Error fetching leave data';
@@ -102,6 +112,7 @@ export async function POST(
 
     const body = await req.json();
     const { employeeId, leaveTypeId, startDate, endDate, totalDays, reason } = body;
+    db.invalidateCache(tenant.id);
 
     if (!employeeId || !leaveTypeId || !startDate || !endDate || !reason) {
       return NextResponse.json({ success: false, error: 'Missing required leave fields' }, { status: 400 });
@@ -191,6 +202,7 @@ export async function PATCH(
 
     const body = await req.json();
     const { leaveId, status, reviewedBy, comment } = body;
+    db.invalidateCache(tenant.id);
 
     if (!leaveId || !status) {
       return NextResponse.json({ success: false, error: 'Leave ID and new status required' }, { status: 400 });

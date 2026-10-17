@@ -62,19 +62,31 @@ export default function TenantInvitationsPage() {
 
   const fetchInvitations = async () => {
     try {
-      const res = await fetch(`/api/tenants/${tenantSlug}/invitations`);
-      const json = await res.json();
+      const [res, empRes] = await Promise.all([
+        fetch(`/api/tenants/${tenantSlug}/invitations`),
+        fetch(`/api/tenants/${tenantSlug}/employees`)
+      ]);
+
+      const [json, empJson] = await Promise.all([
+        res.json().catch(() => ({})),
+        empRes.json().catch(() => ({}))
+      ]);
+
       if (json.success) {
-        setInvitations(json.data.invitations);
-        setStats(json.data.stats);
+        setInvitations(json.data.invitations || []);
+        setStats(json.data.stats || {
+          totalEmployees: 0,
+          activatedCount: 0,
+          pendingCount: 0,
+          notInvitedCount: 0,
+          activationRate: 0
+        });
       }
 
-      const empRes = await fetch(`/api/tenants/${tenantSlug}/employees`);
-      const empJson = await empRes.json();
       if (empJson.success) {
-        setEmployees(empJson.data.employees);
+        setEmployees(empJson.data.employees || []);
         setTenant(empJson.data.tenant);
-        const uninvited = empJson.data.employees.filter(
+        const uninvited = (empJson.data.employees || []).filter(
           (e: Employee) => e.loginStatus === 'NOT_INVITED' || !e.loginStatus
         );
         if (uninvited.length > 0 && !selectedEmpId) {
