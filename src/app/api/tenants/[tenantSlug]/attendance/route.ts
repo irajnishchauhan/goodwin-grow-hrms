@@ -9,10 +9,7 @@ export async function GET(
 ) {
   try {
     const { tenantSlug } = await context.params;
-    let tenant = db.getTenantBySlug(tenantSlug);
-    if (!tenant) {
-      tenant = await SupabaseStore.getTenantBySlug(tenantSlug);
-    }
+    const tenant = await db.getResolvedTenant(tenantSlug);
     if (!tenant) {
       return NextResponse.json({ success: false, error: 'Tenant not found' }, { status: 404 });
     }
@@ -20,17 +17,17 @@ export async function GET(
     const { searchParams } = new URL(req.url);
     const date = searchParams.get('date') || undefined;
 
-    let records = await SupabaseStore.getAttendance(tenant.id);
-    if (!records || records.length === 0) {
-      records = db.getAttendance(tenant.id, date);
-    } else if (date) {
+    const [supaRecords, supaEmployees] = await Promise.all([
+      SupabaseStore.getAttendance(tenant.id),
+      SupabaseStore.getEmployees(tenant.id)
+    ]);
+
+    let records = supaRecords && supaRecords.length > 0 ? supaRecords : db.getAttendance(tenant.id, date);
+    if (supaRecords && date) {
       records = records.filter((r) => r.date === date);
     }
 
-    let employees = await SupabaseStore.getEmployees(tenant.id);
-    if (!employees || employees.length === 0) {
-      employees = db.getEmployees(tenant.id);
-    }
+    let employees = supaEmployees && supaEmployees.length > 0 ? supaEmployees : db.getEmployees(tenant.id);
 
     return NextResponse.json({
       success: true,
@@ -52,11 +49,7 @@ export async function POST(
 ) {
   try {
     const { tenantSlug } = await context.params;
-    let tenant = db.getTenantBySlug(tenantSlug);
-    if (!tenant) {
-      tenant = await SupabaseStore.getTenantBySlug(tenantSlug);
-      if (tenant) db.upsertTenant(tenant);
-    }
+    const tenant = await db.getResolvedTenant(tenantSlug);
     if (!tenant) {
       return NextResponse.json({ success: false, error: 'Tenant not found' }, { status: 404 });
     }

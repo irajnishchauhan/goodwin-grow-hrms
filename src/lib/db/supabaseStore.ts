@@ -129,7 +129,7 @@ export class SupabaseStore {
     const { data, error } = await supabase
       .from('tenants')
       .select('*')
-      .eq('slug', slug)
+      .or(`slug.eq.${slug},id.eq.${slug}`)
       .maybeSingle();
 
     if (error || !data) {

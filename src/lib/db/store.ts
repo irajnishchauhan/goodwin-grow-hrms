@@ -329,12 +329,51 @@ class HRMSDataStore {
     this.tenants = [...tenants];
   }
 
+  private tenantCache: Map<string, { tenant: Tenant; expiresAt: number }> = new Map();
+
   public getTenantById(tenantId: string): Tenant | null {
-    return this.tenants.find((t) => t.id === tenantId) || null;
+    const cached = this.tenantCache.get(tenantId);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.tenant;
+    }
+    return this.tenants.find((t) => t.id === tenantId || t.slug === tenantId) || null;
   }
 
   public getTenantBySlug(slug: string): Tenant | null {
-    return this.tenants.find((t) => t.slug === slug) || null;
+    const cached = this.tenantCache.get(slug);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.tenant;
+    }
+    return this.tenants.find((t) => t.slug === slug || t.id === slug) || null;
+  }
+
+  public async getResolvedTenant(slug: string, forceFresh = false): Promise<Tenant | null> {
+    const cached = this.tenantCache.get(slug);
+    if (!forceFresh && cached && cached.expiresAt > Date.now()) {
+      return cached.tenant;
+    }
+
+    try {
+      if (SupabaseStore.isConnected()) {
+        const supaTenant = await SupabaseStore.getTenantBySlug(slug);
+        if (supaTenant) {
+          this.upsertTenant(supaTenant);
+          this.tenantCache.set(slug, { tenant: supaTenant, expiresAt: Date.now() + 30000 });
+          this.tenantCache.set(supaTenant.id, { tenant: supaTenant, expiresAt: Date.now() + 30000 });
+          return supaTenant;
+        }
+      }
+    } catch (e) {
+      console.warn('Error fetching tenant from Supabase, falling back to memory', e);
+    }
+
+    const localTenant = this.getTenantBySlug(slug) || this.getTenantById(slug);
+    if (localTenant) {
+      this.tenantCache.set(slug, { tenant: localTenant, expiresAt: Date.now() + 30000 });
+      return localTenant;
+    }
+
+    return null;
   }
 
   public upsertTenant(tenant: Tenant): void {
@@ -344,6 +383,8 @@ class HRMSDataStore {
     } else {
       this.tenants.push(tenant);
     }
+    this.tenantCache.set(tenant.slug, { tenant, expiresAt: Date.now() + 30000 });
+    this.tenantCache.set(tenant.id, { tenant, expiresAt: Date.now() + 30000 });
   }
 
   public createTenant(data: {
@@ -553,11 +594,21 @@ class HRMSDataStore {
   }
 
   public updateTenant(tenantId: string, updates: Partial<Tenant>): Tenant {
-    const tenant = this.getTenantById(tenantId);
+    const tenant = this.getTenantById(tenantId) || this.getTenantBySlug(tenantId);
     if (!tenant) throw new Error('Tenant not found');
 
     Object.assign(tenant, updates);
     tenant.updatedAt = new Date().toISOString();
+
+    const idx = this.tenants.findIndex((t) => t.id === tenant.id || t.slug === tenant.slug);
+    if (idx >= 0) {
+      this.tenants[idx] = { ...tenant };
+    } else {
+      this.tenants.push({ ...tenant });
+    }
+
+    this.tenantCache.set(tenant.slug, { tenant, expiresAt: Date.now() + 60000 });
+    this.tenantCache.set(tenant.id, { tenant, expiresAt: Date.now() + 60000 });
 
     if (SupabaseStore.isConnected()) {
       SupabaseStore.saveTenant(tenant).catch((err) =>

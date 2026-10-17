@@ -11,13 +11,7 @@ interface TenantLayoutProps {
 
 export default async function TenantWorkspaceLayout({ children, params }: TenantLayoutProps) {
   const { tenantSlug } = await params;
-  let tenant = db.getTenantBySlug(tenantSlug);
-  if (!tenant) {
-    tenant = await SupabaseStore.getTenantBySlug(tenantSlug);
-    if (tenant) {
-      db.upsertTenant(tenant);
-    }
-  }
+  const tenant = await db.getResolvedTenant(tenantSlug);
 
   if (!tenant) {
     notFound();

@@ -8,23 +8,18 @@ export async function GET(
 ) {
   try {
     const { tenantSlug } = await context.params;
-    let tenant = db.getTenantBySlug(tenantSlug);
-    if (!tenant) {
-      tenant = await SupabaseStore.getTenantBySlug(tenantSlug);
-    }
+    const tenant = await db.getResolvedTenant(tenantSlug);
     if (!tenant) {
       return NextResponse.json({ success: false, error: 'Tenant not found' }, { status: 404 });
     }
 
-    let invitations = await SupabaseStore.getInvitations(tenant.id);
-    if (!invitations || invitations.length === 0) {
-      invitations = db.getInvitations(tenant.id);
-    }
+    const [invitationsRes, employeesRes] = await Promise.all([
+      SupabaseStore.getInvitations(tenant.id),
+      SupabaseStore.getEmployees(tenant.id)
+    ]);
 
-    let employees = await SupabaseStore.getEmployees(tenant.id);
-    if (!employees || employees.length === 0) {
-      employees = db.getEmployees(tenant.id);
-    }
+    let invitations = invitationsRes && invitationsRes.length > 0 ? invitationsRes : db.getInvitations(tenant.id);
+    let employees = employeesRes && employeesRes.length > 0 ? employeesRes : db.getEmployees(tenant.id);
 
     // Reliable stats calculation checking both invitations and employee loginStatus
     const pendingInvEmpIds = new Set(
@@ -69,11 +64,7 @@ export async function POST(
 ) {
   try {
     const { tenantSlug } = await context.params;
-    let tenant = db.getTenantBySlug(tenantSlug);
-    if (!tenant) {
-      tenant = await SupabaseStore.getTenantBySlug(tenantSlug);
-      if (tenant) db.upsertTenant(tenant);
-    }
+    const tenant = await db.getResolvedTenant(tenantSlug);
     if (!tenant) {
       return NextResponse.json({ success: false, error: 'Tenant not found' }, { status: 404 });
     }
@@ -116,11 +107,7 @@ export async function PATCH(
 ) {
   try {
     const { tenantSlug } = await context.params;
-    let tenant = db.getTenantBySlug(tenantSlug);
-    if (!tenant) {
-      tenant = await SupabaseStore.getTenantBySlug(tenantSlug);
-      if (tenant) db.upsertTenant(tenant);
-    }
+    const tenant = await db.getResolvedTenant(tenantSlug);
     if (!tenant) {
       return NextResponse.json({ success: false, error: 'Tenant not found' }, { status: 404 });
     }

@@ -8,10 +8,7 @@ export async function GET(
 ) {
   try {
     const { tenantSlug } = await context.params;
-    let tenant = db.getTenantBySlug(tenantSlug);
-    if (!tenant) {
-      tenant = await SupabaseStore.getTenantBySlug(tenantSlug);
-    }
+    const tenant = await db.getResolvedTenant(tenantSlug);
     if (!tenant) {
       return NextResponse.json({ success: false, error: 'Tenant not found' }, { status: 404 });
     }
@@ -49,11 +46,7 @@ export async function POST(
 ) {
   try {
     const { tenantSlug } = await context.params;
-    let tenant = db.getTenantBySlug(tenantSlug);
-    if (!tenant) {
-      tenant = await SupabaseStore.getTenantBySlug(tenantSlug);
-      if (tenant) db.upsertTenant(tenant);
-    }
+    const tenant = await db.getResolvedTenant(tenantSlug);
     if (!tenant) {
       return NextResponse.json({ success: false, error: 'Tenant not found' }, { status: 404 });
     }
@@ -61,20 +54,20 @@ export async function POST(
     const body = await req.json();
     const { month } = body;
 
-    const supaEmps = await SupabaseStore.getEmployees(tenant.id);
+    const [supaEmps, supaAtt] = await Promise.all([
+      SupabaseStore.getEmployees(tenant.id),
+      SupabaseStore.getAttendance(tenant.id)
+    ]);
     if (supaEmps && supaEmps.length > 0) {
       db.syncEmployees(supaEmps);
     }
-    const supaAtt = await SupabaseStore.getAttendance(tenant.id);
     if (supaAtt && supaAtt.length > 0) {
       db.syncAttendance(supaAtt);
     }
 
     const slips = db.generatePayrollRun(tenant.id, month || '2026-10');
-    // Save to Supabase
-    for (const slip of slips) {
-      await SupabaseStore.saveSalarySlip(slip);
-    }
+    // Save to Supabase in parallel
+    await Promise.all(slips.map((slip) => SupabaseStore.saveSalarySlip(slip)));
 
     return NextResponse.json({
       success: true,

@@ -8,11 +8,7 @@ export async function POST(
 ) {
   try {
     const { tenantSlug } = await context.params;
-    let tenant = db.getTenantBySlug(tenantSlug);
-    if (!tenant) {
-      tenant = await SupabaseStore.getTenantBySlug(tenantSlug);
-      if (tenant) db.upsertTenant(tenant);
-    }
+    const tenant = await db.getResolvedTenant(tenantSlug);
     if (!tenant) {
       return NextResponse.json({ success: false, error: 'Tenant not found' }, { status: 404 });
     }

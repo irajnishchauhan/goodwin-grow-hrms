@@ -8,38 +8,25 @@ export async function GET(
 ) {
   try {
     const { tenantSlug } = await context.params;
-    let tenant = db.getTenantBySlug(tenantSlug);
-    if (!tenant) {
-      tenant = await SupabaseStore.getTenantBySlug(tenantSlug);
-    }
+    const tenant = await db.getResolvedTenant(tenantSlug);
     if (!tenant) {
       return NextResponse.json({ success: false, error: 'Tenant workspace not found' }, { status: 404 });
     }
 
-    let departments = await SupabaseStore.getDepartments(tenant.id);
-    if (!departments || departments.length === 0) {
-      departments = db.getDepartments(tenant.id);
-    }
+    // High speed parallel fetching from Supabase
+    const [departmentsRes, designationsRes, shiftsRes, leaveTypesRes, employeesRes] = await Promise.all([
+      SupabaseStore.getDepartments(tenant.id),
+      SupabaseStore.getDesignations(tenant.id),
+      SupabaseStore.getShifts(tenant.id),
+      SupabaseStore.getLeaveTypes(tenant.id),
+      SupabaseStore.getEmployees(tenant.id)
+    ]);
 
-    let designations = await SupabaseStore.getDesignations(tenant.id);
-    if (!designations || designations.length === 0) {
-      designations = db.getDesignations(tenant.id);
-    }
-
-    let shifts = await SupabaseStore.getShifts(tenant.id);
-    if (!shifts || shifts.length === 0) {
-      shifts = db.getShifts(tenant.id);
-    }
-
-    let leaveTypes = await SupabaseStore.getLeaveTypes(tenant.id);
-    if (!leaveTypes || leaveTypes.length === 0) {
-      leaveTypes = db.getLeaveTypes(tenant.id);
-    }
-
-    let employees = await SupabaseStore.getEmployees(tenant.id);
-    if (!employees || employees.length === 0) {
-      employees = db.getEmployees(tenant.id);
-    }
+    const departments = departmentsRes && departmentsRes.length > 0 ? departmentsRes : db.getDepartments(tenant.id);
+    const designations = designationsRes && designationsRes.length > 0 ? designationsRes : db.getDesignations(tenant.id);
+    const shifts = shiftsRes && shiftsRes.length > 0 ? shiftsRes : db.getShifts(tenant.id);
+    const leaveTypes = leaveTypesRes && leaveTypesRes.length > 0 ? leaveTypesRes : db.getLeaveTypes(tenant.id);
+    const employees = employeesRes && employeesRes.length > 0 ? employeesRes : db.getEmployees(tenant.id);
 
     return NextResponse.json({
       success: true,
@@ -64,11 +51,7 @@ export async function PUT(
 ) {
   try {
     const { tenantSlug } = await context.params;
-    let tenant = db.getTenantBySlug(tenantSlug);
-    if (!tenant) {
-      tenant = await SupabaseStore.getTenantBySlug(tenantSlug);
-      if (tenant) db.upsertTenant(tenant);
-    }
+    const tenant = await db.getResolvedTenant(tenantSlug);
     if (!tenant) {
       return NextResponse.json({ success: false, error: 'Tenant workspace not found' }, { status: 404 });
     }
@@ -94,11 +77,7 @@ export async function POST(
 ) {
   try {
     const { tenantSlug } = await context.params;
-    let tenant = db.getTenantBySlug(tenantSlug);
-    if (!tenant) {
-      tenant = await SupabaseStore.getTenantBySlug(tenantSlug);
-      if (tenant) db.upsertTenant(tenant);
-    }
+    const tenant = await db.getResolvedTenant(tenantSlug);
     if (!tenant) {
       return NextResponse.json({ success: false, error: 'Tenant workspace not found' }, { status: 404 });
     }
@@ -193,10 +172,7 @@ export async function DELETE(
 ) {
   try {
     const { tenantSlug } = await context.params;
-    let tenant = db.getTenantBySlug(tenantSlug);
-    if (!tenant) {
-      tenant = await SupabaseStore.getTenantBySlug(tenantSlug);
-    }
+    const tenant = await db.getResolvedTenant(tenantSlug);
     if (!tenant) {
       return NextResponse.json({ success: false, error: 'Tenant workspace not found' }, { status: 404 });
     }

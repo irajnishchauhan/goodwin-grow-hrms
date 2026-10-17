@@ -9,15 +9,16 @@ export async function GET(
 ) {
   try {
     const { tenantSlug } = await context.params;
-    let tenant = db.getTenantBySlug(tenantSlug);
-    if (!tenant) {
-      tenant = await SupabaseStore.getTenantBySlug(tenantSlug);
-    }
+    const tenant = await db.getResolvedTenant(tenantSlug);
     if (!tenant) {
       return NextResponse.json({ success: false, error: 'Tenant not found' }, { status: 404 });
     }
 
-    let leaveTypes = await SupabaseStore.getLeaveTypes(tenant.id);
+    let [leaveTypes, applications] = await Promise.all([
+      SupabaseStore.getLeaveTypes(tenant.id),
+      SupabaseStore.getLeaveApplications(tenant.id)
+    ]);
+
     if (!leaveTypes || leaveTypes.length === 0) {
       leaveTypes = db.getLeaveTypes(tenant.id);
     }
@@ -69,7 +70,6 @@ export async function GET(
       leaveTypes = defaultTypes;
     }
 
-    let applications = await SupabaseStore.getLeaveApplications(tenant.id);
     if (!applications || applications.length === 0) {
       applications = db.getLeaveApplications(tenant.id);
     }
@@ -95,11 +95,7 @@ export async function POST(
 ) {
   try {
     const { tenantSlug } = await context.params;
-    let tenant = db.getTenantBySlug(tenantSlug);
-    if (!tenant) {
-      tenant = await SupabaseStore.getTenantBySlug(tenantSlug);
-      if (tenant) db.upsertTenant(tenant);
-    }
+    const tenant = await db.getResolvedTenant(tenantSlug);
     if (!tenant) {
       return NextResponse.json({ success: false, error: 'Tenant not found' }, { status: 404 });
     }
@@ -188,11 +184,7 @@ export async function PATCH(
 ) {
   try {
     const { tenantSlug } = await context.params;
-    let tenant = db.getTenantBySlug(tenantSlug);
-    if (!tenant) {
-      tenant = await SupabaseStore.getTenantBySlug(tenantSlug);
-      if (tenant) db.upsertTenant(tenant);
-    }
+    const tenant = await db.getResolvedTenant(tenantSlug);
     if (!tenant) {
       return NextResponse.json({ success: false, error: 'Tenant not found' }, { status: 404 });
     }

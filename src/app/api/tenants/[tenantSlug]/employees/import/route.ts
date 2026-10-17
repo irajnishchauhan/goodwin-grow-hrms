@@ -8,10 +8,7 @@ export async function POST(
 ) {
   try {
     const { tenantSlug } = await context.params;
-    let tenant = db.getTenantBySlug(tenantSlug);
-    if (!tenant) {
-      tenant = await SupabaseStore.getTenantBySlug(tenantSlug);
-    }
+    const tenant = await db.getResolvedTenant(tenantSlug);
     if (!tenant) {
       return NextResponse.json({ success: false, error: 'Tenant not found' }, { status: 404 });
     }
@@ -25,11 +22,9 @@ export async function POST(
 
     const result = db.bulkImportEmployees(tenant.id, rows);
 
-    // Persist all imported employees to Supabase asynchronously
+    // Persist all imported employees to Supabase asynchronously in parallel
     if (result.importedEmployees && result.importedEmployees.length > 0) {
-      for (const emp of result.importedEmployees) {
-        await SupabaseStore.saveEmployee(emp);
-      }
+      await Promise.all(result.importedEmployees.map((emp) => SupabaseStore.saveEmployee(emp)));
     }
 
     return NextResponse.json({

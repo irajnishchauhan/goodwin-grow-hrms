@@ -8,26 +8,23 @@ export async function GET(
 ) {
   try {
     const { tenantSlug } = await context.params;
-    let tenant = db.getTenantBySlug(tenantSlug);
-    if (!tenant) {
-      tenant = await SupabaseStore.getTenantBySlug(tenantSlug);
-    }
+    const tenant = await db.getResolvedTenant(tenantSlug);
     if (!tenant) {
       return NextResponse.json({ success: false, error: 'Tenant workspace not found' }, { status: 404 });
     }
 
-    // Attempt to pull live data from Supabase, seamlessly fallback to in-memory store
-    let employees = await SupabaseStore.getEmployees(tenant.id);
-    if (employees && employees.length > 0) {
-      db.syncEmployees(employees);
-    } else {
-      employees = db.getEmployees(tenant.id);
+    // High speed parallel fetching from Supabase
+    const [employeesRes, departmentsRes] = await Promise.all([
+      SupabaseStore.getEmployees(tenant.id),
+      SupabaseStore.getDepartments(tenant.id)
+    ]);
+
+    let employees = employeesRes && employeesRes.length > 0 ? employeesRes : db.getEmployees(tenant.id);
+    if (employeesRes && employeesRes.length > 0) {
+      db.syncEmployees(employeesRes);
     }
 
-    let departments = await SupabaseStore.getDepartments(tenant.id);
-    if (!departments || departments.length === 0) {
-      departments = db.getDepartments(tenant.id);
-    }
+    let departments = departmentsRes && departmentsRes.length > 0 ? departmentsRes : db.getDepartments(tenant.id);
 
     return NextResponse.json({
       success: true,
@@ -51,11 +48,7 @@ export async function POST(
 ) {
   try {
     const { tenantSlug } = await context.params;
-    let tenant = db.getTenantBySlug(tenantSlug);
-    if (!tenant) {
-      tenant = await SupabaseStore.getTenantBySlug(tenantSlug);
-      if (tenant) db.upsertTenant(tenant);
-    }
+    const tenant = await db.getResolvedTenant(tenantSlug);
     if (!tenant) {
       return NextResponse.json({ success: false, error: 'Tenant workspace not found' }, { status: 404 });
     }
@@ -104,11 +97,7 @@ export async function DELETE(
 ) {
   try {
     const { tenantSlug } = await context.params;
-    let tenant = db.getTenantBySlug(tenantSlug);
-    if (!tenant) {
-      tenant = await SupabaseStore.getTenantBySlug(tenantSlug);
-      if (tenant) db.upsertTenant(tenant);
-    }
+    const tenant = await db.getResolvedTenant(tenantSlug);
     if (!tenant) {
       return NextResponse.json({ success: false, error: 'Tenant not found' }, { status: 404 });
     }
@@ -140,11 +129,7 @@ export async function PATCH(
 ) {
   try {
     const { tenantSlug } = await context.params;
-    let tenant = db.getTenantBySlug(tenantSlug);
-    if (!tenant) {
-      tenant = await SupabaseStore.getTenantBySlug(tenantSlug);
-      if (tenant) db.upsertTenant(tenant);
-    }
+    const tenant = await db.getResolvedTenant(tenantSlug);
     if (!tenant) {
       return NextResponse.json({ success: false, error: 'Tenant workspace not found' }, { status: 404 });
     }
