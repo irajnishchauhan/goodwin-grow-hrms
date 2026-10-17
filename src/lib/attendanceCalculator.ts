@@ -58,6 +58,54 @@ export function formatTimeTo12Hour(timeStr?: string | null): string {
 }
 
 /**
+ * Formats a Date object to a 12-hour AM/PM string in a specific timezone (defaults to Asia/Kolkata).
+ */
+export function formatTimeInTimezone(
+  date: Date = new Date(),
+  timeZone: string = 'Asia/Kolkata'
+): string {
+  try {
+    return date.toLocaleTimeString('en-US', {
+      timeZone,
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    });
+  } catch {
+    return date.toLocaleTimeString('en-US', {
+      timeZone: 'Asia/Kolkata',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    });
+  }
+}
+
+/**
+ * Returns YYYY-MM-DD date string in a specific timezone (defaults to Asia/Kolkata).
+ */
+export function formatDateInTimezone(
+  date: Date = new Date(),
+  timeZone: string = 'Asia/Kolkata'
+): string {
+  try {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }).format(date);
+  } catch {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Kolkata',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }).format(date);
+  }
+}
+
+/**
  * Returns dynamic late cutoff time display given shift start time and grace minutes (e.g. "10:15 AM").
  */
 export function getLateCutoffDisplay(startTime?: string | null, graceMinutes: number = 15): string {
@@ -190,7 +238,8 @@ export function buildDailyWorkforceRoster({
   leaveApplications,
   shifts,
   tenantId,
-  excludedEmployeeIds
+  excludedEmployeeIds,
+  timezone
 }: {
   date: string;
   employees: Employee[];
@@ -199,6 +248,7 @@ export function buildDailyWorkforceRoster({
   shifts: Shift[];
   tenantId: string;
   excludedEmployeeIds?: Set<string>;
+  timezone?: string;
 }): {
   roster: AttendanceRecord[];
   stats: {
@@ -236,7 +286,7 @@ export function buildDailyWorkforceRoster({
     halfDayMinHours: 4.0
   };
 
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = formatDateInTimezone(new Date(), timezone || 'Asia/Kolkata');
   const isHistoricalDate = date < todayStr;
 
   // Map existing real punches for this date by employeeId

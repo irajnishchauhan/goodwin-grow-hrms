@@ -44,7 +44,13 @@ import {
   INITIAL_JOB_APPLICANTS,
   INITIAL_INVITATIONS
 } from './initialData';
-import { evaluateAttendanceStatus, DEFAULT_SHIFT_POLICY } from '../attendanceCalculator';
+import {
+  evaluateAttendanceStatus,
+  DEFAULT_SHIFT_POLICY,
+  formatTimeInTimezone,
+  formatDateInTimezone,
+  formatTimeTo12Hour
+} from '../attendanceCalculator';
 import { SupabaseStore } from './supabaseStore';
 
 class HRMSDataStore {
@@ -1455,13 +1461,19 @@ class HRMSDataStore {
     tenantId: string,
     employeeId: string,
     action: 'IN' | 'OUT',
-    notes?: string
+    notes?: string,
+    customTime?: string,
+    customDate?: string,
+    timezone?: string
   ): AttendanceRecord {
     const emp = this.getEmployeeById(tenantId, employeeId);
     if (!emp) throw new Error('Employee not found in tenant workspace');
 
-    const today = new Date().toISOString().split('T')[0];
-    const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const effectiveTimezone = timezone || this.getTenantById(tenantId)?.timezone || 'Asia/Kolkata';
+    const today = customDate || formatDateInTimezone(new Date(), effectiveTimezone);
+    const timeStr = customTime
+      ? formatTimeTo12Hour(customTime)
+      : formatTimeInTimezone(new Date(), effectiveTimezone);
 
     // Ensure any prior deletion exclusion is cleared for this employee today
     this.clearExcludedAttendanceKey(tenantId, employeeId, today);
@@ -1504,6 +1516,12 @@ class HRMSDataStore {
       if (action === 'OUT') {
         record.clockOutTime = timeStr;
         const evalRes = evaluateAttendanceStatus(record.clockInTime, timeStr, policy);
+        record.workingHours = evalRes.workingHours;
+        record.status = evalRes.status;
+        if (notes) record.notes = notes;
+      } else if (action === 'IN') {
+        record.clockInTime = timeStr;
+        const evalRes = evaluateAttendanceStatus(timeStr, record.clockOutTime, policy);
         record.workingHours = evalRes.workingHours;
         record.status = evalRes.status;
         if (notes) record.notes = notes;

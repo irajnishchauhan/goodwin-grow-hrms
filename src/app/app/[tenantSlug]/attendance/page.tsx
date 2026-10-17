@@ -47,9 +47,14 @@ export default function TenantAttendancePage() {
 
   const { user, isEmployeeOnly, isCompanyAdmin, isSuperAdmin } = useCurrentUser(tenantSlug);
 
+  const getLocalTodayDate = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+
   // Core Attendance & Roster State
   const [selectedDate, setSelectedDate] = useState(
-    searchParams.get('date') || new Date().toISOString().split('T')[0]
+    searchParams.get('date') || getLocalTodayDate()
   );
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
   const [roster, setRoster] = useState<AttendanceRecord[]>([]);
@@ -168,7 +173,7 @@ export default function TenantAttendancePage() {
   // Request Regularization Modal State
   const [isRegModalOpen, setIsRegModalOpen] = useState(searchParams.get('action') === 'request');
   const [regEmpId, setRegEmpId] = useState('');
-  const [regDate, setRegDate] = useState(new Date().toISOString().split('T')[0]);
+  const [regDate, setRegDate] = useState(getLocalTodayDate());
   const [regClockIn, setRegClockIn] = useState('09:00');
   const [regClockOut, setRegClockOut] = useState('18:00');
   const [regReasonCategory, setRegReasonCategory] = useState('Missed Punch / Forgot to Clock In or Out');
@@ -310,13 +315,21 @@ export default function TenantAttendancePage() {
     saveDeletedKeys(unblocked);
 
     try {
+      const now = new Date();
+      const clientTime = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      const clientDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Kolkata';
+
       const res = await fetch(`/api/tenants/${tenantSlug}/attendance`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           employeeId: currentEmp.id,
           action,
-          notes: action === 'IN' ? 'Mobile Web Punch-In' : 'Mobile Web Punch-Out'
+          notes: action === 'IN' ? 'Mobile Web Punch-In' : 'Mobile Web Punch-Out',
+          clientTime,
+          clientDate,
+          timezone: tz
         })
       });
       const json = await res.json();
@@ -1031,7 +1044,7 @@ export default function TenantAttendancePage() {
                 />
                 <button
                   type="button"
-                  onClick={() => setSelectedDate(new Date().toISOString().split('T')[0])}
+                  onClick={() => setSelectedDate(getLocalTodayDate())}
                   className="px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold border border-slate-200 transition-colors cursor-pointer"
                 >
                   Today

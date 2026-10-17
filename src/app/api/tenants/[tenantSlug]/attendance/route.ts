@@ -5,7 +5,10 @@ import { Employee, AttendanceRecord } from '@/lib/types';
 import {
   buildDailyWorkforceRoster,
   evaluateAttendanceStatus,
-  DEFAULT_SHIFT_POLICY
+  DEFAULT_SHIFT_POLICY,
+  formatDateInTimezone,
+  formatTimeInTimezone,
+  formatTimeTo12Hour
 } from '@/lib/attendanceCalculator';
 
 export const dynamic = 'force-dynamic';
@@ -23,8 +26,9 @@ export async function GET(
       return NextResponse.json({ success: false, error: 'Tenant not found' }, { status: 404 });
     }
 
+    const timezone = tenant.timezone || 'Asia/Kolkata';
     const { searchParams } = new URL(req.url);
-    const targetDate = searchParams.get('date') || new Date().toISOString().split('T')[0];
+    const targetDate = searchParams.get('date') || formatDateInTimezone(new Date(), timezone);
 
     const [supaRecords, supaEmployees, supaRegularizations, supaShifts, supaLeaves] =
       await Promise.all([
@@ -81,7 +85,8 @@ export async function GET(
       leaveApplications: leaves,
       shifts,
       tenantId: tenant.id,
-      excludedEmployeeIds
+      excludedEmployeeIds,
+      timezone
     });
 
     // Real logged attendance records (only actual punches, admin marks, and approved leaves)
@@ -201,6 +206,9 @@ export async function POST(
     const employeeId = body.employeeId;
     const rawAction = body.action || body.type;
     const notes = body.notes;
+    const timezone = body.timezone || tenant.timezone || 'Asia/Kolkata';
+    const clientTime = body.clientTime || body.time;
+    const clientDate = body.clientDate || body.date;
 
     if (!employeeId || !rawAction) {
       return NextResponse.json(
@@ -227,18 +235,29 @@ export async function POST(
       );
     }
 
-    const today = new Date().toISOString().split('T')[0];
+    const today = clientDate || formatDateInTimezone(new Date(), timezone);
     db.clearExcludedAttendanceKey(tenant.id, employeeId, today);
 
-    const record = db.recordPunch(tenant.id, employeeId, action, notes);
+    const record = db.recordPunch(
+      tenant.id,
+      employeeId,
+      action,
+      notes,
+      clientTime,
+      clientDate,
+      timezone
+    );
     await SupabaseStore.saveAttendance(record);
     SupabaseStore.invalidate(tenant.id);
     SupabaseStore.invalidate(tenantSlug);
 
+    const loggedDisplayTime =
+      action === 'IN' ? record.clockInTime : record.clockOutTime || record.clockInTime;
+
     return NextResponse.json(
       {
         success: true,
-        message: `Clock ${action === 'IN' ? 'In' : 'Out'} logged at ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} (${record.status})`,
+        message: `Clock ${action === 'IN' ? 'In' : 'Out'} logged at ${loggedDisplayTime} (${record.status})`,
         data: record
       },
       { headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate' } }
@@ -372,12 +391,15 @@ export async function PUT(
         }
       : DEFAULT_SHIFT_POLICY;
 
+    const formattedClockIn = clockInTime ? formatTimeTo12Hour(clockInTime) : null;
+    const formattedClockOut = clockOutTime ? formatTimeTo12Hour(clockOutTime) : null;
+
     let computedStatus = status;
     let computedHours = workingHours;
 
     if (!status || status === 'PRESENT' || status === 'LATE_ENTRY' || status === 'HALF_DAY') {
-      if (clockInTime) {
-        const evalRes = evaluateAttendanceStatus(clockInTime, clockOutTime, policy);
+      if (formattedClockIn) {
+        const evalRes = evaluateAttendanceStatus(formattedClockIn, formattedClockOut, policy);
         if (!status) computedStatus = evalRes.status;
         if (computedHours === undefined || computedHours === null) computedHours = evalRes.workingHours;
       }
@@ -397,8 +419,8 @@ export async function PUT(
       employeeId,
       employeeName,
       date,
-      clockInTime: clockInTime || null,
-      clockOutTime: clockOutTime || null,
+      clockInTime: formattedClockIn || undefined,
+      clockOutTime: formattedClockOut || undefined,
       workingHours: Number(computedHours) || 0,
       status: computedStatus || 'PRESENT',
       notes: notes || 'Updated by Super Admin',

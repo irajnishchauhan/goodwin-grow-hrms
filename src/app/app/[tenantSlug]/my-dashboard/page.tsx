@@ -205,8 +205,11 @@ export default function EmployeeSelfServiceDashboard() {
 
   const loadEmployeeDetails = async (empId: string) => {
     try {
+      const now = new Date();
+      const localToday = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+
       const [attRes, leavesRes, payRes, docRes] = await Promise.all([
-        fetch(`/api/tenants/${tenantSlug}/attendance?t=${Date.now()}`, {
+        fetch(`/api/tenants/${tenantSlug}/attendance?date=${localToday}&t=${Date.now()}`, {
           cache: 'no-store',
           headers: { 'Cache-Control': 'no-cache, no-store' }
         }),
@@ -236,10 +239,9 @@ export default function EmployeeSelfServiceDashboard() {
         if (attJson.data?.stats?.activeShift) {
           setActiveShift(attJson.data.stats.activeShift);
         }
-        const today = new Date().toISOString().split('T')[0];
         const records = attJson.data?.records || [];
         const todayRec = records.find(
-          (r: any) => r.employeeId === empId && r.date === today
+          (r: any) => r.employeeId === empId && r.date === localToday
         );
 
         if (todayRec) {
@@ -324,10 +326,13 @@ export default function EmployeeSelfServiceDashboard() {
       setPunchMessage(`Shift Complete (Punched Out at ${timeNow})`);
     }
 
+    const now = new Date();
+    const clientDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const userTz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Kolkata';
+
     // Immediately unblock from localStorage deleted keys for this tenant
     try {
-      const today = new Date().toISOString().split('T')[0];
-      const delKey = `${currentEmp.id}::${today}`;
+      const delKey = `${currentEmp.id}::${clientDate}`;
       const stored = localStorage.getItem(`hrms_deleted_att_${tenantSlug}`);
       if (stored) {
         const keys: string[] = JSON.parse(stored);
@@ -347,7 +352,10 @@ export default function EmployeeSelfServiceDashboard() {
         body: JSON.stringify({
           employeeId: currentEmp.id,
           action,
-          notes: action === 'IN' ? 'Mobile Web Punch-In' : 'Mobile Web Punch-Out'
+          notes: action === 'IN' ? 'Mobile Web Punch-In' : 'Mobile Web Punch-Out',
+          clientTime: timeNow,
+          clientDate,
+          timezone: userTz
         })
       });
 

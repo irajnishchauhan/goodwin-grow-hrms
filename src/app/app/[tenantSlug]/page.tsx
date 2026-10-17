@@ -40,10 +40,12 @@ export default function TenantOverviewPage() {
 
   const fetchWorkspaceData = async () => {
     try {
+      const now = new Date();
+      const localToday = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
       const [empRes, leaveRes, attRes, payRes] = await Promise.all([
         fetch(`/api/tenants/${tenantSlug}/employees`),
         fetch(`/api/tenants/${tenantSlug}/leaves`),
-        fetch(`/api/tenants/${tenantSlug}/attendance`),
+        fetch(`/api/tenants/${tenantSlug}/attendance?date=${localToday}`),
         fetch(`/api/tenants/${tenantSlug}/payroll`)
       ]);
 
