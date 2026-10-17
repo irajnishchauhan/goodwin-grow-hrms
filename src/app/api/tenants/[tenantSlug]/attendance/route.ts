@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { db } from '@/lib/db/store';
 import { SupabaseStore } from '@/lib/db/supabaseStore';
 import { Employee } from '@/lib/types';
+import { buildDailyWorkforceRoster } from '@/lib/attendanceCalculator';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,19 +12,24 @@ export async function GET(
 ) {
   try {
     const { tenantSlug } = await context.params;
-    const tenant = await SupabaseStore.getTenantBySlug(tenantSlug) || await db.getResolvedTenant(tenantSlug, true);
+    const tenant =
+      (await SupabaseStore.getTenantBySlug(tenantSlug)) ||
+      (await db.getResolvedTenant(tenantSlug, true));
     if (!tenant) {
       return NextResponse.json({ success: false, error: 'Tenant not found' }, { status: 404 });
     }
 
     const { searchParams } = new URL(req.url);
-    const date = searchParams.get('date') || undefined;
+    const targetDate = searchParams.get('date') || new Date().toISOString().split('T')[0];
 
-    const [supaRecords, supaEmployees, supaRegularizations] = await Promise.all([
-      SupabaseStore.getAttendance(tenant.id),
-      SupabaseStore.getEmployees(tenant.id),
-      SupabaseStore.getRegularizations(tenant.id)
-    ]);
+    const [supaRecords, supaEmployees, supaRegularizations, supaShifts, supaLeaves] =
+      await Promise.all([
+        SupabaseStore.getAttendance(tenant.id),
+        SupabaseStore.getEmployees(tenant.id),
+        SupabaseStore.getRegularizations(tenant.id),
+        SupabaseStore.getShifts(tenant.id),
+        SupabaseStore.getLeaveApplications(tenant.id)
+      ]);
 
     if (supaEmployees && supaEmployees.length > 0) {
       db.syncEmployees(supaEmployees);
@@ -33,20 +39,36 @@ export async function GET(
       db.syncRegularizations(supaRegularizations);
     }
 
-    let records = supaRecords !== null ? supaRecords : db.getAttendance(tenant.id, date);
-    if (date) {
-      records = records.filter((r) => r.date === date);
-    }
+    const employees = supaEmployees !== null ? supaEmployees : db.getEmployees(tenant.id);
+    const regularizations =
+      supaRegularizations !== null ? supaRegularizations : db.getRegularizations(tenant.id);
+    const shifts = supaShifts !== null ? supaShifts : db.getShifts(tenant.id);
+    const leaves = supaLeaves !== null ? supaLeaves : db.getLeaveApplications(tenant.id);
 
-    let employees = supaEmployees !== null ? supaEmployees : db.getEmployees(tenant.id);
-    let regularizations = supaRegularizations !== null ? supaRegularizations : db.getRegularizations(tenant.id);
+    // Filter out any automated/test benchmark entries
+    const rawAttendance = supaRecords !== null ? supaRecords : db.getAttendance(tenant.id);
+    const realPunchRecords = rawAttendance.filter((r) => {
+      const noteLower = (r.notes || '').toLowerCase();
+      return !noteLower.includes('benchmark') && !noteLower.includes('test punch');
+    });
+
+    // Build the complete daily attendance roster for all workforce members as per industry standards
+    const { roster, stats } = buildDailyWorkforceRoster({
+      date: targetDate,
+      employees,
+      punchRecords: realPunchRecords,
+      leaveApplications: leaves,
+      shifts,
+      tenantId: tenant.id
+    });
 
     const payload = {
-      records,
+      records: roster,
       employees,
       regularizations,
-      presentCount: records.filter((r) => r.status === 'PRESENT' || r.status === 'LATE_ENTRY').length,
-      totalEmployees: employees.length,
+      shifts,
+      stats,
+      date: targetDate,
       pendingRegularizationsCount: regularizations.filter((r) => r.status === 'PENDING').length
     };
 
@@ -66,7 +88,9 @@ export async function POST(
 ) {
   try {
     const { tenantSlug } = await context.params;
-    const tenant = await SupabaseStore.getTenantBySlug(tenantSlug) || await db.getResolvedTenant(tenantSlug, true);
+    const tenant =
+      (await SupabaseStore.getTenantBySlug(tenantSlug)) ||
+      (await db.getResolvedTenant(tenantSlug, true));
     if (!tenant) {
       return NextResponse.json({ success: false, error: 'Tenant not found' }, { status: 404 });
     }
@@ -100,7 +124,6 @@ export async function POST(
         );
       }
 
-      // Ensure employee is in memory db
       let emp = db.getEmployeeById(tenant.id, employeeId);
       if (!emp) {
         const emps = await SupabaseStore.getEmployees(tenant.id);
@@ -133,18 +156,20 @@ export async function POST(
       );
     }
 
-    // Standard Clock-in / Clock-out punch
+    // Standard Clock-in / Clock-out punch (Initiated by Employee Only)
     const employeeId = body.employeeId;
     const rawAction = body.action || body.type;
     const notes = body.notes;
 
     if (!employeeId || !rawAction) {
-      return NextResponse.json({ success: false, error: 'Employee ID and action (IN/OUT) required' }, { status: 400 });
+      return NextResponse.json(
+        { success: false, error: 'Employee ID and action (IN/OUT) required' },
+        { status: 400 }
+      );
     }
 
-    const action: 'IN' | 'OUT' = (rawAction === 'PUNCH_IN' || rawAction === 'IN') ? 'IN' : 'OUT';
+    const action: 'IN' | 'OUT' = rawAction === 'PUNCH_IN' || rawAction === 'IN' ? 'IN' : 'OUT';
 
-    // Ensure employee exists in db memory before punching
     let emp = db.getEmployeeById(tenant.id, employeeId);
     if (!emp) {
       const emps = await SupabaseStore.getEmployees(tenant.id);
@@ -153,34 +178,12 @@ export async function POST(
         emp = db.getEmployeeById(tenant.id, employeeId);
       }
     }
+
     if (!emp) {
-      const allEmps = db.getEmployees(tenant.id);
-      emp = allEmps.find((e) => e.id === employeeId) || null;
-      if (!emp) {
-        const placeholderEmp: Employee = {
-          id: employeeId,
-          tenantId: tenant.id,
-          employeeCode: 'EMP-GEN',
-          firstName: 'Team',
-          lastName: 'Member',
-          workEmail: 'employee@goodwin.local',
-          phone: '+91 99999 00000',
-          gender: 'MALE',
-          joiningDate: '2024-01-01',
-          departmentId: 'dept-gen',
-          designationId: 'desig-gen',
-          departmentName: 'General',
-          designationTitle: 'Team Member',
-          employmentType: 'FULL_TIME',
-          status: 'ACTIVE',
-          loginStatus: 'ACCEPTED',
-          monthlySalary: 30000,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
-        };
-        db.upsertEmployee(placeholderEmp);
-        emp = placeholderEmp;
-      }
+      return NextResponse.json(
+        { success: false, error: 'Employee not found for attendance punch' },
+        { status: 404 }
+      );
     }
 
     const record = db.recordPunch(tenant.id, employeeId, action, notes);
@@ -189,7 +192,7 @@ export async function POST(
     return NextResponse.json(
       {
         success: true,
-        message: `Punch ${action === 'IN' ? 'In' : 'Out'} logged at ${new Date().toLocaleTimeString()}`,
+        message: `Clock ${action === 'IN' ? 'In' : 'Out'} logged at ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} (${record.status})`,
         data: record
       },
       { headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate' } }
@@ -206,7 +209,9 @@ export async function PATCH(
 ) {
   try {
     const { tenantSlug } = await context.params;
-    const tenant = await SupabaseStore.getTenantBySlug(tenantSlug) || await db.getResolvedTenant(tenantSlug, true);
+    const tenant =
+      (await SupabaseStore.getTenantBySlug(tenantSlug)) ||
+      (await db.getResolvedTenant(tenantSlug, true));
     if (!tenant) {
       return NextResponse.json({ success: false, error: 'Tenant not found' }, { status: 404 });
     }
@@ -223,7 +228,6 @@ export async function PATCH(
       );
     }
 
-    // Sync latest regularizations from Supabase
     const supaRegs = await SupabaseStore.getRegularizations(tenant.id);
     if (supaRegs && supaRegs.length > 0) {
       db.syncRegularizations(supaRegs);
@@ -239,9 +243,10 @@ export async function PATCH(
 
     await SupabaseStore.saveRegularization(updated);
 
-    // If approved, sync and persist the updated/created attendance record
     if (status === 'APPROVED') {
-      const att = db.getAttendance(tenant.id, updated.attendanceDate).find((a) => a.employeeId === updated.employeeId);
+      const att = db
+        .getAttendance(tenant.id, updated.attendanceDate)
+        .find((a) => a.employeeId === updated.employeeId);
       if (att) {
         await SupabaseStore.saveAttendance(att);
       }

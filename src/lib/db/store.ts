@@ -44,6 +44,7 @@ import {
   INITIAL_JOB_APPLICANTS,
   INITIAL_INVITATIONS
 } from './initialData';
+import { evaluateAttendanceStatus, DEFAULT_SHIFT_POLICY } from '../attendanceCalculator';
 import { SupabaseStore } from './supabaseStore';
 
 class HRMSDataStore {
@@ -1307,11 +1308,25 @@ class HRMSDataStore {
     const today = new Date().toISOString().split('T')[0];
     const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
+    const shift =
+      this.shifts.find((s) => s.tenantId === tenantId && (s.name === emp.shiftName || s.isDefault)) ||
+      this.shifts[0];
+    const policy = shift
+      ? {
+          startTime: shift.startTime || '09:00',
+          endTime: shift.endTime || '18:00',
+          graceMinutes: shift.graceMinutes ?? 15,
+          fullDayMinHours: 7.5,
+          halfDayMinHours: 4.0
+        }
+      : DEFAULT_SHIFT_POLICY;
+
     let record = this.attendance.find(
       (a) => a.tenantId === tenantId && a.employeeId === employeeId && a.date === today
     );
 
     if (!record) {
+      const evalRes = evaluateAttendanceStatus(timeStr, undefined, policy);
       record = {
         id: `att-${Date.now()}`,
         tenantId,
@@ -1320,15 +1335,20 @@ class HRMSDataStore {
         date: today,
         clockInTime: timeStr,
         workingHours: 0,
-        status: 'PRESENT',
-        notes: notes || 'Web Punch-In',
-        shiftName: emp.shiftName || 'General Shift'
+        status: evalRes.status,
+        notes:
+          notes ||
+          (evalRes.isLate ? `Clocked in ${evalRes.lateMinutes}m after grace` : 'Mobile Web Punch-In'),
+        shiftName: shift?.name || emp.shiftName || 'General Day Shift'
       };
       this.attendance.push(record);
     } else {
       if (action === 'OUT') {
         record.clockOutTime = timeStr;
-        record.workingHours = 8.5;
+        const evalRes = evaluateAttendanceStatus(record.clockInTime, timeStr, policy);
+        record.workingHours = evalRes.workingHours;
+        record.status = evalRes.status;
+        if (notes) record.notes = notes;
       }
     }
     return record;

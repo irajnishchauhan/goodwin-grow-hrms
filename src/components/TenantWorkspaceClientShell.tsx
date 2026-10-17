@@ -25,7 +25,8 @@ import {
   Mail,
   UserCheck,
   ChevronDown,
-  LogOut
+  LogOut,
+  LogIn
 } from 'lucide-react';
 
 interface TenantWorkspaceClientShellProps {
@@ -349,9 +350,17 @@ export default function TenantWorkspaceClientShell({
                         </div>
                       </div>
 
+                      <Link
+                        href="/login"
+                        className="w-full mt-2 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs flex items-center justify-center gap-2 border border-slate-300 transition-colors"
+                      >
+                        <LogIn className="w-3.5 h-3.5 text-slate-600" />
+                        <span>Jump to Login Page</span>
+                      </Link>
+
                       <button
                         onClick={() => logout()}
-                        className="w-full mt-2 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 font-semibold text-xs flex items-center justify-center gap-2 border border-rose-200 transition-colors"
+                        className="w-full mt-1.5 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 font-semibold text-xs flex items-center justify-center gap-2 border border-rose-200 transition-colors"
                       >
                         <LogOut className="w-3.5 h-3.5" />
                         <span>Sign Out</span>
@@ -395,10 +404,17 @@ export default function TenantWorkspaceClientShell({
                         );
                       })}
 
-                      <div className="border-t border-slate-100 pt-1 mt-1">
+                      <div className="border-t border-slate-100 pt-1 mt-1 space-y-1">
+                        <Link
+                          href="/login"
+                          className="w-full text-left px-3 py-1.5 flex items-center gap-2 text-slate-700 hover:bg-slate-50 text-[11px] rounded-lg transition-colors"
+                        >
+                          <LogIn className="w-3.5 h-3.5 text-slate-500" />
+                          <span>Jump to Login Page</span>
+                        </Link>
                         <button
                           onClick={() => logout()}
-                          className="w-full text-left px-3 py-2 flex items-center gap-2 text-rose-700 hover:bg-rose-50 text-[11px] rounded-lg transition-colors"
+                          className="w-full text-left px-3 py-1.5 flex items-center gap-2 text-rose-700 hover:bg-rose-50 text-[11px] rounded-lg transition-colors"
                         >
                           <LogOut className="w-3.5 h-3.5 text-rose-600" />
                           <span>Sign Out</span>
@@ -438,6 +454,17 @@ export default function TenantWorkspaceClientShell({
             >
               <UserCheck className="w-3.5 h-3.5 text-emerald-600" />
               <span>{isEmployeeOnly ? 'My Dashboard' : 'My ESS'}</span>
+            </Link>
+
+            {/* Always visible Jump to Login button in top bar */}
+            <Link
+              href="/login"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 border border-slate-300 text-[11px] font-semibold text-slate-700 hover:text-slate-900 transition-colors cursor-pointer shadow-xs"
+              title="Jump to Universal Login Page"
+            >
+              <LogIn className="w-3.5 h-3.5 text-slate-600" />
+              <span className="hidden sm:inline">Jump to Login</span>
+              <span className="sm:hidden">Login</span>
             </Link>
           </div>
         </header>

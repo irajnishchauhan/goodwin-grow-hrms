@@ -10,10 +10,6 @@ import {
   Eye,
   EyeOff,
   ArrowRight,
-  Sparkles,
-  Building2,
-  Users,
-  CheckCircle2,
   AlertCircle
 } from 'lucide-react';
 
@@ -60,30 +56,6 @@ export default function UniversalLoginPage() {
     }
   };
 
-  const handleQuickDemoLogin = (demoEmail: string, demoPass: string = 'password123') => {
-    setEmail(demoEmail);
-    setPassword(demoPass);
-    // Trigger login with those credentials
-    setTimeout(() => {
-      fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: demoEmail, password: demoPass })
-      })
-        .then((res) => res.json())
-        .then((json) => {
-          if (json.success) {
-            localStorage.setItem('currentUser', JSON.stringify(json.data.user));
-            localStorage.setItem('authToken', json.data.token || 'demo-auth-token');
-            document.cookie = `gg_user=${encodeURIComponent(JSON.stringify(json.data.user))}; path=/; max-age=86400`;
-            if (typeof window !== 'undefined') {
-              window.dispatchEvent(new Event('hrms-auth-change'));
-            }
-            router.push(json.data.redirectUrl);
-          }
-        });
-    }, 100);
-  };
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col justify-center items-center p-4 font-sans selection:bg-emerald-500 selection:text-white">
@@ -198,41 +170,6 @@ export default function UniversalLoginPage() {
           </div>
         </div>
 
-        {/* Quick Demo Persona Switcher (Client: Goodwin Batteries) */}
-        <div className="p-5 rounded-2xl bg-slate-900/60 border border-slate-800/80 text-xs space-y-3">
-          <div className="flex items-center justify-between">
-            <span className="font-bold text-white flex items-center gap-1.5">
-              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-              Goodwin Batteries 1-Click Role Switcher
-            </span>
-            <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
-              Demo
-            </span>
-          </div>
-          <p className="text-[11px] text-slate-400">
-            Click any role to test instant authentication, membership verification and routing:
-          </p>
-
-          <div className="grid grid-cols-2 gap-2 text-[11px]">
-            <button
-              onClick={() => handleQuickDemoLogin('rajnish.chauhan@goodwinbatteries.com')}
-              className="p-3 rounded-xl bg-amber-950/40 border border-amber-500/40 hover:border-amber-400 text-left transition-colors col-span-2 sm:col-span-1 shadow-sm"
-            >
-              <div className="font-bold text-amber-400">Company Owner & MD</div>
-              <div className="text-[10px] text-slate-300">Rajnish Singh Chauhan</div>
-              <div className="text-[9px] font-mono text-slate-400 mt-0.5">rajnish.chauhan@goodwinbatteries.com</div>
-            </button>
-
-            <button
-              onClick={() => handleQuickDemoLogin('admin@goodwingrow.ai')}
-              className="p-3 rounded-xl bg-slate-950 border border-slate-800 hover:border-emerald-500/50 text-left transition-colors col-span-2 sm:col-span-1 shadow-sm"
-            >
-              <div className="font-bold text-emerald-400">Platform Super Admin</div>
-              <div className="text-[10px] text-slate-400">Goodwin Grow AI</div>
-              <div className="text-[9px] font-mono text-slate-400 mt-0.5">admin@goodwingrow.ai</div>
-            </button>
-          </div>
-        </div>
       </div>
     </div>
   );
