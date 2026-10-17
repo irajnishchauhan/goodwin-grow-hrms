@@ -16,13 +16,57 @@ export async function GET(
     }
 
     const { searchParams } = new URL(req.url);
-    const month = searchParams.get('month') || undefined;
+    const targetMonth = searchParams.get('month') || '2026-10';
 
-    let slips = await SupabaseStore.getSalarySlips(tenant.id);
-    if (slips === null) {
-      slips = db.getSalarySlips(tenant.id, month);
-    } else if (month) {
-      slips = slips.filter((s) => s.month === month);
+    const [supaSlips, supaAtt, supaEmps] = await Promise.all([
+      SupabaseStore.getSalarySlips(tenant.id),
+      SupabaseStore.getAttendance(tenant.id),
+      SupabaseStore.getEmployees(tenant.id)
+    ]);
+
+    if (supaAtt !== null) {
+      db.setAttendanceForTenant(tenant.id, supaAtt);
+    }
+    if (supaEmps && supaEmps.length > 0) {
+      db.syncEmployees(supaEmps);
+    }
+
+    let slips = supaSlips;
+    if (slips === null || slips.length === 0) {
+      slips = db.generatePayrollRun(tenant.id, targetMonth);
+      await Promise.all(slips.map((s) => SupabaseStore.saveSalarySlip(s)));
+    } else {
+      // Filter out test/benchmark records to evaluate real payable attendance
+      const validAttendance = (supaAtt || []).filter((a) => {
+        if (!a.date.startsWith(targetMonth)) return false;
+        const noteLower = (a.notes || '').toLowerCase();
+        return !noteLower.includes('benchmark') && !noteLower.includes('test punch');
+      });
+
+      // Strict enforcement of "No Entry = No Pay":
+      // If an employee has 0 valid logged shifts/leaves in the month, their earned pay must be 0
+      slips = slips.map((slip) => {
+        if (slip.month !== targetMonth) return slip;
+        const empAtt = validAttendance.filter((a) => a.employeeId === slip.employeeId);
+        if (empAtt.length === 0 && (slip.netPay > 0 || slip.paymentStatus === 'PAID')) {
+          const corrected = {
+            ...slip,
+            basicPay: 0,
+            hra: 0,
+            specialAllowance: 0,
+            grossSalary: 0,
+            netPay: 0,
+            paymentStatus: 'PENDING' as const
+          };
+          SupabaseStore.saveSalarySlip(corrected).catch(() => {});
+          return corrected;
+        }
+        return slip;
+      });
+
+      if (searchParams.get('month')) {
+        slips = slips.filter((s) => s.month === targetMonth);
+      }
     }
 
     const totalDisbursed = slips.reduce((sum, s) => sum + s.netPay, 0);
@@ -56,7 +100,7 @@ export async function POST(
     }
 
     const body = await req.json();
-    const { month } = body;
+    const targetMonth = body.month || '2026-10';
     db.invalidateCache(tenant.id);
     db.invalidateCache(tenantSlug);
 
@@ -67,18 +111,18 @@ export async function POST(
     if (supaEmps && supaEmps.length > 0) {
       db.syncEmployees(supaEmps);
     }
-    if (supaAtt && supaAtt.length > 0) {
-      db.syncAttendance(supaAtt);
+    if (supaAtt !== null) {
+      db.setAttendanceForTenant(tenant.id, supaAtt);
     }
 
-    const slips = db.generatePayrollRun(tenant.id, month || '2026-10');
+    const slips = db.generatePayrollRun(tenant.id, targetMonth);
     // Save to Supabase in parallel
     await Promise.all(slips.map((slip) => SupabaseStore.saveSalarySlip(slip)));
 
     return NextResponse.json(
       {
         success: true,
-        message: `Payroll executed successfully for ${slips.length} employees for ${month || '2026-10'}.`,
+        message: `Payroll executed successfully for ${slips.length} employees for ${targetMonth}.`,
         data: { slips, count: slips.length }
       },
       { headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate' } }

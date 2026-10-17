@@ -708,9 +708,15 @@ export default function EmployeeSelfServiceDashboard() {
               <CreditCard className="w-4 h-4 text-emerald-600" />
               <span>Latest Salary Slip</span>
             </h3>
-            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold">
-              DISBURSED
-            </span>
+            {payslips.length > 0 && payslips[0].netPay > 0 && payslips[0].paymentStatus === 'PAID' ? (
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold">
+                DISBURSED
+              </span>
+            ) : (
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200 font-bold">
+                {payslips.length > 0 && payslips[0].netPay > 0 ? payslips[0].paymentStatus : 'UNPAID (0 ENTRIES)'}
+              </span>
+            )}
           </div>
 
           {payslips.length > 0 ? (
@@ -722,7 +728,7 @@ export default function EmployeeSelfServiceDashboard() {
                 </div>
                 <div className="text-right">
                   <span className="text-xs text-slate-500 font-medium">Net Take-Home:</span>
-                  <div className="font-black text-emerald-700 text-base font-mono">
+                  <div className={`font-black text-base font-mono ${payslips[0].netPay > 0 ? 'text-emerald-700' : 'text-slate-600'}`}>
                     ₹{payslips[0].netPay.toLocaleString()}
                   </div>
                 </div>
@@ -732,6 +738,13 @@ export default function EmployeeSelfServiceDashboard() {
                 <div>Gross: ₹{payslips[0].grossSalary.toLocaleString()}</div>
                 <div className="text-right">Deductions: ₹{payslips[0].totalDeductions.toLocaleString()}</div>
               </div>
+
+              {payslips[0].netPay === 0 && (
+                <div className="p-2.5 rounded-lg bg-amber-50/90 border border-amber-200/80 text-[11px] text-amber-800 font-medium flex items-center gap-1.5">
+                  <AlertCircle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                  <span>No attendance log shifts recorded for this cycle (No entry = No pay).</span>
+                </div>
+              )}
 
               <button
                 type="button"

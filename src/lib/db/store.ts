@@ -1457,6 +1457,20 @@ class HRMSDataStore {
     }
   }
 
+  public setAttendanceForTenant(tenantId: string, records: AttendanceRecord[]): void {
+    this.attendance = [
+      ...this.attendance.filter((a) => a.tenantId !== tenantId),
+      ...records
+    ];
+  }
+
+  public setSalarySlipsForTenant(tenantId: string, slips: SalarySlip[]): void {
+    this.salarySlips = [
+      ...this.salarySlips.filter((s) => s.tenantId !== tenantId),
+      ...slips
+    ];
+  }
+
   public recordPunch(
     tenantId: string,
     employeeId: string,
@@ -1849,19 +1863,40 @@ class HRMSDataStore {
     const employees = this.getEmployees(tenantId);
     const generatedSlips: SalarySlip[] = [];
 
-    // Filter attendance records for this tenant in the target month
-    const tenantAttendance = this.attendance.filter(
-      (a) => a.tenantId === tenantId && a.date.startsWith(month)
-    );
+    // Filter attendance records for this tenant in the target month (excluding test/benchmark entries)
+    const tenantAttendance = this.attendance.filter((a) => {
+      if (a.tenantId !== tenantId || !a.date.startsWith(month)) return false;
+      const noteLower = (a.notes || '').toLowerCase();
+      if (noteLower.includes('benchmark') || noteLower.includes('test punch')) return false;
+      return true;
+    });
 
     for (const emp of employees) {
-      // Count valid attendance days (present, late entry, half day, or approved leave)
-      const empAttendance = tenantAttendance.filter(
-        (a) =>
-          a.employeeId === emp.id &&
-          (a.status === 'PRESENT' || a.status === 'LATE_ENTRY' || a.status === 'HALF_DAY' || a.status === 'ON_LEAVE')
-      );
-      const presentDays = empAttendance.length;
+      // Calculate effective payable days:
+      // - "no entry = no pay" rule: 0 valid logged shifts/leaves -> 0 payable days -> ₹0 pay
+      // - HALF_DAY counts as 0.5 day
+      // - In-progress punches (missing clockOut & 0 workingHours) do NOT count as full worked days
+      const empAttendance = tenantAttendance.filter((a) => a.employeeId === emp.id);
+
+      let payableDays = 0;
+      for (const a of empAttendance) {
+        if (a.status === 'ON_LEAVE') {
+          // Approved leave counts as 1 payable day
+          payableDays += 1;
+        } else if (a.status === 'HALF_DAY') {
+          payableDays += 0.5;
+        } else if (a.status === 'PRESENT' || a.status === 'LATE_ENTRY') {
+          const hours = a.workingHours || 0;
+          if (hours >= 7.0 || (a.clockInTime && a.clockOutTime && a.clockInTime !== a.clockOutTime && hours >= 4.0)) {
+            payableDays += 1;
+          } else if (hours >= 4.0) {
+            payableDays += 0.5;
+          } else if (a.clockInTime && a.clockOutTime && a.clockInTime !== a.clockOutTime && hours > 0) {
+            payableDays += Math.min(hours / 8.0, 1.0);
+          }
+          // Note: In-progress punches with 0 completed hours do not count until shift completes
+        }
+      }
 
       // In this company, statutory PF and tax deductions are 0
       const pf = 0;
@@ -1870,15 +1905,15 @@ class HRMSDataStore {
       const tax = 0;
       const totalDeductions = 0;
 
-      // Prorate pay based on actual attendance. If 0 attendance logged so far, earned pay is 0
+      // Strict "No entry = No pay" prorating
       let grossSalary = 0;
       let basicPay = 0;
       let hra = 0;
       let specialAllowance = 0;
       let netPay = 0;
 
-      if (presentDays > 0) {
-        const workedRatio = Math.min(presentDays / 26, 1);
+      if (payableDays > 0) {
+        const workedRatio = Math.min(payableDays / 26, 1);
         grossSalary = Math.round(emp.monthlySalary * workedRatio);
         basicPay = Math.round(grossSalary * 0.5);
         hra = Math.round(grossSalary * 0.25);
@@ -1908,7 +1943,7 @@ class HRMSDataStore {
         taxDeduction: tax,
         totalDeductions,
         netPay,
-        paymentStatus: presentDays > 0 ? 'PAID' : 'PENDING',
+        paymentStatus: payableDays > 0 ? 'PAID' : 'PENDING',
         generatedDate: new Date().toISOString().split('T')[0]
       };
 

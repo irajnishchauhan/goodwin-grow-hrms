@@ -178,10 +178,12 @@ export default function TenantPayrollPage() {
           <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">
             {isEmployeeOnly ? 'My Net Take-Home Pay' : 'Net Salary Disbursed'}
           </div>
-          <div className="text-2xl sm:text-3xl font-extrabold text-emerald-700 mt-1">
+          <div className={`text-2xl sm:text-3xl font-extrabold mt-1 ${totalNet > 0 ? 'text-emerald-700' : 'text-slate-700'}`}>
             {tenant?.currency} {totalNet.toLocaleString()}
           </div>
-          <p className="text-[11px] text-emerald-700 font-medium mt-1">✓ Credited to employee bank accounts</p>
+          <p className={`text-[11px] font-medium mt-1 ${totalNet > 0 ? 'text-emerald-700' : 'text-slate-500'}`}>
+            {totalNet > 0 ? '✓ Credited to employee bank accounts' : '₹0 disbursed (Prorated: No entry = No pay)'}
+          </p>
         </div>
       </div>
 
