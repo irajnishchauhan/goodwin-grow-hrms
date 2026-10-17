@@ -16,10 +16,12 @@ import {
   MapPin,
   Calendar,
   DollarSign,
-  Briefcase,
   Copy,
   Check,
-  RefreshCw
+  RefreshCw,
+  Upload,
+  Trash2,
+  Image as ImageIcon
 } from 'lucide-react';
 import { Tenant } from '@/lib/types';
 import RoleGuard from '@/components/RoleGuard';
@@ -88,6 +90,7 @@ export default function TenantSettingsPage() {
   const [timezone, setTimezone] = useState('Asia/Kolkata');
   const [financialYear, setFinancialYear] = useState('April - March');
   const [primaryColor, setPrimaryColor] = useState('#059669');
+  const [logoUrl, setLogoUrl] = useState('');
 
   const [savedMsg, setSavedMsg] = useState(false);
   const [copiedId, setCopiedId] = useState(false);
@@ -116,6 +119,7 @@ export default function TenantSettingsPage() {
           setTimezone(t.timezone || 'Asia/Kolkata');
           setFinancialYear(t.financialYear || 'April - March');
           setPrimaryColor(t.primaryColor || '#059669');
+          setLogoUrl(t.logoUrl || '');
         }
       } catch (e) {
         console.error('Failed to load tenant settings:', e);
@@ -125,6 +129,22 @@ export default function TenantSettingsPage() {
     };
     if (tenantSlug) fetchTenant();
   }, [tenantSlug]);
+
+  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) {
+      alert('Logo image must be smaller than 2MB');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        setLogoUrl(reader.result);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -145,7 +165,8 @@ export default function TenantSettingsPage() {
         currency,
         timezone,
         financialYear,
-        primaryColor
+        primaryColor,
+        logoUrl
       };
 
       const res = await fetch(`/api/tenants/${tenantSlug}`, {
@@ -484,19 +505,92 @@ export default function TenantSettingsPage() {
                   </div>
                 </div>
 
+                {/* Company Logo Configuration */}
+                <div className="pt-3 border-t border-slate-100 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <label className="block font-semibold text-slate-700">Company Logo (ERP & Payslips)</label>
+                      <p className="text-[11px] text-slate-400 mt-0.5">
+                        Attached to employee salary slips, platform gateway, and navigation bar.
+                      </p>
+                    </div>
+                    {logoUrl && (
+                      <button
+                        type="button"
+                        onClick={() => setLogoUrl('')}
+                        className="text-rose-600 hover:text-rose-700 text-xs font-semibold flex items-center gap-1 cursor-pointer"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                        <span>Remove Logo</span>
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 p-4 rounded-xl border border-slate-200 bg-slate-50">
+                    <div className="w-16 h-16 rounded-2xl bg-white border border-slate-200 shadow-sm flex items-center justify-center p-2 shrink-0">
+                      {logoUrl ? (
+                        <img src={logoUrl} alt="Company Logo" className="w-full h-full object-contain" />
+                      ) : (
+                        <ImageIcon className="w-6 h-6 text-slate-300" />
+                      )}
+                    </div>
+
+                    <div className="flex-1 space-y-2 w-full">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <label className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold cursor-pointer shadow-sm flex items-center gap-1.5 transition-colors">
+                          <Upload className="w-3.5 h-3.5" />
+                          <span>Upload Logo File</span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={handleLogoUpload}
+                            className="hidden"
+                          />
+                        </label>
+
+                        <button
+                          type="button"
+                          onClick={() => setLogoUrl('/goodwin-logo.png')}
+                          className="px-3 py-1.5 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-semibold transition-colors cursor-pointer"
+                        >
+                          Use Official Goodwin Logo
+                        </button>
+                      </div>
+
+                      <div className="relative">
+                        <input
+                          type="text"
+                          value={logoUrl}
+                          onChange={(e) => setLogoUrl(e.target.value)}
+                          placeholder="Or paste direct image URL (https://... or /goodwin-logo.png)"
+                          className="w-full px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-800 text-[11px] font-mono focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
                 {/* Live Preview Card */}
                 <div className="p-4 rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <div
-                      className="w-10 h-10 rounded-xl flex items-center justify-center font-bold text-white shadow-sm text-sm"
-                      style={{ backgroundColor: primaryColor }}
-                    >
-                      {name ? name.substring(0, 2).toUpperCase() : 'GW'}
-                    </div>
+                    {logoUrl ? (
+                      <img
+                        src={logoUrl}
+                        alt="Logo Preview"
+                        className="w-10 h-10 rounded-xl object-contain bg-white p-1 border border-slate-200 shadow-sm"
+                      />
+                    ) : (
+                      <div
+                        className="w-10 h-10 rounded-xl flex items-center justify-center font-bold text-white shadow-sm text-sm"
+                        style={{ backgroundColor: primaryColor }}
+                      >
+                        {name ? name.substring(0, 2).toUpperCase() : 'GW'}
+                      </div>
+                    )}
                     <div>
                       <div className="font-bold text-slate-900 text-xs">{name || 'Your Company'}</div>
                       <div className="text-[11px] text-slate-500 font-mono">
-                        Brand Accent: {primaryColor}
+                        Brand Accent: {primaryColor} &bull; Logo: {logoUrl ? 'Active' : 'Fallback Letter'}
                       </div>
                     </div>
                   </div>

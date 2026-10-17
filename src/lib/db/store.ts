@@ -21,7 +21,8 @@ import {
   Invitation,
   ImportBatch,
   UserRole,
-  OnboardingStep
+  OnboardingStep,
+  EmploymentType
 } from '../types';
 import {
   INITIAL_PLANS,
@@ -422,6 +423,7 @@ class HRMSDataStore {
     name: string;
     slug?: string;
     companyCode?: string;
+    logoUrl?: string;
     industry?: string;
     businessEmail: string;
     businessPhone?: string;
@@ -475,7 +477,7 @@ class HRMSDataStore {
       name: data.name,
       slug,
       companyCode,
-      logoUrl: `https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=128&auto=format&fit=crop&q=80`,
+      logoUrl: data.logoUrl || '/goodwin-logo.png',
       industry: data.industry || 'Technology & Manufacturing',
       businessEmail: data.businessEmail,
       businessPhone: data.businessPhone || '+91 80 0000 0000',
@@ -1025,6 +1027,9 @@ class HRMSDataStore {
       bankName?: string;
       workLocation?: string;
       shiftName?: string;
+      joiningDate?: string;
+      employmentType?: EmploymentType;
+      personalEmail?: string;
     }
   ): Employee {
     const tenant = this.getTenantById(tenantId);
@@ -1048,15 +1053,16 @@ class HRMSDataStore {
       firstName: data.firstName,
       lastName: data.lastName,
       workEmail: data.workEmail,
+      personalEmail: data.personalEmail,
       phone: data.phone,
       gender: data.gender,
-      joiningDate: new Date().toISOString().split('T')[0],
+      joiningDate: data.joiningDate || new Date().toISOString().split('T')[0],
       departmentId: data.departmentId,
       departmentName,
       designationId: `desig-${empId}`,
       designationTitle: data.designationTitle,
       reportingManagerName: data.reportingManagerName || 'Executive Management',
-      employmentType: 'FULL_TIME',
+      employmentType: data.employmentType || 'FULL_TIME',
       status: 'ACTIVE',
       monthlySalary: Number(data.monthlySalary),
       panOrTaxId: data.panOrTaxId || 'PENDING',

@@ -264,10 +264,18 @@ export default function PlatformHomePage() {
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex items-center gap-3.5">
                     <div
-                      className="w-12 h-12 rounded-2xl flex items-center justify-center text-white font-bold text-lg shadow-sm"
-                      style={{ backgroundColor: t.primaryColor || '#059669' }}
+                      className="w-12 h-12 rounded-2xl flex items-center justify-center font-bold text-lg shadow-xs overflow-hidden border border-slate-200 bg-white"
                     >
-                      {t.name.slice(0, 1)}
+                      {t.logoUrl ? (
+                        <img src={t.logoUrl} alt={t.name} className="w-10 h-10 object-contain" />
+                      ) : (
+                        <div
+                          className="w-full h-full flex items-center justify-center text-white"
+                          style={{ backgroundColor: t.primaryColor || '#059669' }}
+                        >
+                          {t.name.slice(0, 1)}
+                        </div>
+                      )}
                     </div>
                     <div>
                       <h3 className="text-lg font-bold text-slate-900 group-hover:text-emerald-700 transition-colors">

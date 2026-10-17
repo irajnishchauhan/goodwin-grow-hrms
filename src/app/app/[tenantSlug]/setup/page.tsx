@@ -89,6 +89,7 @@ export default function CompanySetupWizardPage() {
   const [postalCode, setPostalCode] = useState('');
   const [currency, setCurrency] = useState('INR');
   const [primaryColor, setPrimaryColor] = useState('#D97706');
+  const [logoUrl, setLogoUrl] = useState('');
 
   // Step 2: Department form state
   const [newDeptName, setNewDeptName] = useState('');
@@ -151,6 +152,7 @@ export default function CompanySetupWizardPage() {
         setPostalCode(t.postalCode || '');
         setCurrency(t.currency || 'INR');
         setPrimaryColor(t.primaryColor || '#D97706');
+        setLogoUrl(t.logoUrl || '');
         setChecklist(t.onboardingChecklist || []);
 
         setDepartments(json.data.departments || []);
@@ -228,6 +230,24 @@ export default function CompanySetupWizardPage() {
     }
   };
 
+  // Step 1: Logo file upload handler
+  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) {
+      showToast('Logo file size must be less than 2MB');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        setLogoUrl(reader.result);
+        showToast('Company logo updated');
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
   // Step 1: Save Profile
   const handleSaveProfile = async (advance: boolean = false) => {
     setSaving(true);
@@ -248,7 +268,8 @@ export default function CompanySetupWizardPage() {
           state,
           country,
           postalCode,
-          primaryColor
+          primaryColor,
+          logoUrl
         })
       });
       const json = await res.json();
@@ -854,6 +875,69 @@ export default function CompanySetupWizardPage() {
                     className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-white text-xs"
                     placeholder="560100"
                   />
+                </div>
+              </div>
+
+              {/* Company Logo Configuration in Setup */}
+              <div className="pt-4 border-t border-slate-800 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <label className="block font-semibold text-slate-300">Company Logo (ERP & Payslips)</label>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      Attached to employee salary slips, platform gateway, and navigation bar.
+                    </p>
+                  </div>
+                  {logoUrl && (
+                    <button
+                      type="button"
+                      onClick={() => setLogoUrl('')}
+                      className="text-rose-400 hover:text-rose-300 text-xs font-semibold flex items-center gap-1 cursor-pointer"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                      <span>Remove</span>
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 p-4 rounded-xl border border-slate-800 bg-slate-900/60">
+                  <div className="w-14 h-14 rounded-2xl bg-white border border-slate-700 shadow-sm flex items-center justify-center p-1.5 shrink-0">
+                    {logoUrl ? (
+                      <img src={logoUrl} alt="Company Logo" className="w-full h-full object-contain" />
+                    ) : (
+                      <Upload className="w-5 h-5 text-slate-400" />
+                    )}
+                  </div>
+
+                  <div className="flex-1 space-y-2 w-full">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <label className="px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-semibold cursor-pointer shadow-sm flex items-center gap-1.5 transition-colors">
+                        <Upload className="w-3.5 h-3.5" />
+                        <span>Upload Logo</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleLogoUpload}
+                          className="hidden"
+                        />
+                      </label>
+
+                      <button
+                        type="button"
+                        onClick={() => setLogoUrl('/goodwin-logo.png')}
+                        className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs font-semibold transition-colors cursor-pointer"
+                      >
+                        Use Official Goodwin Logo
+                      </button>
+                    </div>
+
+                    <input
+                      type="text"
+                      value={logoUrl}
+                      onChange={(e) => setLogoUrl(e.target.value)}
+                      placeholder="Or direct logo URL (/goodwin-logo.png)"
+                      className="w-full px-3 py-1.5 rounded-lg border border-slate-800 bg-slate-950 text-slate-300 text-[11px] font-mono focus:outline-none focus:ring-1 focus:ring-amber-500"
+                    />
+                  </div>
                 </div>
               </div>
 

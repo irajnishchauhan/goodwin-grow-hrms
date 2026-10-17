@@ -94,8 +94,8 @@ export default function UniversalLoginPage() {
         {/* Brand Header */}
         <div className="text-center space-y-2">
           <Link href="/" className="inline-flex items-center gap-2.5 group">
-            <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-emerald-600 to-teal-400 flex items-center justify-center font-bold text-white text-xl shadow-lg shadow-emerald-900/40 group-hover:scale-105 transition-transform">
-              G
+            <div className="w-11 h-11 rounded-2xl bg-white border border-slate-700/80 p-1 flex items-center justify-center font-bold text-white shadow-lg shadow-emerald-950/50 group-hover:scale-105 transition-transform overflow-hidden">
+              <img src="/goodwin-logo.png" alt="Goodwin Grow HRMS" className="w-full h-full object-contain" />
             </div>
             <div className="text-left">
               <span className="font-extrabold text-xl tracking-tight text-white block">

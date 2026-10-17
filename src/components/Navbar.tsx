@@ -52,8 +52,8 @@ export default function Navbar() {
         {/* Brand */}
         <div className="flex items-center gap-6">
           <Link href="/" className="flex items-center gap-2.5 group">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-500 flex items-center justify-center font-bold text-white shadow-md shadow-emerald-600/20 group-hover:scale-105 transition-transform">
-              G
+            <div className="w-9 h-9 rounded-xl bg-white border border-slate-200 p-0.5 flex items-center justify-center font-bold text-white shadow-xs group-hover:scale-105 transition-transform overflow-hidden">
+              <img src="/goodwin-logo.png" alt="Goodwin Grow" className="w-full h-full object-contain" />
             </div>
             <div>
               <div className="flex items-center gap-2">

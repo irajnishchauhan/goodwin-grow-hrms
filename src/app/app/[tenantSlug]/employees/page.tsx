@@ -17,6 +17,7 @@ import {
   CreditCard,
   Briefcase,
   ShieldCheck,
+  ShieldAlert,
   Upload,
   Download,
   AlertTriangle,
@@ -24,18 +25,25 @@ import {
   Sparkles,
   KeyRound,
   FileSpreadsheet,
-  Lock
+  Lock,
+  Edit3,
+  Calendar,
+  MapPin,
+  Clock,
+  DollarSign,
+  Check
 } from 'lucide-react';
-import { Employee, Department, Tenant } from '@/lib/types';
+import { Employee, Department, Tenant, EmploymentType, EmployeeStatus, LoginActivationStatus, Shift } from '@/lib/types';
 import { useCurrentUser } from '@/lib/auth/useCurrentUser';
 
 export default function TenantEmployeesPage() {
   const params = useParams();
   const tenantSlug = params.tenantSlug as string;
-  const { user, isEmployeeOnly } = useCurrentUser(tenantSlug);
+  const { user, isSuperAdmin, isCompanyAdmin, isHRAdmin, isEmployeeOnly } = useCurrentUser(tenantSlug);
 
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
+  const [shifts, setShifts] = useState<Shift[]>([]);
   const [tenant, setTenant] = useState<Tenant | null>(null);
   const [search, setSearch] = useState('');
   const [selectedDept, setSelectedDept] = useState('ALL');
@@ -58,18 +66,53 @@ export default function TenantEmployeesPage() {
     errors: { row: number; email: string; reason: string }[];
   } | null>(null);
 
-  // Form Fields
+  // Form Fields (Add)
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [workEmail, setWorkEmail] = useState('');
+  const [personalEmail, setPersonalEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [gender, setGender] = useState<'MALE' | 'FEMALE' | 'OTHER'>('MALE');
   const [departmentId, setDepartmentId] = useState('');
   const [designationTitle, setDesignationTitle] = useState('');
+  const [employmentType, setEmploymentType] = useState<EmploymentType>('FULL_TIME');
+  const [workLocation, setWorkLocation] = useState('Hosur Battery Plant');
+  const [shiftName, setShiftName] = useState('General Day Shift');
+  const [joiningDate, setJoiningDate] = useState(new Date().toISOString().split('T')[0]);
   const [monthlySalary, setMonthlySalary] = useState('');
   const [bankAccountNumber, setBankAccountNumber] = useState('');
   const [bankName, setBankName] = useState('');
   const [panOrTaxId, setPanOrTaxId] = useState('');
+
+  // Edit Employee Modal State (Super Admin & HR)
+  const [editingEmp, setEditingEmp] = useState<Employee | null>(null);
+  const [editFirstName, setEditFirstName] = useState('');
+  const [editLastName, setEditLastName] = useState('');
+  const [editWorkEmail, setEditWorkEmail] = useState('');
+  const [editPersonalEmail, setEditPersonalEmail] = useState('');
+  const [editPhone, setEditPhone] = useState('');
+  const [editGender, setEditGender] = useState<'MALE' | 'FEMALE' | 'OTHER'>('MALE');
+  const [editDepartmentId, setEditDepartmentId] = useState('');
+  const [editDesignationTitle, setEditDesignationTitle] = useState('');
+  const [editEmploymentType, setEditEmploymentType] = useState<EmploymentType>('FULL_TIME');
+  const [editWorkLocation, setEditWorkLocation] = useState('');
+  const [editShiftName, setEditShiftName] = useState('');
+  const [editJoiningDate, setEditJoiningDate] = useState('');
+  const [editMonthlySalary, setEditMonthlySalary] = useState('');
+  const [editPanOrTaxId, setEditPanOrTaxId] = useState('');
+  const [editBankName, setEditBankName] = useState('');
+  const [editBankAccountNumber, setEditBankAccountNumber] = useState('');
+  const [editStatus, setEditStatus] = useState<EmployeeStatus>('ACTIVE');
+  const [editLoginStatus, setEditLoginStatus] = useState<LoginActivationStatus>('NOT_INVITED');
+  const [editLoading, setEditLoading] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+  const [editSuccess, setEditSuccess] = useState<string | null>(null);
+
+  // Permanent Delete Modal State (Super Admin Only)
+  const [deleteEmpTarget, setDeleteEmpTarget] = useState<Employee | null>(null);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   // Selected Employee Drawer State
   const [selectedEmp, setSelectedEmp] = useState<Employee | null>(null);
@@ -87,6 +130,7 @@ export default function TenantEmployeesPage() {
       if (json.success) {
         setEmployees(json.data.employees);
         setDepartments(json.data.departments);
+        if (json.data.shifts) setShifts(json.data.shifts);
         setTenant(json.data.tenant);
         if (json.data.departments.length > 0 && !departmentId) {
           setDepartmentId(json.data.departments[0].id);
@@ -118,14 +162,19 @@ export default function TenantEmployeesPage() {
           firstName,
           lastName,
           workEmail,
+          personalEmail,
           phone,
           gender,
           departmentId,
           designationTitle,
+          employmentType,
           monthlySalary: Number(monthlySalary),
           bankAccountNumber,
           bankName,
-          panOrTaxId
+          panOrTaxId,
+          workLocation,
+          shiftName,
+          joiningDate
         })
       });
 
@@ -144,20 +193,118 @@ export default function TenantEmployeesPage() {
     }
   };
 
-  const handleDeleteEmployee = async (id: string, name: string) => {
-    if (!confirm(`Are you sure you want to remove employee ${name}?`)) return;
+  const openEditModal = (emp: Employee) => {
+    setEditingEmp(emp);
+    setEditFirstName(emp.firstName || '');
+    setEditLastName(emp.lastName || '');
+    setEditWorkEmail(emp.workEmail || '');
+    setEditPersonalEmail(emp.personalEmail || '');
+    setEditPhone(emp.phone || '');
+    setEditGender(emp.gender || 'MALE');
+    setEditDepartmentId(emp.departmentId || (departments[0]?.id || ''));
+    setEditDesignationTitle(emp.designationTitle || '');
+    setEditEmploymentType(emp.employmentType || 'FULL_TIME');
+    setEditWorkLocation(emp.workLocation || 'Hosur Battery Plant');
+    setEditShiftName(emp.shiftName || 'General Day Shift');
+    setEditJoiningDate(emp.joiningDate || new Date().toISOString().split('T')[0]);
+    setEditMonthlySalary(String(emp.monthlySalary || '0'));
+    setEditPanOrTaxId(emp.panOrTaxId || '');
+    setEditBankName(emp.bankName || '');
+    setEditBankAccountNumber(emp.bankAccountNumber || '');
+    setEditStatus(emp.status || 'ACTIVE');
+    setEditLoginStatus(emp.loginStatus || 'NOT_INVITED');
+    setEditError(null);
+    setEditSuccess(null);
+  };
+
+  const handleSaveEmployeeEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingEmp) return;
+    setEditLoading(true);
+    setEditError(null);
 
     try {
-      const res = await fetch(`/api/tenants/${tenantSlug}/employees?id=${id}`, {
+      const selectedDeptObj = departments.find((d) => d.id === editDepartmentId);
+
+      const payload: Record<string, any> = {
+        employeeId: editingEmp.id,
+        firstName: editFirstName.trim(),
+        lastName: editLastName.trim(),
+        workEmail: editWorkEmail.trim(),
+        personalEmail: editPersonalEmail.trim(),
+        phone: editPhone.trim(),
+        gender: editGender,
+        departmentId: editDepartmentId,
+        departmentName: selectedDeptObj?.name || editingEmp.departmentName,
+        designationTitle: editDesignationTitle.trim(),
+        employmentType: editEmploymentType,
+        workLocation: editWorkLocation.trim(),
+        shiftName: editShiftName.trim(),
+        joiningDate: editJoiningDate
+      };
+
+      // Super Admin Exclusive Privileges
+      if (isSuperAdmin) {
+        payload.monthlySalary = Number(editMonthlySalary) || 0;
+        payload.panOrTaxId = editPanOrTaxId.trim();
+        payload.bankName = editBankName.trim();
+        payload.bankAccountNumber = editBankAccountNumber.trim();
+        payload.status = editStatus;
+        payload.loginStatus = editLoginStatus;
+      }
+
+      const res = await fetch(`/api/tenants/${tenantSlug}/employees`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        throw new Error(json.error || 'Failed to update employee profile');
+      }
+
+      setEditSuccess('Employee profile updated successfully!');
+      setTimeout(() => {
+        setEditingEmp(null);
+        setEditSuccess(null);
+      }, 700);
+
+      fetchEmployees();
+      if (selectedEmp?.id === editingEmp.id) {
+        setSelectedEmp((prev) => (prev ? { ...prev, ...payload } : null));
+      }
+    } catch (err: unknown) {
+      setEditError(err instanceof Error ? err.message : 'Error updating employee');
+    } finally {
+      setEditLoading(false);
+    }
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deleteEmpTarget) return;
+    setDeleteLoading(true);
+    setDeleteError(null);
+
+    try {
+      const res = await fetch(`/api/tenants/${tenantSlug}/employees?id=${deleteEmpTarget.id}`, {
         method: 'DELETE'
       });
       const json = await res.json();
-      if (json.success) {
-        if (selectedEmp?.id === id) setSelectedEmp(null);
-        fetchEmployees();
+      if (!res.ok || !json.success) {
+        throw new Error(json.error || 'Failed to permanently delete employee');
       }
-    } catch (e) {
-      console.error(e);
+
+      if (selectedEmp?.id === deleteEmpTarget.id) {
+        setSelectedEmp(null);
+      }
+      setDeleteConfirmOpen(false);
+      setDeleteEmpTarget(null);
+      fetchEmployees();
+    } catch (err: unknown) {
+      setDeleteError(err instanceof Error ? err.message : 'Error purging employee record');
+    } finally {
+      setDeleteLoading(false);
     }
   };
 
@@ -165,6 +312,7 @@ export default function TenantEmployeesPage() {
     setFirstName('');
     setLastName('');
     setWorkEmail('');
+    setPersonalEmail('');
     setPhone('');
     setDesignationTitle('');
     setMonthlySalary('');
@@ -303,13 +451,19 @@ Ritu,Chopra,ritu.chopra@goodwinbatteries.com,+91 98444 55667,Research & Battery 
       {/* Header and Add button */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2.5 flex-wrap">
             <h1 className="text-2xl font-extrabold text-white tracking-tight">
               {isEmployeeOnly ? 'Colleague Directory' : 'Workforce & Employee Directory'}
             </h1>
             <span className="text-xs px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-300 font-mono">
               {employees.length} Colleagues
             </span>
+            {isSuperAdmin && (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-500/10 text-amber-400 border border-amber-400/40 shadow-xs">
+                <ShieldAlert className="w-3.5 h-3.5 text-amber-400" />
+                <span>Super Admin Privileges: Full Editing & Permanent Deletion Unlocked</span>
+              </span>
+            )}
           </div>
           <p className="text-xs text-slate-400 mt-1">
             {isEmployeeOnly
@@ -531,16 +685,35 @@ Ritu,Chopra,ritu.chopra@goodwinbatteries.com,+91 98444 55667,Research & Battery 
                           </span>
                         </td>
                         <td className="px-6 py-4 text-right">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDeleteEmployee(emp.id, `${emp.firstName} ${emp.lastName}`);
-                            }}
-                            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
-                            title="Remove Employee"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                          <div className="flex items-center justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
+                            <button
+                              onClick={() => openEditModal(emp)}
+                              className="p-1.5 rounded-lg text-slate-500 hover:text-emerald-700 hover:bg-emerald-50 transition-colors"
+                              title="Edit Employee Profile"
+                            >
+                              <Edit3 className="w-4 h-4" />
+                            </button>
+
+                            {isSuperAdmin ? (
+                              <button
+                                onClick={() => {
+                                  setDeleteEmpTarget(emp);
+                                  setDeleteConfirmOpen(true);
+                                }}
+                                className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                                title="Permanent Delete Employee (Super Admin Exclusive)"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            ) : (
+                              <span
+                                className="p-1.5 rounded-lg text-slate-300 cursor-not-allowed opacity-50"
+                                title="Permanent record purging is restricted exclusively to Super Admin"
+                              >
+                                <Lock className="w-4 h-4" />
+                              </span>
+                            )}
+                          </div>
                         </td>
                       </>
                     )}
@@ -786,6 +959,19 @@ Ritu,Chopra,ritu.chopra@goodwinbatteries.com,+91 98444 55667,Research & Battery 
                   />
                 </div>
                 <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Personal Email</label>
+                  <input
+                    type="email"
+                    value={personalEmail}
+                    onChange={(e) => setPersonalEmail(e.target.value)}
+                    placeholder="john.personal@gmail.com"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
                   <label className="block font-semibold text-slate-700 mb-1">Phone Number</label>
                   <input
                     type="text"
@@ -794,6 +980,18 @@ Ritu,Chopra,ritu.chopra@goodwinbatteries.com,+91 98444 55667,Research & Battery 
                     placeholder="+91 98000 00000"
                     className="w-full px-3 py-2 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
                   />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Gender</label>
+                  <select
+                    value={gender}
+                    onChange={(e) => setGender(e.target.value as any)}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+                  >
+                    <option value="MALE">Male</option>
+                    <option value="FEMALE">Female</option>
+                    <option value="OTHER">Other / Non-Binary</option>
+                  </select>
                 </div>
               </div>
 
@@ -822,6 +1020,32 @@ Ritu,Chopra,ritu.chopra@goodwinbatteries.com,+91 98444 55667,Research & Battery 
                     placeholder="e.g. Battery Calibration Engineer"
                     className="w-full px-3 py-2 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
                   />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Work Location</label>
+                  <input
+                    type="text"
+                    value={workLocation}
+                    onChange={(e) => setWorkLocation(e.target.value)}
+                    placeholder="e.g. Hosur Battery Plant"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Employment Type</label>
+                  <select
+                    value={employmentType}
+                    onChange={(e) => setEmploymentType(e.target.value as EmploymentType)}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+                  >
+                    <option value="FULL_TIME">Full Time Regular</option>
+                    <option value="PART_TIME">Part Time</option>
+                    <option value="CONTRACT">Contract Basis</option>
+                    <option value="INTERN">Internship Trainee</option>
+                  </select>
                 </div>
               </div>
 
@@ -896,6 +1120,509 @@ Ritu,Chopra,ritu.chopra@goodwinbatteries.com,+91 98444 55667,Research & Battery 
         </div>
       )}
 
+      {/* Edit Employee Modal */}
+      {editingEmp && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-2xl rounded-3xl bg-white border border-slate-200 shadow-2xl overflow-hidden text-slate-900 max-h-[92vh] flex flex-col">
+            {/* Modal Header */}
+            <div className="bg-slate-900 px-6 py-4 text-white flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-emerald-600/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+                  <Edit3 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white flex items-center gap-2">
+                    <span>Edit Employee Profile</span>
+                    <span className="font-mono text-xs px-2 py-0.5 rounded-full bg-slate-800 text-emerald-400 border border-slate-700">
+                      {editingEmp.employeeCode}
+                    </span>
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    {editingEmp.firstName} {editingEmp.lastName} &bull; {editingEmp.workEmail}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setEditingEmp(null)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Form */}
+            <form onSubmit={handleSaveEmployeeEdit} className="p-6 space-y-5 text-xs overflow-y-auto flex-1">
+              {/* Super Admin Privileges Banner */}
+              {isSuperAdmin ? (
+                <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-900 text-xs flex items-center justify-between shadow-xs">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-700 flex items-center justify-center shrink-0">
+                      <ShieldAlert className="w-4 h-4 text-amber-600" />
+                    </div>
+                    <div>
+                      <div className="font-extrabold text-amber-950 flex items-center gap-1.5">
+                        <span>Super Admin Privileges Active</span>
+                        <span className="px-1.5 py-0.5 rounded bg-amber-200/80 text-[9px] font-mono font-bold text-amber-900">
+                          SUPER_ADMIN
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-amber-800">
+                        Direct editing unlocked for Base Compensation, Banking details, Statutory Tax IDs, and Lifecycle termination.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 text-slate-700 text-xs flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-slate-200/70 text-slate-600 flex items-center justify-center shrink-0">
+                    <Lock className="w-4 h-4 text-slate-600" />
+                  </div>
+                  <div>
+                    <div className="font-bold text-slate-900">Standard HR Administrator Mode</div>
+                    <p className="text-[11px] text-slate-500">
+                      Sensitive payroll liabilities, banking routing, PAN, and lifecycle states are locked and editable exclusively by Super Admin.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {editError && (
+                <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 font-semibold flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                  <span>{editError}</span>
+                </div>
+              )}
+
+              {editSuccess && (
+                <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 font-semibold flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>{editSuccess}</span>
+                </div>
+              )}
+
+              {/* SECTION 1: Personal & Contact Information */}
+              <div className="space-y-3">
+                <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                  <Users className="w-3.5 h-3.5 text-slate-400" />
+                  <span>Personal & Contact Information</span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">First Name *</label>
+                    <input
+                      type="text"
+                      required
+                      value={editFirstName}
+                      onChange={(e) => setEditFirstName(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Last Name *</label>
+                    <input
+                      type="text"
+                      required
+                      value={editLastName}
+                      onChange={(e) => setEditLastName(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Work Email *</label>
+                    <input
+                      type="email"
+                      required
+                      value={editWorkEmail}
+                      onChange={(e) => setEditWorkEmail(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Personal Email</label>
+                    <input
+                      type="email"
+                      value={editPersonalEmail}
+                      onChange={(e) => setEditPersonalEmail(e.target.value)}
+                      placeholder="e.g. employee@gmail.com"
+                      className="w-full px-3 py-2 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Phone Number</label>
+                    <input
+                      type="text"
+                      value={editPhone}
+                      onChange={(e) => setEditPhone(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Gender</label>
+                    <select
+                      value={editGender}
+                      onChange={(e) => setEditGender(e.target.value as any)}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+                    >
+                      <option value="MALE">Male</option>
+                      <option value="FEMALE">Female</option>
+                      <option value="OTHER">Other / Non-Binary</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* SECTION 2: Organization & Work Placement */}
+              <div className="space-y-3 pt-2 border-t border-slate-100">
+                <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                  <Building2 className="w-3.5 h-3.5 text-slate-400" />
+                  <span>Organization & Placement</span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Department *</label>
+                    <select
+                      value={editDepartmentId}
+                      onChange={(e) => setEditDepartmentId(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+                    >
+                      {departments.map((d) => (
+                        <option key={d.id} value={d.id}>
+                          {d.name} ({d.code})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Designation Title *</label>
+                    <input
+                      type="text"
+                      required
+                      value={editDesignationTitle}
+                      onChange={(e) => setEditDesignationTitle(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Employment Type</label>
+                    <select
+                      value={editEmploymentType}
+                      onChange={(e) => setEditEmploymentType(e.target.value as EmploymentType)}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+                    >
+                      <option value="FULL_TIME">Full Time Regular</option>
+                      <option value="PART_TIME">Part Time</option>
+                      <option value="CONTRACT">Contract Basis</option>
+                      <option value="INTERN">Internship Trainee</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Date of Joining</label>
+                    <input
+                      type="date"
+                      value={editJoiningDate}
+                      onChange={(e) => setEditJoiningDate(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Work Location / Facility</label>
+                    <input
+                      type="text"
+                      value={editWorkLocation}
+                      onChange={(e) => setEditWorkLocation(e.target.value)}
+                      placeholder="e.g. Hosur Battery Plant"
+                      className="w-full px-3 py-2 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Shift Assignment</label>
+                    {shifts.length > 0 ? (
+                      <select
+                        value={editShiftName}
+                        onChange={(e) => setEditShiftName(e.target.value)}
+                        className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+                      >
+                        {shifts.map((s) => (
+                          <option key={s.id} value={s.name}>
+                            {s.name} ({s.startTime} - {s.endTime})
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        type="text"
+                        value={editShiftName}
+                        onChange={(e) => setEditShiftName(e.target.value)}
+                        placeholder="e.g. General Day Shift"
+                        className="w-full px-3 py-2 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+                      />
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* SECTION 3: Compensation, Banking & Lifecycle (SUPER ADMIN EXCLUSIVE) */}
+              <div className="p-4 rounded-2xl bg-amber-500/5 border border-amber-300/60 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <DollarSign className="w-4 h-4 text-amber-600" />
+                    <span className="font-extrabold text-slate-900">Compensation, Banking & Lifecycle Governance</span>
+                  </div>
+                  {isSuperAdmin ? (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300">
+                      <Sparkles className="w-3 h-3 text-amber-600" /> Super Admin Unlocked
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-300">
+                      <Lock className="w-3 h-3 text-slate-500" /> Super Admin Only
+                    </span>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1 flex items-center justify-between">
+                      <span>Monthly Base Salary ({tenant?.currency}) *</span>
+                      {!isSuperAdmin && <Lock className="w-3 h-3 text-slate-400" />}
+                    </label>
+                    <input
+                      type="number"
+                      required
+                      min={0}
+                      disabled={!isSuperAdmin}
+                      value={editMonthlySalary}
+                      onChange={(e) => setEditMonthlySalary(e.target.value)}
+                      className={`w-full px-3 py-2 rounded-xl border ${
+                        !isSuperAdmin
+                          ? 'bg-slate-100 text-slate-500 border-slate-200 cursor-not-allowed'
+                          : 'border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/30'
+                      }`}
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1 flex items-center justify-between">
+                      <span>PAN / Tax ID</span>
+                      {!isSuperAdmin && <Lock className="w-3 h-3 text-slate-400" />}
+                    </label>
+                    <input
+                      type="text"
+                      disabled={!isSuperAdmin}
+                      value={editPanOrTaxId}
+                      onChange={(e) => setEditPanOrTaxId(e.target.value)}
+                      placeholder="e.g. ABCDE1234F"
+                      className={`w-full px-3 py-2 rounded-xl border ${
+                        !isSuperAdmin
+                          ? 'bg-slate-100 text-slate-500 border-slate-200 cursor-not-allowed'
+                          : 'border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/30'
+                      }`}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1 flex items-center justify-between">
+                      <span>Bank Name</span>
+                      {!isSuperAdmin && <Lock className="w-3 h-3 text-slate-400" />}
+                    </label>
+                    <input
+                      type="text"
+                      disabled={!isSuperAdmin}
+                      value={editBankName}
+                      onChange={(e) => setEditBankName(e.target.value)}
+                      placeholder="e.g. Axis Bank"
+                      className={`w-full px-3 py-2 rounded-xl border ${
+                        !isSuperAdmin
+                          ? 'bg-slate-100 text-slate-500 border-slate-200 cursor-not-allowed'
+                          : 'border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/30'
+                      }`}
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1 flex items-center justify-between">
+                      <span>Bank Account Number</span>
+                      {!isSuperAdmin && <Lock className="w-3 h-3 text-slate-400" />}
+                    </label>
+                    <input
+                      type="text"
+                      disabled={!isSuperAdmin}
+                      value={editBankAccountNumber}
+                      onChange={(e) => setEditBankAccountNumber(e.target.value)}
+                      placeholder="e.g. 98127394812"
+                      className={`w-full px-3 py-2 rounded-xl border ${
+                        !isSuperAdmin
+                          ? 'bg-slate-100 text-slate-500 border-slate-200 cursor-not-allowed'
+                          : 'border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/30'
+                      }`}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1 flex items-center justify-between">
+                      <span>Lifecycle Status</span>
+                      {!isSuperAdmin && <Lock className="w-3 h-3 text-slate-400" />}
+                    </label>
+                    <select
+                      disabled={!isSuperAdmin}
+                      value={editStatus}
+                      onChange={(e) => setEditStatus(e.target.value as EmployeeStatus)}
+                      className={`w-full px-3 py-2 rounded-xl border ${
+                        !isSuperAdmin
+                          ? 'bg-slate-100 text-slate-500 border-slate-200 cursor-not-allowed'
+                          : 'border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/30 font-semibold text-emerald-800'
+                      }`}
+                    >
+                      <option value="ACTIVE">ACTIVE (Active Regular Workforce)</option>
+                      <option value="PROBATION">PROBATION (Probation Evaluation)</option>
+                      <option value="NOTICE_PERIOD">NOTICE_PERIOD (Serving Notice)</option>
+                      <option value="TERMINATED">TERMINATED (Terminated)</option>
+                      <option value="EXITED">EXITED (Resigned / Exited)</option>
+                      <option value="ARCHIVED">ARCHIVED (Archived Record)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1 flex items-center justify-between">
+                      <span>Login Account State</span>
+                      {!isSuperAdmin && <Lock className="w-3 h-3 text-slate-400" />}
+                    </label>
+                    <select
+                      disabled={!isSuperAdmin}
+                      value={editLoginStatus}
+                      onChange={(e) => setEditLoginStatus(e.target.value as LoginActivationStatus)}
+                      className={`w-full px-3 py-2 rounded-xl border ${
+                        !isSuperAdmin
+                          ? 'bg-slate-100 text-slate-500 border-slate-200 cursor-not-allowed'
+                          : 'border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/30'
+                      }`}
+                    >
+                      <option value="NOT_INVITED">NOT_INVITED (Record Only)</option>
+                      <option value="PENDING">PENDING (Invitation Dispatched)</option>
+                      <option value="ACCEPTED">ACCEPTED (Active Login User)</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Modal Footer */}
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => setEditingEmp(null)}
+                  className="px-4 py-2 font-medium text-slate-600 hover:text-slate-900 rounded-xl hover:bg-slate-100 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={editLoading}
+                  className="px-5 py-2 font-semibold rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white shadow-md disabled:opacity-50 flex items-center gap-2 cursor-pointer"
+                >
+                  {editLoading ? 'Saving Changes...' : 'Save Employee Profile'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Super Admin Permanent Deletion Confirmation Modal */}
+      {deleteConfirmOpen && deleteEmpTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/75 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-lg rounded-3xl bg-white border border-rose-200 shadow-2xl overflow-hidden text-slate-900 space-y-4 p-6">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-2xl bg-rose-50 border border-rose-200 text-rose-600 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-base font-extrabold text-slate-900">
+                  Permanently Delete Employee Record
+                </h3>
+                <p className="text-xs text-rose-700 font-semibold">
+                  Restricted Super Admin Irreversible Operation
+                </p>
+              </div>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-rose-50/60 border border-rose-200 space-y-2 text-xs text-rose-900">
+              <p className="font-bold">
+                Are you sure you want to permanently delete this employee?
+              </p>
+              <p className="text-[11px] leading-relaxed text-slate-600">
+                This will permanently purge this record from the Supabase PostgreSQL database, cascading across shift allocations, invitation tokens, and historical records for <strong className="text-slate-900">{tenant?.name}</strong>. This operation cannot be reversed.
+              </p>
+            </div>
+
+            {/* Target Card */}
+            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between text-xs">
+              <div>
+                <div className="font-bold text-slate-900">
+                  {deleteEmpTarget.firstName} {deleteEmpTarget.lastName}
+                </div>
+                <div className="text-[11px] text-slate-500 font-mono">
+                  {deleteEmpTarget.employeeCode} &bull; {deleteEmpTarget.workEmail}
+                </div>
+                <div className="text-[11px] text-slate-600 mt-0.5">
+                  {deleteEmpTarget.designationTitle} &bull; {deleteEmpTarget.departmentName}
+                </div>
+              </div>
+              <div className="text-right">
+                <span className="font-bold text-slate-900 block">
+                  {tenant?.currency} {deleteEmpTarget.monthlySalary?.toLocaleString()}
+                </span>
+                <span className="text-[10px] text-emerald-700 font-semibold">
+                  {deleteEmpTarget.status}
+                </span>
+              </div>
+            </div>
+
+            {deleteError && (
+              <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold">
+                {deleteError}
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-3 pt-2 border-t border-slate-100 text-xs">
+              <button
+                type="button"
+                disabled={deleteLoading}
+                onClick={() => {
+                  setDeleteConfirmOpen(false);
+                  setDeleteEmpTarget(null);
+                }}
+                className="px-4 py-2 font-medium text-slate-600 hover:text-slate-900 rounded-xl hover:bg-slate-100 transition-colors"
+              >
+                Cancel / Keep Record
+              </button>
+              <button
+                type="button"
+                disabled={deleteLoading}
+                onClick={handleConfirmDelete}
+                className="px-5 py-2 font-bold rounded-xl bg-rose-600 hover:bg-rose-700 text-white shadow-md disabled:opacity-50 flex items-center gap-1.5 transition-all cursor-pointer"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>{deleteLoading ? 'Purging Record...' : 'Confirm Permanent Purge'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Employee Detail Drawer */}
       {selectedEmp && (
         <div className="fixed inset-y-0 right-0 z-50 w-full max-w-md bg-white border-l border-slate-200 shadow-2xl p-6 text-slate-900 overflow-y-auto space-y-6 animate-slide-left">
@@ -925,6 +1652,31 @@ Ritu,Chopra,ritu.chopra@goodwinbatteries.com,+91 98444 55667,Research & Battery 
             </div>
           </div>
 
+          {/* Drawer Actions */}
+          <div className="flex items-center gap-2 pt-1">
+            <button
+              onClick={() => openEditModal(selectedEmp)}
+              className="flex-1 py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center justify-center gap-1.5 transition-colors shadow-xs cursor-pointer"
+            >
+              <Edit3 className="w-3.5 h-3.5" />
+              <span>Edit Profile {isSuperAdmin ? '(Super Admin Unlocked)' : ''}</span>
+            </button>
+
+            {isSuperAdmin && (
+              <button
+                onClick={() => {
+                  setDeleteEmpTarget(selectedEmp);
+                  setDeleteConfirmOpen(true);
+                }}
+                className="py-2 px-3 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold border border-rose-200 flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                title="Purge record permanently from PostgreSQL database"
+              >
+                <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                <span>Purge</span>
+              </button>
+            )}
+          </div>
+
           <div className="space-y-3 text-xs">
             <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
               <div className="text-[10px] font-bold uppercase text-slate-500 tracking-wider">Employment Details</div>
@@ -939,6 +1691,14 @@ Ritu,Chopra,ritu.chopra@goodwinbatteries.com,+91 98444 55667,Research & Battery 
               <div className="flex justify-between py-1 border-b border-slate-200/60">
                 <span className="text-slate-500">Date of Joining</span>
                 <span className="font-semibold text-slate-800">{selectedEmp.joiningDate}</span>
+              </div>
+              <div className="flex justify-between py-1 border-b border-slate-200/60">
+                <span className="text-slate-500">Work Location</span>
+                <span className="font-semibold text-slate-800">{selectedEmp.workLocation || 'Facility'}</span>
+              </div>
+              <div className="flex justify-between py-1 border-b border-slate-200/60">
+                <span className="text-slate-500">Shift Name</span>
+                <span className="font-semibold text-slate-800">{selectedEmp.shiftName || 'General Day Shift'}</span>
               </div>
               <div className="flex justify-between py-1 border-b border-slate-200/60">
                 <span className="text-slate-500">Login Account</span>
@@ -967,7 +1727,18 @@ Ritu,Chopra,ritu.chopra@goodwinbatteries.com,+91 98444 55667,Research & Battery 
               </div>
             ) : (
               <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
-                <div className="text-[10px] font-bold uppercase text-slate-500 tracking-wider">Payroll & Statutory</div>
+                <div className="flex items-center justify-between pb-1 border-b border-slate-200/60">
+                  <span className="text-[10px] font-bold uppercase text-slate-500 tracking-wider">Payroll & Statutory</span>
+                  {isSuperAdmin ? (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                      <ShieldCheck className="w-3 h-3 text-amber-600" /> Super Admin Unlocked
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-medium text-slate-400">
+                      <Lock className="w-3 h-3" /> Super Admin Only
+                    </span>
+                  )}
+                </div>
                 <div className="flex justify-between py-1 border-b border-slate-200/60">
                   <span className="text-slate-500">Monthly Compensation</span>
                   <span className="font-bold text-emerald-700">

@@ -70,7 +70,7 @@ export const INITIAL_TENANTS: Tenant[] = [
     name: 'Goodwin Batteries Pvt Ltd',
     slug: 'goodwin-batteries-fleet',
     companyCode: 'GOODWIN-BAT-FLT',
-    logoUrl: 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=128&auto=format&fit=crop&q=80',
+    logoUrl: '/goodwin-logo.png',
     industry: 'Electrical Equipment & Electronics Manufacturing',
     businessEmail: 'info@goodwinbatteries.com',
     businessPhone: '+91 9667724411',

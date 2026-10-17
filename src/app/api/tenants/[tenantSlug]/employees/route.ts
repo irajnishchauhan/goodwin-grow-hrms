@@ -16,15 +16,17 @@ export async function GET(
     }
 
     // Direct fetch from Supabase PostgreSQL
-    const [employeesRes, departmentsRes, invitationsRes, membershipsRes] = await Promise.all([
+    const [employeesRes, departmentsRes, invitationsRes, membershipsRes, shiftsRes] = await Promise.all([
       SupabaseStore.getEmployees(tenant.id),
       SupabaseStore.getDepartments(tenant.id),
       SupabaseStore.getInvitations(tenant.id),
-      SupabaseStore.getTenantMemberships(tenant.id)
+      SupabaseStore.getTenantMemberships(tenant.id),
+      SupabaseStore.getShifts(tenant.id)
     ]);
 
     let employees = employeesRes !== null ? employeesRes : db.getEmployees(tenant.id);
     let invitations = invitationsRes !== null ? invitationsRes : db.getInvitations(tenant.id);
+    let shifts = shiftsRes !== null ? shiftsRes : db.getShifts(tenant.id);
 
     const acceptedInvEmpIds = new Set(
       invitations.filter((i) => i.status === 'ACCEPTED').map((i) => i.employeeId)
@@ -63,6 +65,7 @@ export async function GET(
       tenant,
       employees,
       departments,
+      shifts,
       totalCount: employees.length,
       capacity: tenant.maxEmployees
     };
@@ -89,7 +92,24 @@ export async function POST(
     }
 
     const body = await req.json();
-    const { firstName, lastName, workEmail, phone, gender, departmentId, designationTitle, monthlySalary, panOrTaxId, bankAccountNumber, bankName } = body;
+    const {
+      firstName,
+      lastName,
+      workEmail,
+      personalEmail,
+      phone,
+      gender,
+      departmentId,
+      designationTitle,
+      employmentType,
+      monthlySalary,
+      panOrTaxId,
+      bankAccountNumber,
+      bankName,
+      workLocation,
+      shiftName,
+      joiningDate
+    } = body;
 
     if (!firstName || !lastName || !workEmail || !departmentId || !designationTitle || !monthlySalary) {
       return NextResponse.json(
@@ -105,14 +125,19 @@ export async function POST(
       firstName,
       lastName,
       workEmail,
-      phone: phone || '+1 555-0000',
+      personalEmail,
+      phone: phone || '+91 80 4912 8800',
       gender: gender || 'OTHER',
       departmentId,
       designationTitle,
+      employmentType: employmentType || 'FULL_TIME',
       monthlySalary: Number(monthlySalary),
       panOrTaxId,
       bankAccountNumber,
-      bankName
+      bankName,
+      workLocation: workLocation || `${tenant.city} Facility`,
+      shiftName: shiftName || 'General Day Shift',
+      joiningDate: joiningDate || new Date().toISOString().split('T')[0]
     });
 
     // Save to Supabase PostgreSQL asynchronously
@@ -144,7 +169,16 @@ export async function DELETE(
     }
 
     const { searchParams } = new URL(req.url);
-    const employeeId = searchParams.get('id');
+    let employeeId = searchParams.get('id');
+
+    if (!employeeId) {
+      try {
+        const body = await req.json();
+        employeeId = body.employeeId || body.id;
+      } catch {
+        // Body might be empty
+      }
+    }
 
     if (!employeeId) {
       return NextResponse.json({ success: false, error: 'Employee ID is required' }, { status: 400 });
@@ -160,7 +194,7 @@ export async function DELETE(
     }
 
     return NextResponse.json(
-      { success: true, message: 'Employee removed successfully' },
+      { success: true, message: 'Employee permanently removed from tenant workspace' },
       { headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate' } }
     );
   } catch (error: unknown) {
@@ -229,6 +263,15 @@ export async function PATCH(
     const { employeeId, ...updates } = body;
     if (!employeeId) {
       return NextResponse.json({ success: false, error: 'Employee ID is required' }, { status: 400 });
+    }
+
+    // If departmentId is provided and departmentName not given, resolve it
+    if (updates.departmentId && !updates.departmentName) {
+      const depts = (await SupabaseStore.getDepartments(tenant.id)) || db.getDepartments(tenant.id);
+      const match = depts.find((d) => d.id === updates.departmentId);
+      if (match) {
+        updates.departmentName = match.name;
+      }
     }
 
     await SupabaseStore.updateEmployee(tenant.id, employeeId, updates);

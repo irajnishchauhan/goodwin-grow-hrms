@@ -107,8 +107,8 @@ function AccountActivationForm() {
       <div className="w-full max-w-md relative z-10 space-y-6">
         <div className="text-center space-y-1.5">
           <Link href="/" className="inline-flex items-center gap-2 group">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-emerald-600 to-teal-500 flex items-center justify-center font-bold text-white shadow-md">
-              G
+            <div className="w-10 h-10 rounded-2xl bg-white border border-slate-200 p-0.5 flex items-center justify-center font-bold text-white shadow-md overflow-hidden">
+              <img src="/goodwin-logo.png" alt="Goodwin Grow HRMS" className="w-full h-full object-contain" />
             </div>
             <span className="font-extrabold text-xl text-slate-900">
               GOODWIN GROW <span className="text-emerald-600">HRMS</span>

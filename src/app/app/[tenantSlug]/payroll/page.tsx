@@ -265,12 +265,25 @@ export default function TenantPayrollPage() {
           <div className="w-full max-w-2xl rounded-2xl bg-white border border-slate-200 shadow-2xl overflow-hidden text-slate-900">
             {/* Modal Header */}
             <div className="bg-slate-50 px-6 py-4 text-slate-900 border-b border-slate-200 flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <Building2 className="w-5 h-5 text-emerald-600" />
+              <div className="flex items-center gap-3">
+                {tenant?.logoUrl ? (
+                  <img
+                    src={tenant.logoUrl}
+                    alt={tenant.name}
+                    className="w-12 h-12 rounded-xl object-contain bg-white p-1 border border-slate-200 shadow-sm"
+                  />
+                ) : (
+                  <div className="w-10 h-10 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-700 font-bold">
+                    {tenant?.name?.slice(0, 1) || 'G'}
+                  </div>
+                )}
                 <div>
                   <h3 className="font-bold text-base text-slate-900">{tenant?.name}</h3>
                   <p className="text-xs text-slate-500 font-mono">
                     Payslip for October 2026 • Ref: {activeSlip.id}
+                  </p>
+                  <p className="text-[10px] text-slate-400">
+                    {tenant?.city}, {tenant?.state} &bull; Reg: {tenant?.companyCode}
                   </p>
                 </div>
               </div>
@@ -390,11 +403,12 @@ export default function TenantPayrollPage() {
               </span>
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => alert('Salary slip PDF downloaded successfully.')}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold shadow-sm"
+                  type="button"
+                  onClick={() => window.print()}
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs shadow-sm cursor-pointer"
                 >
                   <Download className="w-3.5 h-3.5" />
-                  <span>Download PDF</span>
+                  <span>Download / Print Slip</span>
                 </button>
               </div>
             </div>

@@ -462,6 +462,10 @@ export class SupabaseStore {
     if (updates.departmentName !== undefined) {
       payload.department_name = updates.departmentName;
     }
+    if (updates.joiningDate !== undefined) payload.joining_date = updates.joiningDate;
+    if (updates.employmentType !== undefined) payload.employment_type = updates.employmentType;
+    if (updates.personalEmail !== undefined) payload.personal_email = updates.personalEmail;
+
 
     const { error } = await supabase
       .from('employees')

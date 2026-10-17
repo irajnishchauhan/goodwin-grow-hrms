@@ -180,12 +180,20 @@ export default function TenantWorkspaceClientShell({
           </Link>
 
           <div className="flex items-center gap-3">
-            <div
-              className="w-10 h-10 rounded-xl flex items-center justify-center font-bold text-white text-base shadow-sm shrink-0"
-              style={{ backgroundColor: primaryColor }}
-            >
-              {tenant.name.slice(0, 1)}
-            </div>
+            {tenant.logoUrl ? (
+              <img
+                src={tenant.logoUrl}
+                alt={tenant.name}
+                className="w-10 h-10 rounded-xl object-contain bg-white p-1 border border-slate-200 shadow-sm shrink-0"
+              />
+            ) : (
+              <div
+                className="w-10 h-10 rounded-xl flex items-center justify-center font-bold text-white text-base shadow-sm shrink-0"
+                style={{ backgroundColor: primaryColor }}
+              >
+                {tenant.name.slice(0, 1)}
+              </div>
+            )}
             <div className="min-w-0 flex-1">
               <h2 className="text-sm font-bold text-slate-900 truncate">{tenant.name}</h2>
               <div className="flex items-center gap-1.5 mt-0.5">
