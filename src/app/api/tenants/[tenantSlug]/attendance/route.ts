@@ -79,8 +79,14 @@ export async function GET(
       excludedEmployeeIds
     });
 
+    // Real logged attendance records (only actual punches, admin marks, and approved leaves)
+    const loggedRecords = roster.filter(
+      (r) => !r.id.startsWith('absent-') && !r.id.startsWith('off-')
+    );
+
     const payload = {
-      records: roster,
+      records: loggedRecords,
+      roster,
       employees,
       regularizations,
       shifts,

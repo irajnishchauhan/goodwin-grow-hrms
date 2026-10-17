@@ -52,6 +52,7 @@ export default function TenantAttendancePage() {
     searchParams.get('date') || new Date().toISOString().split('T')[0]
   );
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
+  const [roster, setRoster] = useState<AttendanceRecord[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [regularizations, setRegularizations] = useState<RegularizationRequest[]>([]);
   const [shifts, setShifts] = useState<Shift[]>([]);
@@ -158,7 +159,7 @@ export default function TenantAttendancePage() {
 
   // Attendance Status Filter
   const [statusFilter, setStatusFilter] = useState<
-    'ALL' | 'PRESENT' | 'LATE_ENTRY' | 'HALF_DAY' | 'ON_LEAVE' | 'ABSENT'
+    'ALL' | 'PRESENT' | 'LATE_ENTRY' | 'HALF_DAY' | 'ON_LEAVE' | 'ABSENT' | 'ROSTER'
   >('ALL');
 
   // Regularization Filters
@@ -207,6 +208,9 @@ export default function TenantAttendancePage() {
 
       if (json.success) {
         setRecords(json.data.records || []);
+        if (json.data.roster) {
+          setRoster(json.data.roster);
+        }
         if (json.data.regularizations) {
           setRegularizations(json.data.regularizations);
         }
@@ -664,7 +668,14 @@ export default function TenantAttendancePage() {
   };
 
   // Filter records by status, deleted exclusions, and role
-  const visibleRecords = records.filter((r) => {
+  const sourceList =
+    statusFilter === 'ABSENT' || statusFilter === 'ROSTER'
+      ? roster.length > 0
+        ? roster
+        : records
+      : records;
+
+  const visibleRecords = sourceList.filter((r) => {
     if (deletedRosterKeys.includes(`${r.employeeId}::${r.date}`)) {
       return false;
     }
@@ -959,12 +970,13 @@ export default function TenantAttendancePage() {
                 </span>
                 {(
                   [
-                    { key: 'ALL', label: `All (${records.length})` },
+                    { key: 'ALL', label: `Logged Records (${records.length})` },
                     { key: 'PRESENT', label: `Present (${stats.onTimeCount})` },
                     { key: 'LATE_ENTRY', label: `Late (${stats.lateCount})` },
                     { key: 'HALF_DAY', label: `Half Day (${stats.halfDayCount})` },
                     { key: 'ON_LEAVE', label: `On Leave (${stats.onLeaveCount})` },
-                    { key: 'ABSENT', label: `Absent (${stats.absentCount})` }
+                    { key: 'ABSENT', label: `Unpunched (${stats.absentCount})` },
+                    { key: 'ROSTER', label: `Full Workforce (${stats.totalEmployees})` }
                   ] as const
                 ).map((tab) => (
                   <button
