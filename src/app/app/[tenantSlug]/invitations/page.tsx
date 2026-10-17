@@ -2,18 +2,13 @@
 
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
-import Link from 'next/link';
 import {
   Mail,
-  UserCheck,
   Send,
   RefreshCw,
-  XCircle,
   Copy,
   CheckCircle2,
-  Clock,
   ShieldCheck,
-  Plus,
   Users,
   ExternalLink,
   X,
@@ -21,7 +16,12 @@ import {
   Eye,
   EyeOff,
   Lock,
-  Check
+  Check,
+  Trash2,
+  Ban,
+  RotateCcw,
+  ShieldAlert,
+  AlertTriangle
 } from 'lucide-react';
 import { Invitation, Employee, Tenant, UserRole } from '@/lib/types';
 import RoleGuard from '@/components/RoleGuard';
@@ -37,12 +37,13 @@ export default function TenantInvitationsPage() {
     totalEmployees: 0,
     activatedCount: 0,
     pendingCount: 0,
+    revokedCount: 0,
     notInvitedCount: 0,
     activationRate: 0
   });
   const [loading, setLoading] = useState(true);
 
-  // Modal
+  // Send Invite Modal
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedEmpId, setSelectedEmpId] = useState('');
   const [selectedRole, setSelectedRole] = useState<UserRole>('EMPLOYEE');
@@ -59,6 +60,19 @@ export default function TenantInvitationsPage() {
   const [resetLoading, setResetLoading] = useState(false);
   const [resetSuccess, setResetSuccess] = useState<{ password: string; email: string } | null>(null);
   const [copiedCreds, setCopiedCreds] = useState(false);
+
+  // Confirmation Modal for Revoke / Cancel / Revoke Access
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    inv: Invitation | null;
+    actionType: 'REVOKE' | 'CANCEL' | 'REVOKE_ACCESS';
+    loading: boolean;
+  }>({
+    isOpen: false,
+    inv: null,
+    actionType: 'REVOKE',
+    loading: false
+  });
 
   const fetchInvitations = async () => {
     try {
@@ -80,13 +94,16 @@ export default function TenantInvitationsPage() {
 
       if (json.success) {
         setInvitations(json.data.invitations || []);
-        setStats(json.data.stats || {
-          totalEmployees: 0,
-          activatedCount: 0,
-          pendingCount: 0,
-          notInvitedCount: 0,
-          activationRate: 0
-        });
+        setStats(
+          json.data.stats || {
+            totalEmployees: 0,
+            activatedCount: 0,
+            pendingCount: 0,
+            revokedCount: 0,
+            notInvitedCount: 0,
+            activationRate: 0
+          }
+        );
       }
 
       if (empJson.success) {
@@ -125,6 +142,8 @@ export default function TenantInvitationsPage() {
         setModalOpen(false);
         setActionMsg(`✓ Invitation dispatched to ${json.data.email}`);
         fetchInvitations();
+      } else {
+        alert(json.error || 'Failed to dispatch invitation');
       }
     } catch (e) {
       console.error(e);
@@ -153,7 +172,10 @@ export default function TenantInvitationsPage() {
       });
       const json = await res.json();
       if (json.success) {
-        setResetSuccess({ email: resetEmail, password: json.data?.temporaryPassword || resetPasswordVal });
+        setResetSuccess({
+          email: resetEmail,
+          password: json.data?.temporaryPassword || resetPasswordVal
+        });
         setActionMsg(`✓ Password successfully reset for ${resetEmail}`);
         fetchInvitations();
       } else {
@@ -173,38 +195,91 @@ export default function TenantInvitationsPage() {
     setTimeout(() => setCopiedCreds(false), 3000);
   };
 
-  const handleResend = async (invitationId: string) => {
+  const handleResend = async (inv: Invitation) => {
     try {
       const res = await fetch(`/api/tenants/${tenantSlug}/invitations`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ invitationId, action: 'RESEND' })
+        body: JSON.stringify({
+          invitationId: inv.id,
+          employeeId: inv.employeeId,
+          email: inv.email,
+          role: inv.role,
+          action: 'RESEND'
+        })
       });
       const json = await res.json();
       if (json.success) {
-        setActionMsg('✓ Invitation link refreshed and resent.');
+        setActionMsg(`✓ Invitation link refreshed and resent to ${inv.email}.`);
         fetchInvitations();
+      } else {
+        alert(json.error || 'Failed to resend invitation');
       }
     } catch (e) {
       console.error(e);
     }
   };
 
-  const handleRevoke = async (invitationId: string) => {
-    if (!confirm('Are you sure you want to revoke this invitation?')) return;
+  const handleReinvite = async (inv: Invitation) => {
     try {
       const res = await fetch(`/api/tenants/${tenantSlug}/invitations`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ invitationId, action: 'REVOKE' })
+        body: JSON.stringify({
+          invitationId: inv.id,
+          employeeId: inv.employeeId,
+          email: inv.email,
+          role: inv.role,
+          action: 'REINVITE'
+        })
       });
       const json = await res.json();
       if (json.success) {
-        setActionMsg('✓ Invitation revoked.');
+        setActionMsg(`✓ Fresh invitation link generated for ${inv.employeeName} (${inv.email}).`);
         fetchInvitations();
+      } else {
+        alert(json.error || 'Failed to reinvite employee');
       }
     } catch (e) {
       console.error(e);
+    }
+  };
+
+  const handleExecuteConfirmAction = async () => {
+    if (!confirmModal.inv) return;
+    setConfirmModal((prev) => ({ ...prev, loading: true }));
+    try {
+      const action = confirmModal.actionType === 'CANCEL' ? 'CANCEL' : 'REVOKE';
+
+      const res = await fetch(`/api/tenants/${tenantSlug}/invitations`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          invitationId: confirmModal.inv.id,
+          employeeId: confirmModal.inv.employeeId,
+          email: confirmModal.inv.email,
+          action
+        })
+      });
+
+      const json = await res.json();
+      if (json.success) {
+        if (action === 'CANCEL') {
+          setActionMsg(
+            `✓ Invitation cancelled. ${confirmModal.inv.employeeName} has been reset to Uninvited status.`
+          );
+        } else {
+          setActionMsg(`✓ Access and invitation revoked for ${confirmModal.inv.employeeName}.`);
+        }
+        setConfirmModal({ isOpen: false, inv: null, actionType: 'REVOKE', loading: false });
+        fetchInvitations();
+      } else {
+        alert(json.error || 'Failed to update status');
+        setConfirmModal((prev) => ({ ...prev, loading: false }));
+      }
+    } catch (e) {
+      console.error(e);
+      setConfirmModal((prev) => ({ ...prev, loading: false }));
     }
   };
 
@@ -221,7 +296,7 @@ export default function TenantInvitationsPage() {
       requiredRoles={['COMPANY_ADMIN', 'HR_ADMIN', 'SUPER_ADMIN']}
       moduleName="Invitations & Credential Lifecycle"
     >
-      <div className="space-y-6 max-w-6xl font-sans">
+      <div className="space-y-6 max-w-7xl font-sans">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
@@ -230,7 +305,8 @@ export default function TenantInvitationsPage() {
               Employee Credentials & Invitations
             </h1>
             <p className="text-xs text-slate-500 font-medium mt-1">
-              Secure single-use token invitations, account activation tracking, and role assignment for {tenant?.name || 'Workspace'}
+              Secure single-use token invitations, account activation tracking, credential lifecycle, and role assignment for{' '}
+              {tenant?.name || 'Workspace'}
             </p>
           </div>
 
@@ -246,7 +322,10 @@ export default function TenantInvitationsPage() {
         {actionMsg && (
           <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold flex items-center justify-between animate-fade-in shadow-sm">
             <span>{actionMsg}</span>
-            <button onClick={() => setActionMsg(null)} className="text-emerald-600 hover:text-emerald-900 cursor-pointer">
+            <button
+              onClick={() => setActionMsg(null)}
+              className="text-emerald-600 hover:text-emerald-900 cursor-pointer font-bold"
+            >
               Dismiss
             </button>
           </div>
@@ -256,69 +335,102 @@ export default function TenantInvitationsPage() {
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="p-5 rounded-2xl bg-white border border-slate-200/90 shadow-sm">
             <div className="text-xs font-bold uppercase tracking-wider text-slate-500">Total Workforce</div>
-            <div className="text-2xl font-black text-slate-900 mt-1 font-mono">{stats.totalEmployees} Employees</div>
+            <div className="text-2xl font-black text-slate-900 mt-1 font-mono">
+              {stats.totalEmployees} Employees
+            </div>
             <p className="text-[11px] text-slate-500 font-medium mt-1">Recorded in company HRMS</p>
           </div>
 
           <div className="p-5 rounded-2xl bg-white border border-slate-200/90 shadow-sm">
             <div className="text-xs font-bold uppercase tracking-wider text-slate-500">Active Login Accounts</div>
-            <div className="text-2xl font-black text-emerald-700 mt-1 font-mono">{stats.activatedCount} Active</div>
-            <p className="text-[11px] text-emerald-600 font-medium mt-1">{stats.activationRate}% activation rate</p>
+            <div className="text-2xl font-black text-emerald-700 mt-1 font-mono">
+              {stats.activatedCount} Active
+            </div>
+            <p className="text-[11px] text-emerald-600 font-medium mt-1">
+              {stats.activationRate}% activation rate
+            </p>
           </div>
 
           <div className="p-5 rounded-2xl bg-white border border-slate-200/90 shadow-sm">
             <div className="text-xs font-bold uppercase tracking-wider text-slate-500">Pending Activation</div>
-            <div className="text-2xl font-black text-amber-700 mt-1 font-mono">{stats.pendingCount} Pending</div>
+            <div className="text-2xl font-black text-amber-700 mt-1 font-mono">
+              {stats.pendingCount} Pending
+            </div>
             <p className="text-[11px] text-slate-500 font-medium mt-1">Awaiting employee password setup</p>
           </div>
 
           <div className="p-5 rounded-2xl bg-white border border-slate-200/90 shadow-sm">
-            <div className="text-xs font-bold uppercase tracking-wider text-slate-500">Not Yet Invited</div>
-            <div className="text-2xl font-black text-slate-700 mt-1 font-mono">{stats.notInvitedCount} Uninvited</div>
-            <p className="text-[11px] text-slate-500 font-medium mt-1">HR profile without login account</p>
+            <div className="text-xs font-bold uppercase tracking-wider text-slate-500">
+              {stats.revokedCount > 0 ? 'Revoked / Uninvited' : 'Not Yet Invited'}
+            </div>
+            <div className="text-2xl font-black text-slate-700 mt-1 font-mono">
+              {stats.revokedCount > 0
+                ? `${stats.revokedCount} Revoked · ${stats.notInvitedCount} Uninvited`
+                : `${stats.notInvitedCount} Uninvited`}
+            </div>
+            <p className="text-[11px] text-slate-500 font-medium mt-1">
+              {stats.revokedCount > 0
+                ? 'Suspended access & uninvited profiles'
+                : 'HR profile without login account'}
+            </p>
           </div>
         </div>
 
         {/* Invitations Table */}
         <div className="rounded-2xl bg-white border border-slate-200/90 overflow-hidden shadow-sm">
           <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
-            <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
-              <Users className="w-4 h-4 text-amber-600" />
-              Invitation Status & Credential Management
-            </h3>
-            <span className="text-xs font-semibold text-slate-500">{invitations.length} Total Dispatches</span>
+            <div className="flex items-center gap-3">
+              <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
+                <Users className="w-4 h-4 text-amber-600" />
+                Invitation Status & Credential Management
+              </h3>
+              {stats.revokedCount > 0 && (
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                  {stats.revokedCount} Revoked
+                </span>
+              )}
+            </div>
+            <span className="text-xs font-semibold text-slate-500">
+              {invitations.length} Total Dispatches
+            </span>
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs text-slate-700">
+            <table className="w-full min-w-[1020px] text-left text-xs text-slate-700">
               <thead className="bg-slate-50 uppercase font-bold text-[10px] text-slate-500 tracking-wider border-b border-slate-200">
                 <tr>
-                  <th className="px-6 py-3.5">Employee Name</th>
-                  <th className="px-6 py-3.5">Email Address</th>
-                  <th className="px-6 py-3.5">Assigned Role</th>
-                  <th className="px-6 py-3.5">Status</th>
-                  <th className="px-6 py-3.5">Last Dispatched</th>
-                  <th className="px-6 py-3.5 text-right">Actions</th>
+                  <th className="px-5 py-3.5">Employee Name</th>
+                  <th className="px-5 py-3.5">Email Address</th>
+                  <th className="px-5 py-3.5">Assigned Role</th>
+                  <th className="px-5 py-3.5">Status</th>
+                  <th className="px-5 py-3.5">Last Dispatched</th>
+                  <th className="px-5 py-3.5 text-right sticky right-0 bg-slate-50 z-20 shadow-[-6px_0_12px_-4px_rgba(0,0,0,0.06)] min-w-[340px]">
+                    Actions
+                  </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-200">
+              <tbody className="divide-y divide-slate-200 bg-white">
                 {invitations.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-6 py-8 text-center text-slate-500 text-xs font-medium">
-                      No active invitations found. Click &quot;Invite Employee&quot; above to dispatch activation links.
+                    <td
+                      colSpan={6}
+                      className="px-6 py-8 text-center text-slate-500 text-xs font-medium"
+                    >
+                      No active invitations found. Click &quot;Invite Employee&quot; above to dispatch
+                      activation links.
                     </td>
                   </tr>
                 ) : (
                   invitations.map((inv) => (
-                    <tr key={inv.id} className="hover:bg-slate-50/70 transition-colors">
-                      <td className="px-6 py-4 font-bold text-slate-900">{inv.employeeName}</td>
-                      <td className="px-6 py-4 font-mono text-slate-600 font-medium">{inv.email}</td>
-                      <td className="px-6 py-4">
+                    <tr key={inv.id} className="hover:bg-slate-50/70 transition-colors group">
+                      <td className="px-5 py-4 font-bold text-slate-900">{inv.employeeName}</td>
+                      <td className="px-5 py-4 font-mono text-slate-600 font-medium">{inv.email}</td>
+                      <td className="px-5 py-4">
                         <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 border border-slate-200 text-slate-700 uppercase">
                           {inv.role}
                         </span>
                       </td>
-                      <td className="px-6 py-4">
+                      <td className="px-5 py-4">
                         <span
                           className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
                             inv.status === 'ACCEPTED'
@@ -332,27 +444,27 @@ export default function TenantInvitationsPage() {
                           {inv.status}
                         </span>
                       </td>
-                      <td className="px-6 py-4 text-slate-500 font-mono text-[11px] font-medium">
+                      <td className="px-5 py-4 text-slate-500 font-mono text-[11px] font-medium">
                         {new Date(inv.lastSentAt || inv.createdAt).toLocaleDateString()}
                       </td>
-                      <td className="px-6 py-4 text-right">
-                        <div className="flex items-center justify-end gap-2">
+                      <td className="px-5 py-4 text-right sticky right-0 bg-white group-hover:bg-slate-50/90 transition-colors z-10 shadow-[-6px_0_12px_-4px_rgba(0,0,0,0.06)] min-w-[340px]">
+                        <div className="flex items-center justify-end gap-1.5 flex-wrap">
                           {inv.status === 'PENDING' && (
                             <>
                               <button
                                 onClick={() => setPreviewEmailInv(inv)}
-                                className="px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 text-[11px] font-bold border border-amber-200 flex items-center gap-1 transition-colors cursor-pointer"
+                                className="px-2 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 text-[11px] font-bold border border-amber-200 flex items-center gap-1 transition-colors cursor-pointer"
                                 title="Preview invitation email template"
                               >
                                 <Mail className="w-3 h-3 text-amber-600" />
-                                <span>View Email</span>
+                                <span>Email</span>
                               </button>
 
                               <a
                                 href={`/activate?token=${inv.token}`}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-[11px] font-bold border border-emerald-200 flex items-center gap-1 transition-colors cursor-pointer"
+                                className="px-2 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-[11px] font-bold border border-emerald-200 flex items-center gap-1 transition-colors cursor-pointer"
                                 title="Open activation link directly"
                               >
                                 <ExternalLink className="w-3 h-3 text-emerald-600" />
@@ -361,7 +473,7 @@ export default function TenantInvitationsPage() {
 
                               <button
                                 onClick={() => handleCopyLink(inv.token)}
-                                className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 text-[11px] font-bold border border-slate-300 flex items-center gap-1 transition-colors cursor-pointer"
+                                className="px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 text-[11px] font-bold border border-slate-300 flex items-center gap-1 transition-colors cursor-pointer"
                                 title="Copy secure activation link"
                               >
                                 <Copy className="w-3 h-3" />
@@ -369,27 +481,53 @@ export default function TenantInvitationsPage() {
                               </button>
 
                               <button
-                                onClick={() => handleResend(inv.id)}
-                                className="p-1.5 rounded-lg text-slate-400 hover:text-amber-600 hover:bg-amber-50 transition-colors cursor-pointer"
+                                onClick={() => handleResend(inv)}
+                                className="p-1.5 rounded-lg text-slate-500 hover:text-amber-600 hover:bg-amber-50 border border-slate-200 transition-colors cursor-pointer"
                                 title="Resend invitation"
                               >
                                 <RefreshCw className="w-3.5 h-3.5" />
                               </button>
 
                               <button
-                                onClick={() => handleRevoke(inv.id)}
-                                className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
-                                title="Revoke invitation"
+                                onClick={() =>
+                                  setConfirmModal({
+                                    isOpen: true,
+                                    inv,
+                                    actionType: 'REVOKE',
+                                    loading: false
+                                  })
+                                }
+                                className="px-2 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 text-[11px] font-bold border border-rose-200 flex items-center gap-1 transition-colors cursor-pointer"
+                                title="Revoke invitation token"
                               >
-                                <XCircle className="w-3.5 h-3.5" />
+                                <Ban className="w-3 h-3 text-rose-600" />
+                                <span>Revoke</span>
+                              </button>
+
+                              <button
+                                onClick={() =>
+                                  setConfirmModal({
+                                    isOpen: true,
+                                    inv,
+                                    actionType: 'CANCEL',
+                                    loading: false
+                                  })
+                                }
+                                className="px-2 py-1 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 text-[11px] font-bold border border-slate-200 flex items-center gap-1 transition-colors cursor-pointer"
+                                title="Cancel invitation and reset employee to uninvited"
+                              >
+                                <Trash2 className="w-3 h-3 text-slate-500" />
+                                <span>Cancel</span>
                               </button>
                             </>
                           )}
+
                           {inv.status === 'ACCEPTED' && (
-                            <div className="flex items-center gap-2">
+                            <>
                               <span className="text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full font-bold text-[11px] flex items-center gap-1">
                                 <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Activated
                               </span>
+
                               <button
                                 onClick={() => handleOpenResetPassword(inv.email, inv.employeeName)}
                                 className="px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 text-[11px] font-bold border border-amber-200 flex items-center gap-1 transition-colors cursor-pointer"
@@ -398,7 +536,52 @@ export default function TenantInvitationsPage() {
                                 <KeyRound className="w-3 h-3 text-amber-600" />
                                 <span>Reset Password</span>
                               </button>
-                            </div>
+
+                              <button
+                                onClick={() =>
+                                  setConfirmModal({
+                                    isOpen: true,
+                                    inv,
+                                    actionType: 'REVOKE_ACCESS',
+                                    loading: false
+                                  })
+                                }
+                                className="px-2.5 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 text-[11px] font-bold border border-rose-200 flex items-center gap-1 transition-colors cursor-pointer"
+                                title="Revoke employee active login access"
+                              >
+                                <ShieldAlert className="w-3 h-3 text-rose-600" />
+                                <span>Revoke Access</span>
+                              </button>
+                            </>
+                          )}
+
+                          {inv.status === 'REVOKED' && (
+                            <>
+                              <button
+                                onClick={() => handleReinvite(inv)}
+                                className="px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 text-[11px] font-bold border border-amber-200 flex items-center gap-1 transition-colors cursor-pointer"
+                                title="Restore and generate new invitation"
+                              >
+                                <Send className="w-3 h-3 text-amber-600" />
+                                <span>Re-Invite</span>
+                              </button>
+
+                              <button
+                                onClick={() =>
+                                  setConfirmModal({
+                                    isOpen: true,
+                                    inv,
+                                    actionType: 'CANCEL',
+                                    loading: false
+                                  })
+                                }
+                                className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold border border-slate-300 flex items-center gap-1 transition-colors cursor-pointer"
+                                title="Cancel record and reset employee back to uninvited"
+                              >
+                                <RotateCcw className="w-3 h-3 text-slate-500" />
+                                <span>Cancel / Reset</span>
+                              </button>
+                            </>
                           )}
                         </div>
                       </td>
@@ -410,13 +593,117 @@ export default function TenantInvitationsPage() {
           </div>
         </div>
 
+        {/* Action Confirmation Modal (Revoke / Cancel / Revoke Access) */}
+        {confirmModal.isOpen && confirmModal.inv && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-fade-in">
+            <div className="w-full max-w-md rounded-2xl bg-white border border-slate-200 shadow-2xl overflow-hidden text-slate-900">
+              <div className="p-6 space-y-4">
+                <div className="flex items-start gap-3">
+                  <div
+                    className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                      confirmModal.actionType === 'CANCEL'
+                        ? 'bg-slate-100 text-slate-700'
+                        : 'bg-rose-100 text-rose-700'
+                    }`}
+                  >
+                    {confirmModal.actionType === 'CANCEL' ? (
+                      <Trash2 className="w-5 h-5 text-slate-700" />
+                    ) : confirmModal.actionType === 'REVOKE_ACCESS' ? (
+                      <ShieldAlert className="w-5 h-5 text-rose-600" />
+                    ) : (
+                      <Ban className="w-5 h-5 text-rose-600" />
+                    )}
+                  </div>
+                  <div>
+                    <h3 className="font-extrabold text-base text-slate-900">
+                      {confirmModal.actionType === 'CANCEL'
+                        ? 'Cancel Invitation & Reset'
+                        : confirmModal.actionType === 'REVOKE_ACCESS'
+                        ? 'Revoke Active Login Access'
+                        : 'Revoke Invitation'}
+                    </h3>
+                    <p className="text-xs text-slate-500 font-medium mt-0.5">
+                      {confirmModal.inv.employeeName} ({confirmModal.inv.email})
+                    </p>
+                  </div>
+                </div>
+
+                <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-600 space-y-2 leading-relaxed">
+                  {confirmModal.actionType === 'CANCEL' ? (
+                    <p>
+                      This will permanently cancel this invitation record and reset{' '}
+                      <strong className="text-slate-900">{confirmModal.inv.employeeName}</strong> back to{' '}
+                      <strong className="text-slate-900">NOT_INVITED (Record Only)</strong> status. Their employee
+                      profile will remain safe in the employee directory and can be re-invited at any time.
+                    </p>
+                  ) : confirmModal.actionType === 'REVOKE_ACCESS' ? (
+                    <p>
+                      This will immediately suspend workspace login credentials for{' '}
+                      <strong className="text-slate-900">{confirmModal.inv.employeeName}</strong>. Their account
+                      will be marked as <strong className="text-rose-700">REVOKED</strong>, preventing further
+                      sign-in to the HRMS portal until re-activated.
+                    </p>
+                  ) : (
+                    <p>
+                      This will immediately invalidate the single-use token and mark the invitation as{' '}
+                      <strong className="text-rose-700">REVOKED</strong>. The employee will not be able to activate
+                      their account using this link.
+                    </p>
+                  )}
+                </div>
+
+                <div className="flex items-center justify-end gap-3 pt-2">
+                  <button
+                    type="button"
+                    disabled={confirmModal.loading}
+                    onClick={() =>
+                      setConfirmModal({ isOpen: false, inv: null, actionType: 'REVOKE', loading: false })
+                    }
+                    className="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-100 font-medium text-xs transition-colors cursor-pointer"
+                  >
+                    Keep As Is
+                  </button>
+                  <button
+                    type="button"
+                    disabled={confirmModal.loading}
+                    onClick={handleExecuteConfirmAction}
+                    className={`px-5 py-2 rounded-xl text-white font-bold text-xs transition-all shadow-sm flex items-center gap-1.5 cursor-pointer disabled:opacity-50 ${
+                      confirmModal.actionType === 'CANCEL'
+                        ? 'bg-slate-900 hover:bg-slate-800'
+                        : 'bg-rose-600 hover:bg-rose-500'
+                    }`}
+                  >
+                    {confirmModal.actionType === 'CANCEL' ? (
+                      <Trash2 className="w-3.5 h-3.5" />
+                    ) : (
+                      <Ban className="w-3.5 h-3.5" />
+                    )}
+                    <span>
+                      {confirmModal.loading
+                        ? 'Processing...'
+                        : confirmModal.actionType === 'CANCEL'
+                        ? 'Cancel Invitation & Reset'
+                        : confirmModal.actionType === 'REVOKE_ACCESS'
+                        ? 'Revoke Access'
+                        : 'Revoke Invitation'}
+                    </span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Send Invite Modal */}
         {modalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fade-in">
             <div className="w-full max-w-md rounded-2xl bg-white border border-slate-200 shadow-2xl overflow-hidden text-slate-900">
               <div className="bg-slate-50 px-6 py-4 border-b border-slate-200 flex items-center justify-between">
                 <h3 className="font-extrabold text-base text-slate-900">Invite Employee to Workspace</h3>
-                <button onClick={() => setModalOpen(false)} className="text-slate-400 hover:text-slate-600 p-1 rounded-lg cursor-pointer transition-colors">
+                <button
+                  onClick={() => setModalOpen(false)}
+                  className="text-slate-400 hover:text-slate-600 p-1 rounded-lg cursor-pointer transition-colors"
+                >
                   <X className="w-5 h-5" />
                 </button>
               </div>
@@ -431,7 +718,7 @@ export default function TenantInvitationsPage() {
                   >
                     {employees.map((e) => (
                       <option key={e.id} value={e.id}>
-                        {e.firstName} {e.lastName} ({e.workEmail}) — {e.loginStatus}
+                        {e.firstName} {e.lastName} ({e.workEmail}) — {e.loginStatus || 'NOT_INVITED'}
                       </option>
                     ))}
                   </select>
@@ -457,7 +744,8 @@ export default function TenantInvitationsPage() {
                     <span>Secure Account Activation</span>
                   </div>
                   <p>
-                    A cryptographically generated single-use activation token with 7-day expiration will be issued. No plaintext passwords are sent via email.
+                    A cryptographically generated single-use activation token with 7-day expiration will be
+                    issued. No plaintext passwords are sent via email.
                   </p>
                 </div>
 
@@ -504,21 +792,35 @@ export default function TenantInvitationsPage() {
                 </button>
               </div>
 
-              {/* Email Body Container (looks like a clean email message) */}
+              {/* Email Body Container */}
               <div className="p-5 rounded-xl bg-slate-50 border border-slate-200 text-xs space-y-4 font-medium">
                 <div className="pb-3 border-b border-slate-200 space-y-1 text-[11px] text-slate-500">
-                  <div><span className="text-slate-400">From:</span> {tenant?.name || 'Goodwin Batteries'} HR Operations &lt;no-reply@goodwingrowai.com&gt;</div>
-                  <div><span className="text-slate-400">To:</span> {previewEmailInv.employeeName} &lt;{previewEmailInv.email}&gt;</div>
-                  <div><span className="text-slate-400">Subject:</span> Setup your credentials for {tenant?.name || 'Company'} Workspace</div>
+                  <div>
+                    <span className="text-slate-400">From:</span> {tenant?.name || 'Goodwin Batteries'} HR Operations &lt;no-reply@goodwingrowai.com&gt;
+                  </div>
+                  <div>
+                    <span className="text-slate-400">To:</span> {previewEmailInv.employeeName} &lt;{previewEmailInv.email}&gt;
+                  </div>
+                  <div>
+                    <span className="text-slate-400">Subject:</span> Setup your credentials for {tenant?.name || 'Company'} Workspace
+                  </div>
                 </div>
 
                 <div className="space-y-3 text-slate-700">
-                  <p>Hello <strong>{previewEmailInv.employeeName}</strong>,</p>
                   <p>
-                    You have been invited to join the <strong>{tenant?.name || 'Company'}</strong> HRMS workspace with the role of <code className="text-amber-800 bg-amber-50 px-1.5 py-0.5 rounded font-mono font-bold">{previewEmailInv.role}</code>.
+                    Hello <strong>{previewEmailInv.employeeName}</strong>,
                   </p>
                   <p>
-                    Please click the secure button below to set your personal password and activate your workspace account:
+                    You have been invited to join the <strong>{tenant?.name || 'Company'}</strong> HRMS workspace
+                    with the role of{' '}
+                    <code className="text-amber-800 bg-amber-50 px-1.5 py-0.5 rounded font-mono font-bold">
+                      {previewEmailInv.role}
+                    </code>
+                    .
+                  </p>
+                  <p>
+                    Please click the secure button below to set your personal password and activate your
+                    workspace account:
                   </p>
 
                   <div className="py-2 text-center">
@@ -535,11 +837,16 @@ export default function TenantInvitationsPage() {
 
                   <div className="p-3 rounded-lg bg-white border border-slate-200 text-[10px] text-slate-600 space-y-1 font-mono break-all shadow-sm">
                     <div className="text-slate-500 uppercase font-sans font-bold">Direct Activation URL:</div>
-                    <div>{typeof window !== 'undefined' ? `${window.location.origin}/activate?token=${previewEmailInv.token}` : `/activate?token=${previewEmailInv.token}`}</div>
+                    <div>
+                      {typeof window !== 'undefined'
+                        ? `${window.location.origin}/activate?token=${previewEmailInv.token}`
+                        : `/activate?token=${previewEmailInv.token}`}
+                    </div>
                   </div>
 
                   <p className="text-[10px] text-slate-400">
-                    This single-use link expires on {new Date(previewEmailInv.expiresAt).toLocaleString()}. If you did not expect this invitation, please contact your company administrator.
+                    This single-use link expires on {new Date(previewEmailInv.expiresAt).toLocaleString()}. If you
+                    did not expect this invitation, please contact your company administrator.
                   </p>
                 </div>
               </div>
@@ -583,7 +890,9 @@ export default function TenantInvitationsPage() {
                   </div>
                   <div>
                     <h3 className="font-extrabold text-sm text-slate-900">Reset Employee Password</h3>
-                    <p className="text-[11px] text-slate-500 font-medium">{resetEmpName} ({resetEmail})</p>
+                    <p className="text-[11px] text-slate-500 font-medium">
+                      {resetEmpName} ({resetEmail})
+                    </p>
                   </div>
                 </div>
                 <button
@@ -602,11 +911,17 @@ export default function TenantInvitationsPage() {
                       <span>Password Reset Successfully!</span>
                     </div>
                     <p className="text-[11px] text-emerald-700">
-                      The credentials have been instantly updated in the database. Share these credentials with the employee:
+                      The credentials have been instantly updated in the database. Share these credentials with the
+                      employee:
                     </p>
                     <div className="p-3 rounded-lg bg-white border border-emerald-200 font-mono text-xs space-y-1 select-all">
-                      <div><span className="text-slate-400 font-sans">Email:</span> {resetSuccess.email}</div>
-                      <div><span className="text-slate-400 font-sans">Password:</span> <span className="font-bold text-slate-900">{resetSuccess.password}</span></div>
+                      <div>
+                        <span className="text-slate-400 font-sans">Email:</span> {resetSuccess.email}
+                      </div>
+                      <div>
+                        <span className="text-slate-400 font-sans">Password:</span>{' '}
+                        <span className="font-bold text-slate-900">{resetSuccess.password}</span>
+                      </div>
                     </div>
                   </div>
 
@@ -616,7 +931,11 @@ export default function TenantInvitationsPage() {
                       onClick={() => handleCopyCredentials(resetSuccess.email, resetSuccess.password)}
                       className="flex-1 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-all shadow-sm cursor-pointer"
                     >
-                      {copiedCreds ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                      {copiedCreds ? (
+                        <Check className="w-3.5 h-3.5 text-emerald-400" />
+                      ) : (
+                        <Copy className="w-3.5 h-3.5" />
+                      )}
                       <span>{copiedCreds ? 'Copied to Clipboard!' : 'Copy Credentials'}</span>
                     </button>
                     <button
@@ -645,7 +964,9 @@ export default function TenantInvitationsPage() {
                       <label className="font-bold text-slate-700">Set New Password *</label>
                       <button
                         type="button"
-                        onClick={() => setResetPasswordVal(`Goodwin@${Math.floor(1000 + Math.random() * 9000)}`)}
+                        onClick={() =>
+                          setResetPasswordVal(`Goodwin@${Math.floor(1000 + Math.random() * 9000)}`)
+                        }
                         className="text-[11px] text-amber-700 hover:text-amber-800 font-semibold cursor-pointer underline"
                       >
                         Generate Random
@@ -677,7 +998,8 @@ export default function TenantInvitationsPage() {
                       <span>Admin Password Override</span>
                     </div>
                     <p>
-                      This will immediately update the password in the database and activate the employee login if not already activated.
+                      This will immediately update the password in the database and activate the employee login if
+                      not already activated.
                     </p>
                   </div>
 

@@ -1514,6 +1514,7 @@ Ritu,Chopra,ritu.chopra@goodwinbatteries.com,+91 98444 55667,Research & Battery 
                       <option value="NOT_INVITED">NOT_INVITED (Record Only)</option>
                       <option value="PENDING">PENDING (Invitation Dispatched)</option>
                       <option value="ACCEPTED">ACCEPTED (Active Login User)</option>
+                      <option value="REVOKED">REVOKED (Access Suspended / Revoked)</option>
                     </select>
                   </div>
                 </div>

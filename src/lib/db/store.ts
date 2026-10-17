@@ -307,16 +307,124 @@ class HRMSDataStore {
     return inv;
   }
 
-  public revokeInvitation(tenantId: string, invitationId: string): boolean {
-    const inv = this.invitations.find((i) => i.id === invitationId && i.tenantId === tenantId);
-    if (!inv) return false;
+  public revokeInvitation(
+    tenantId: string,
+    invitationId?: string,
+    employeeId?: string,
+    email?: string
+  ): boolean {
+    const targetEmpId =
+      employeeId ||
+      (invitationId?.startsWith('inv-')
+        ? invitationId.replace(/^inv-(active|revoked)-/, '')
+        : undefined);
 
-    inv.status = 'REVOKED';
-    const emp = this.getEmployeeById(tenantId, inv.employeeId);
+    const inv = this.invitations.find(
+      (i) =>
+        i.tenantId === tenantId &&
+        ((invitationId && i.id === invitationId) ||
+          (targetEmpId && i.employeeId === targetEmpId) ||
+          (email && i.email.toLowerCase() === email.toLowerCase()))
+    );
+
+    if (inv) {
+      inv.status = 'REVOKED';
+    }
+
+    const emp = this.employees.find(
+      (e) =>
+        e.tenantId === tenantId &&
+        ((targetEmpId && e.id === targetEmpId) ||
+          (inv && e.id === inv.employeeId) ||
+          (email && e.workEmail.toLowerCase() === email.toLowerCase()))
+    );
     if (emp) {
       emp.loginStatus = 'REVOKED';
     }
+
     return true;
+  }
+
+  public cancelInvitation(
+    tenantId: string,
+    invitationId?: string,
+    employeeId?: string,
+    email?: string
+  ): boolean {
+    const targetEmpId =
+      employeeId ||
+      (invitationId?.startsWith('inv-')
+        ? invitationId.replace(/^inv-(active|revoked)-/, '')
+        : undefined);
+
+    this.invitations = this.invitations.filter((i) => {
+      if (i.tenantId !== tenantId) return true;
+      if (invitationId && i.id === invitationId) return false;
+      if (targetEmpId && i.employeeId === targetEmpId) return false;
+      if (email && i.email.toLowerCase() === email.toLowerCase()) return false;
+      return true;
+    });
+
+    const emp = this.employees.find(
+      (e) =>
+        e.tenantId === tenantId &&
+        ((targetEmpId && e.id === targetEmpId) ||
+          (email && e.workEmail.toLowerCase() === email.toLowerCase()))
+    );
+    if (emp) {
+      emp.loginStatus = 'NOT_INVITED';
+      delete (emp as any).invitationId;
+    }
+
+    return true;
+  }
+
+  public reinviteEmployee(
+    tenantId: string,
+    invitationId?: string,
+    employeeId?: string,
+    email?: string,
+    role: string = 'EMPLOYEE'
+  ): Invitation | null {
+    const targetEmpId =
+      employeeId ||
+      (invitationId?.startsWith('inv-')
+        ? invitationId.replace(/^inv-(active|revoked)-/, '')
+        : undefined);
+
+    let emp = this.employees.find(
+      (e) =>
+        e.tenantId === tenantId &&
+        ((targetEmpId && e.id === targetEmpId) ||
+          (email && e.workEmail.toLowerCase() === email.toLowerCase()))
+    );
+
+    let inv = this.invitations.find(
+      (i) =>
+        i.tenantId === tenantId &&
+        ((invitationId && i.id === invitationId) ||
+          (targetEmpId && i.employeeId === targetEmpId) ||
+          (email && i.email.toLowerCase() === email.toLowerCase()))
+    );
+
+    if (!emp && inv) {
+      emp = this.getEmployeeById(tenantId, inv.employeeId) || undefined;
+    }
+
+    if (!emp) return null;
+
+    if (!inv) {
+      return this.sendInvitation(tenantId, emp.id, (role as any) || 'EMPLOYEE');
+    }
+
+    inv.token = `inv-${Math.random().toString(36).substring(2, 10)}-${Date.now().toString(36)}`;
+    inv.tokenHash = `hash-${inv.token}`;
+    inv.expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+    inv.lastSentAt = new Date().toISOString();
+    inv.status = 'PENDING';
+    emp.loginStatus = 'PENDING';
+
+    return inv;
   }
 
   // -------------------------------------------------------------

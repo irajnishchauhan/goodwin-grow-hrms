@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db/store';
 import { SupabaseStore } from '@/lib/db/supabaseStore';
+import { Invitation } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
 
@@ -10,7 +11,9 @@ export async function GET(
 ) {
   try {
     const { tenantSlug } = await context.params;
-    const tenant = await SupabaseStore.getTenantBySlug(tenantSlug) || await db.getResolvedTenant(tenantSlug, true);
+    const tenant =
+      (await SupabaseStore.getTenantBySlug(tenantSlug)) ||
+      (await db.getResolvedTenant(tenantSlug, true));
     if (!tenant) {
       return NextResponse.json({ success: false, error: 'Tenant not found' }, { status: 404 });
     }
@@ -21,75 +24,137 @@ export async function GET(
       SupabaseStore.getTenantMemberships(tenant.id)
     ]);
 
-    let invitations = invitationsRes !== null ? invitationsRes : db.getInvitations(tenant.id);
-    let employees = employeesRes !== null ? employeesRes : db.getEmployees(tenant.id);
+    let invitations = invitationsRes !== null ? [...invitationsRes] : [...db.getInvitations(tenant.id)];
+    let employees = employeesRes !== null ? [...employeesRes] : [...db.getEmployees(tenant.id)];
 
     const activeMemberEmails = new Set(
-      (membershipsRes || []).filter((m) => m.status === 'ACTIVE' && m.email).map((m) => m.email!.toLowerCase())
+      (membershipsRes || [])
+        .filter((m) => m.status === 'ACTIVE' && m.email)
+        .map((m) => m.email!.toLowerCase().trim())
     );
 
-    // Sync employee statuses
-    const existingInvEmpIds = new Set(invitations.map((i) => i.employeeId));
+    const suspendedMemberEmails = new Set(
+      (membershipsRes || [])
+        .filter((m) => m.status === 'SUSPENDED' && m.email)
+        .map((m) => m.email!.toLowerCase().trim())
+    );
+
+    // Synchronize employee statuses accurately
     employees.forEach((emp) => {
-      const emailLower = (emp.workEmail || '').toLowerCase();
-      if (
-        emailLower === (tenant.businessEmail?.toLowerCase() || '') ||
+      const emailLower = (emp.workEmail || '').toLowerCase().trim();
+      if (emp.loginStatus === 'REVOKED' || suspendedMemberEmails.has(emailLower)) {
+        emp.loginStatus = 'REVOKED';
+      } else if (
+        emailLower === (tenant.businessEmail?.toLowerCase().trim() || '') ||
         emailLower.includes('rajnish') ||
         activeMemberEmails.has(emailLower)
       ) {
         emp.loginStatus = 'ACCEPTED';
+      } else if (!emp.loginStatus) {
+        emp.loginStatus = 'NOT_INVITED';
       }
     });
 
-    // If an employee is ACCEPTED and not in invitations list, add them as an activated invitation entry
+    // Deduplicate invitations by employee email so no duplicate rows ever appear
+    const invMap = new Map<string, Invitation>();
+
+    // Step 1: Add existing stored invitations
+    invitations.forEach((inv) => {
+      if (!inv.email) return;
+      const key = inv.email.toLowerCase().trim();
+      const existing = invMap.get(key);
+      if (!existing) {
+        invMap.set(key, { ...inv });
+      } else {
+        // Keep the latest updated record
+        const curTime = new Date(inv.lastSentAt || inv.createdAt).getTime();
+        const prevTime = new Date(existing.lastSentAt || existing.createdAt).getTime();
+        if (curTime >= prevTime) {
+          invMap.set(key, { ...inv });
+        }
+      }
+    });
+
+    // Step 2: Harmonize with employee records and ensure correct lifecycle status
     employees.forEach((emp) => {
-      if (emp.loginStatus === 'ACCEPTED' && !existingInvEmpIds.has(emp.id)) {
-        invitations.push({
-          id: `inv-active-${emp.id}`,
-          tenantId: tenant.id,
-          tenantName: tenant.name,
-          employeeId: emp.id,
-          employeeName: `${emp.firstName} ${emp.lastName}`,
-          email: emp.workEmail,
-          role: emp.workEmail.includes('admin') || emp.workEmail.includes('rajnish') ? 'COMPANY_ADMIN' : 'EMPLOYEE',
-          token: `active-${emp.id}`,
-          tokenHash: `active-hash-${emp.id}`,
-          status: 'ACCEPTED',
-          createdAt: emp.createdAt || new Date().toISOString(),
-          expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
-          lastSentAt: emp.createdAt || new Date().toISOString(),
-          acceptedAt: emp.createdAt || new Date().toISOString()
-        });
-        existingInvEmpIds.add(emp.id);
+      const key = (emp.workEmail || '').toLowerCase().trim();
+      if (!key) return;
+      const existingInv = invMap.get(key);
+
+      if (emp.loginStatus === 'REVOKED') {
+        if (existingInv) {
+          existingInv.status = 'REVOKED';
+          existingInv.employeeName = `${emp.firstName} ${emp.lastName}`.trim() || existingInv.employeeName;
+        } else {
+          invMap.set(key, {
+            id: `inv-revoked-${emp.id}`,
+            tenantId: tenant.id,
+            tenantName: tenant.name,
+            employeeId: emp.id,
+            employeeName: `${emp.firstName} ${emp.lastName}`,
+            email: emp.workEmail,
+            role:
+              emp.workEmail.includes('admin') || emp.workEmail.includes('rajnish')
+                ? 'COMPANY_ADMIN'
+                : 'EMPLOYEE',
+            token: `revoked-${emp.id}`,
+            tokenHash: `revoked-hash-${emp.id}`,
+            status: 'REVOKED',
+            createdAt: emp.createdAt || new Date().toISOString(),
+            expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
+            lastSentAt: emp.createdAt || new Date().toISOString()
+          });
+        }
+      } else if (emp.loginStatus === 'ACCEPTED') {
+        if (existingInv) {
+          existingInv.status = 'ACCEPTED';
+          existingInv.employeeName = `${emp.firstName} ${emp.lastName}`.trim() || existingInv.employeeName;
+        } else {
+          invMap.set(key, {
+            id: `inv-active-${emp.id}`,
+            tenantId: tenant.id,
+            tenantName: tenant.name,
+            employeeId: emp.id,
+            employeeName: `${emp.firstName} ${emp.lastName}`,
+            email: emp.workEmail,
+            role:
+              emp.workEmail.includes('admin') || emp.workEmail.includes('rajnish')
+                ? 'COMPANY_ADMIN'
+                : 'EMPLOYEE',
+            token: `active-${emp.id}`,
+            tokenHash: `active-hash-${emp.id}`,
+            status: 'ACCEPTED',
+            createdAt: emp.createdAt || new Date().toISOString(),
+            expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
+            lastSentAt: emp.createdAt || new Date().toISOString(),
+            acceptedAt: emp.createdAt || new Date().toISOString()
+          });
+        }
+      } else if (emp.loginStatus === 'NOT_INVITED') {
+        // When cancelled or uninvited, remove any phantom invitation from display
+        invMap.delete(key);
       }
     });
 
-    // Reliable stats calculation checking both invitations and employee loginStatus
-    const pendingInvEmpIds = new Set(
-      invitations.filter((i) => i.status === 'PENDING').map((i) => i.employeeId)
-    );
-    const acceptedInvEmpIds = new Set(
-      invitations.filter((i) => i.status === 'ACCEPTED').map((i) => i.employeeId)
-    );
+    const finalInvitations = Array.from(invMap.values());
 
-    const activatedCount = employees.filter(
-      (e) => e.loginStatus === 'ACCEPTED' || acceptedInvEmpIds.has(e.id)
+    const activatedCount = employees.filter((e) => e.loginStatus === 'ACCEPTED').length;
+    const pendingCount = employees.filter((e) => e.loginStatus === 'PENDING').length;
+    const revokedCount = employees.filter((e) => e.loginStatus === 'REVOKED').length;
+    const notInvitedCount = employees.filter(
+      (e) => !e.loginStatus || e.loginStatus === 'NOT_INVITED'
     ).length;
-
-    const pendingCount = employees.filter(
-      (e) => (e.loginStatus === 'PENDING' || pendingInvEmpIds.has(e.id)) && !acceptedInvEmpIds.has(e.id)
-    ).length;
-
-    const notInvitedCount = Math.max(0, employees.length - activatedCount - pendingCount);
 
     const payload = {
-      invitations,
+      invitations: finalInvitations,
       stats: {
         totalEmployees: employees.length,
         activatedCount,
         pendingCount,
+        revokedCount,
         notInvitedCount,
-        activationRate: employees.length > 0 ? Math.round((activatedCount / employees.length) * 100) : 0
+        activationRate:
+          employees.length > 0 ? Math.round((activatedCount / employees.length) * 100) : 0
       }
     };
 
@@ -109,7 +174,9 @@ export async function POST(
 ) {
   try {
     const { tenantSlug } = await context.params;
-    const tenant = await SupabaseStore.getTenantBySlug(tenantSlug) || await db.getResolvedTenant(tenantSlug, true);
+    const tenant =
+      (await SupabaseStore.getTenantBySlug(tenantSlug)) ||
+      (await db.getResolvedTenant(tenantSlug, true));
     if (!tenant) {
       return NextResponse.json({ success: false, error: 'Tenant not found' }, { status: 404 });
     }
@@ -123,7 +190,6 @@ export async function POST(
       return NextResponse.json({ success: false, error: 'Employee ID is required' }, { status: 400 });
     }
 
-    // Ensure employee is in memory db
     let emp = db.getEmployeeById(tenant.id, employeeId);
     if (!emp) {
       const emps = await SupabaseStore.getEmployees(tenant.id);
@@ -157,35 +223,72 @@ export async function PATCH(
 ) {
   try {
     const { tenantSlug } = await context.params;
-    const tenant = await SupabaseStore.getTenantBySlug(tenantSlug) || await db.getResolvedTenant(tenantSlug, true);
+    const tenant =
+      (await SupabaseStore.getTenantBySlug(tenantSlug)) ||
+      (await db.getResolvedTenant(tenantSlug, true));
     if (!tenant) {
       return NextResponse.json({ success: false, error: 'Tenant not found' }, { status: 404 });
     }
 
     const body = await req.json();
-    const { invitationId, action } = body;
+    const { invitationId, employeeId, email, action, role } = body;
     db.invalidateCache(tenant.id);
     db.invalidateCache(tenantSlug);
 
     if (action === 'RESEND') {
-      const inv = db.resendInvitation(tenant.id, invitationId);
+      let inv: Invitation | null = null;
+      try {
+        if (invitationId && !invitationId.startsWith('inv-')) {
+          inv = db.resendInvitation(tenant.id, invitationId);
+        }
+      } catch {
+        // Fallback to reinvite
+      }
+
+      if (!inv) {
+        inv = db.reinviteEmployee(tenant.id, invitationId, employeeId, email, role || 'EMPLOYEE');
+      }
+
       if (inv) {
         await SupabaseStore.saveInvitation(inv);
         await SupabaseStore.updateEmployeeLoginStatus(inv.employeeId, 'PENDING');
       }
+
       return NextResponse.json(
         { success: true, message: 'Invitation resent successfully', data: inv },
         { headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate' } }
       );
-    } else if (action === 'REVOKE') {
-      const inv = db.getInvitations(tenant.id).find((i) => i.id === invitationId);
-      db.revokeInvitation(tenant.id, invitationId);
+    } else if (action === 'REINVITE') {
+      const inv = db.reinviteEmployee(
+        tenant.id,
+        invitationId,
+        employeeId,
+        email,
+        role || 'EMPLOYEE'
+      );
       if (inv) {
         await SupabaseStore.saveInvitation(inv);
-        await SupabaseStore.updateEmployeeLoginStatus(inv.employeeId, 'REVOKED');
+        await SupabaseStore.updateEmployeeLoginStatus(inv.employeeId, 'PENDING');
       }
+
       return NextResponse.json(
-        { success: true, message: 'Invitation revoked successfully' },
+        { success: true, message: 'Invitation restored and generated successfully', data: inv },
+        { headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate' } }
+      );
+    } else if (action === 'REVOKE') {
+      db.revokeInvitation(tenant.id, invitationId, employeeId, email);
+      await SupabaseStore.revokeInvitation(tenant.id, invitationId, employeeId, email);
+
+      return NextResponse.json(
+        { success: true, message: 'Invitation and login access successfully revoked' },
+        { headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate' } }
+      );
+    } else if (action === 'CANCEL') {
+      db.cancelInvitation(tenant.id, invitationId, employeeId, email);
+      await SupabaseStore.deleteInvitation(tenant.id, invitationId, employeeId, email);
+
+      return NextResponse.json(
+        { success: true, message: 'Invitation cancelled and employee reset to uninvited' },
         { headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate' } }
       );
     }
@@ -193,6 +296,40 @@ export async function PATCH(
     return NextResponse.json({ success: false, error: 'Invalid action' }, { status: 400 });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Error modifying invitation';
+    return NextResponse.json({ success: false, error: message }, { status: 400 });
+  }
+}
+
+export async function DELETE(
+  req: Request,
+  context: { params: Promise<{ tenantSlug: string }> }
+) {
+  try {
+    const { tenantSlug } = await context.params;
+    const tenant =
+      (await SupabaseStore.getTenantBySlug(tenantSlug)) ||
+      (await db.getResolvedTenant(tenantSlug, true));
+    if (!tenant) {
+      return NextResponse.json({ success: false, error: 'Tenant not found' }, { status: 404 });
+    }
+
+    const { searchParams } = new URL(req.url);
+    const invitationId = searchParams.get('invitationId') || undefined;
+    const employeeId = searchParams.get('employeeId') || undefined;
+    const email = searchParams.get('email') || undefined;
+
+    db.invalidateCache(tenant.id);
+    db.invalidateCache(tenantSlug);
+
+    db.cancelInvitation(tenant.id, invitationId, employeeId, email);
+    await SupabaseStore.deleteInvitation(tenant.id, invitationId, employeeId, email);
+
+    return NextResponse.json(
+      { success: true, message: 'Invitation cancelled and employee reset to uninvited' },
+      { headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate' } }
+    );
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Error deleting invitation';
     return NextResponse.json({ success: false, error: message }, { status: 400 });
   }
 }

@@ -1195,6 +1195,153 @@ export class SupabaseStore {
     return true;
   }
 
+  public static async revokeInvitation(
+    tenantId: string,
+    invitationId?: string,
+    employeeId?: string,
+    email?: string
+  ): Promise<boolean> {
+    const supabase = getSupabaseAdmin();
+    if (!supabase) return false;
+
+    try {
+      // 1. Update invitation table to REVOKED
+      if (invitationId && !invitationId.startsWith('inv-active-') && !invitationId.startsWith('inv-revoked-')) {
+        await supabase
+          .from('invitations')
+          .update({ status: 'REVOKED' })
+          .eq('tenant_id', tenantId)
+          .eq('id', invitationId);
+      }
+      if (employeeId) {
+        await supabase
+          .from('invitations')
+          .update({ status: 'REVOKED' })
+          .eq('tenant_id', tenantId)
+          .eq('employee_id', employeeId);
+      }
+      if (email) {
+        await supabase
+          .from('invitations')
+          .update({ status: 'REVOKED' })
+          .eq('tenant_id', tenantId)
+          .ilike('email', email.trim());
+      }
+
+      // 2. Update employee login_status in employees table
+      if (employeeId) {
+        await supabase
+          .from('employees')
+          .update({ login_status: 'REVOKED' })
+          .eq('tenant_id', tenantId)
+          .eq('id', employeeId);
+      }
+      if (email) {
+        await supabase
+          .from('employees')
+          .update({ login_status: 'REVOKED' })
+          .eq('tenant_id', tenantId)
+          .ilike('work_email', email.trim());
+      }
+
+      // 3. Suspend tenant_membership if user exists
+      if (email) {
+        const { data: user } = await supabase
+          .from('users')
+          .select('id')
+          .ilike('email', email.trim())
+          .maybeSingle();
+
+        if (user) {
+          await supabase
+            .from('tenant_memberships')
+            .update({ status: 'SUSPENDED' })
+            .eq('tenant_id', tenantId)
+            .eq('user_id', user.id);
+        }
+      }
+
+      return true;
+    } catch (err) {
+      console.warn('Supabase revokeInvitation error:', err);
+      return false;
+    }
+  }
+
+  public static async deleteInvitation(
+    tenantId: string,
+    invitationId?: string,
+    employeeId?: string,
+    email?: string
+  ): Promise<boolean> {
+    const supabase = getSupabaseAdmin();
+    if (!supabase) return false;
+
+    try {
+      // 1. Delete invitation from invitations table
+      if (invitationId && !invitationId.startsWith('inv-active-') && !invitationId.startsWith('inv-revoked-')) {
+        await supabase
+          .from('invitations')
+          .delete()
+          .eq('tenant_id', tenantId)
+          .eq('id', invitationId);
+      }
+      if (employeeId) {
+        await supabase
+          .from('invitations')
+          .delete()
+          .eq('tenant_id', tenantId)
+          .eq('employee_id', employeeId);
+      }
+      if (email) {
+        await supabase
+          .from('invitations')
+          .delete()
+          .eq('tenant_id', tenantId)
+          .ilike('email', email.trim());
+      }
+
+      // 2. Reset employee login_status to NOT_INVITED
+      if (employeeId) {
+        await supabase
+          .from('employees')
+          .update({ login_status: 'NOT_INVITED', invitation_id: null })
+          .eq('tenant_id', tenantId)
+          .eq('id', employeeId);
+      }
+      if (email) {
+        await supabase
+          .from('employees')
+          .update({ login_status: 'NOT_INVITED', invitation_id: null })
+          .eq('tenant_id', tenantId)
+          .ilike('work_email', email.trim());
+      }
+
+      // 3. Remove invited/pending membership if user exists
+      if (email) {
+        const { data: user } = await supabase
+          .from('users')
+          .select('id')
+          .ilike('email', email.trim())
+          .maybeSingle();
+
+        if (user) {
+          await supabase
+            .from('tenant_memberships')
+            .delete()
+            .eq('tenant_id', tenantId)
+            .eq('user_id', user.id)
+            .eq('status', 'INVITED');
+        }
+      }
+
+      return true;
+    } catch (err) {
+      console.warn('Supabase deleteInvitation error:', err);
+      return false;
+    }
+  }
+
   // --------------------------------------------------------------------------
   // USERS
   // --------------------------------------------------------------------------
