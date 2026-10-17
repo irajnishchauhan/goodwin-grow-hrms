@@ -1774,6 +1774,7 @@ class HRMSDataStore {
     tenantId: string,
     data: {
       employeeId: string;
+      employeeName?: string;
       title: string;
       documentType: 'CONTRACT' | 'OFFER_LETTER' | 'IDENTITY_PROOF' | 'TAX_DECLARATION' | 'CERTIFICATE';
       fileName: string;
@@ -1781,13 +1782,13 @@ class HRMSDataStore {
     }
   ): EmployeeDocument {
     const emp = this.getEmployeeById(tenantId, data.employeeId);
-    if (!emp) throw new Error('Employee not found');
+    const employeeName = data.employeeName || (emp ? `${emp.firstName} ${emp.lastName}` : 'Assigned Employee');
 
     const doc: EmployeeDocument = {
-      id: `doc-${Date.now()}`,
+      id: `doc-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
       tenantId,
       employeeId: data.employeeId,
-      employeeName: `${emp.firstName} ${emp.lastName}`,
+      employeeName,
       title: data.title,
       documentType: data.documentType,
       fileName: data.fileName,

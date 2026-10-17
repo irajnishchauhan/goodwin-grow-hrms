@@ -68,8 +68,19 @@ export async function POST(
     db.invalidateCache(tenant.id);
     db.invalidateCache(tenantSlug);
 
+    let emp = db.getEmployeeById(tenant.id, employeeId);
+    if (!emp) {
+      const supaEmployees = await SupabaseStore.getEmployees(tenant.id);
+      if (supaEmployees && supaEmployees.length > 0) {
+        db.syncEmployees(supaEmployees);
+        emp = db.getEmployeeById(tenant.id, employeeId);
+      }
+    }
+    const employeeName = emp ? `${emp.firstName} ${emp.lastName}` : body.employeeName || 'Assigned Employee';
+
     const doc = db.uploadDocument(tenant.id, {
       employeeId,
+      employeeName,
       title: title.trim(),
       documentType: documentType || 'CONTRACT',
       fileName: fileName || `${title.replace(/\s+/g, '_')}.pdf`,
@@ -110,9 +121,16 @@ export async function PATCH(
     db.invalidateCache(tenant.id);
     db.invalidateCache(tenantSlug);
 
-    let employeeName: string | undefined;
+    let employeeName: string | undefined = body.employeeName;
     if (employeeId) {
-      const emp = db.getEmployeeById(tenant.id, employeeId);
+      let emp = db.getEmployeeById(tenant.id, employeeId);
+      if (!emp) {
+        const supaEmployees = await SupabaseStore.getEmployees(tenant.id);
+        if (supaEmployees && supaEmployees.length > 0) {
+          db.syncEmployees(supaEmployees);
+          emp = db.getEmployeeById(tenant.id, employeeId);
+        }
+      }
       if (emp) {
         employeeName = `${emp.firstName} ${emp.lastName}`;
       }
