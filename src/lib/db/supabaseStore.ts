@@ -784,6 +784,87 @@ export class SupabaseStore {
     return mapped;
   }
 
+  public static async saveHoliday(holiday: Holiday): Promise<boolean> {
+    const supabase = getSupabaseAdmin();
+    if (!supabase) return false;
+
+    SupabaseStore.invalidate(holiday.tenantId);
+
+    try {
+      const { error } = await supabase.from('holidays').upsert(
+        {
+          id: holiday.id,
+          tenant_id: holiday.tenantId,
+          name: holiday.name,
+          date: holiday.date,
+          is_optional: Boolean(holiday.isOptional)
+        },
+        { onConflict: 'id' }
+      );
+
+      if (error) {
+        console.warn('Supabase saveHoliday error:', error.message);
+        return false;
+      }
+      return true;
+    } catch (e) {
+      console.warn('Supabase saveHoliday exception:', e);
+      return false;
+    }
+  }
+
+  public static async saveHolidaysBatch(tenantId: string, holidays: Holiday[]): Promise<boolean> {
+    const supabase = getSupabaseAdmin();
+    if (!supabase) return false;
+
+    SupabaseStore.invalidate(tenantId);
+
+    try {
+      const rows = holidays.map((h) => ({
+        id: h.id,
+        tenant_id: tenantId,
+        name: h.name,
+        date: h.date,
+        is_optional: Boolean(h.isOptional)
+      }));
+
+      const { error } = await supabase.from('holidays').upsert(rows, { onConflict: 'id' });
+
+      if (error) {
+        console.warn('Supabase saveHolidaysBatch error:', error.message);
+        return false;
+      }
+      return true;
+    } catch (e) {
+      console.warn('Supabase saveHolidaysBatch exception:', e);
+      return false;
+    }
+  }
+
+  public static async deleteHoliday(tenantId: string, holidayId: string): Promise<boolean> {
+    const supabase = getSupabaseAdmin();
+    if (!supabase) return false;
+
+    SupabaseStore.invalidate(tenantId);
+
+    try {
+      const { error } = await supabase
+        .from('holidays')
+        .delete()
+        .eq('tenant_id', tenantId)
+        .eq('id', holidayId);
+
+      if (error) {
+        console.warn('Supabase deleteHoliday error:', error.message);
+        return false;
+      }
+      return true;
+    } catch (e) {
+      console.warn('Supabase deleteHoliday exception:', e);
+      return false;
+    }
+  }
+
   // --------------------------------------------------------------------------
   // ATTENDANCE
   // --------------------------------------------------------------------------

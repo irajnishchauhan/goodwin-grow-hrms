@@ -1294,8 +1294,103 @@ class HRMSDataStore {
     return newShift;
   }
 
-  public getHolidays(tenantId: string): Holiday[] {
-    return this.holidays.filter((h) => h.tenantId === tenantId);
+  public getHolidays(tenantId: string, year?: number): Holiday[] {
+    return this.holidays.filter((h) => {
+      if (h.tenantId !== tenantId) return false;
+      if (year && !h.date.startsWith(`${year}-`)) return false;
+      return true;
+    }).sort((a, b) => a.date.localeCompare(b.date));
+  }
+
+  public syncHolidays(holidays: Holiday[]): void {
+    if (!holidays || holidays.length === 0) return;
+    const tenantId = holidays[0].tenantId;
+    this.holidays = this.holidays.filter((h) => h.tenantId !== tenantId);
+    this.holidays.push(...holidays);
+  }
+
+  public createHoliday(
+    tenantId: string,
+    data: { name: string; date: string; isOptional?: boolean }
+  ): Holiday {
+    const dayOfWeek = new Date(data.date + 'T00:00:00Z').toLocaleDateString('en-US', {
+      weekday: 'long',
+      timeZone: 'UTC'
+    });
+    const newHol: Holiday = {
+      id: `hol-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      tenantId,
+      name: data.name.trim(),
+      date: data.date,
+      dayOfWeek,
+      isOptional: Boolean(data.isOptional)
+    };
+
+    const existingIndex = this.holidays.findIndex(
+      (h) => h.tenantId === tenantId && h.date === data.date
+    );
+    if (existingIndex >= 0) {
+      this.holidays[existingIndex] = newHol;
+    } else {
+      this.holidays.push(newHol);
+    }
+    return newHol;
+  }
+
+  public updateHoliday(
+    tenantId: string,
+    id: string,
+    updates: { name?: string; date?: string; isOptional?: boolean }
+  ): Holiday | null {
+    const hol = this.holidays.find((h) => h.tenantId === tenantId && h.id === id);
+    if (!hol) return null;
+    if (updates.name !== undefined) hol.name = updates.name.trim();
+    if (updates.date !== undefined) {
+      hol.date = updates.date;
+      hol.dayOfWeek = new Date(updates.date + 'T00:00:00Z').toLocaleDateString('en-US', {
+        weekday: 'long',
+        timeZone: 'UTC'
+      });
+    }
+    if (updates.isOptional !== undefined) hol.isOptional = Boolean(updates.isOptional);
+    return hol;
+  }
+
+  public deleteHoliday(tenantId: string, id: string): boolean {
+    const lenBefore = this.holidays.length;
+    this.holidays = this.holidays.filter((h) => !(h.tenantId === tenantId && h.id === id));
+    return this.holidays.length < lenBefore;
+  }
+
+  public seedStandardHolidays(tenantId: string, year: number): Holiday[] {
+    const template = [
+      { name: 'Republic Day', date: `${year}-01-26`, isOptional: false },
+      { name: 'Maha Shivratri', date: `${year}-03-04`, isOptional: true },
+      { name: 'Eid-ul-Fitr', date: `${year}-03-20`, isOptional: false },
+      { name: 'Holi (Festival of Colors)', date: `${year}-03-25`, isOptional: false },
+      { name: 'Good Friday', date: `${year}-04-03`, isOptional: true },
+      { name: 'Dr. B.R. Ambedkar Jayanti', date: `${year}-04-14`, isOptional: true },
+      { name: 'May Day / Labor Day', date: `${year}-05-01`, isOptional: true },
+      { name: 'Bakrid / Eid al-Adha', date: `${year}-05-27`, isOptional: false },
+      { name: 'Independence Day', date: `${year}-08-15`, isOptional: false },
+      { name: 'Janmashtami', date: `${year}-09-04`, isOptional: true },
+      { name: 'Mahatma Gandhi Jayanti', date: `${year}-10-02`, isOptional: false },
+      { name: 'Dussehra / Vijayadashami', date: `${year}-10-20`, isOptional: false },
+      { name: 'Diwali (Deepavali Festival)', date: `${year}-11-08`, isOptional: false },
+      { name: 'Govardhan Puja', date: `${year}-11-09`, isOptional: true },
+      { name: 'Guru Nanak Jayanti', date: `${year}-11-24`, isOptional: true },
+      { name: 'Christmas Day', date: `${year}-12-25`, isOptional: false }
+    ];
+
+    const added: Holiday[] = [];
+    for (const item of template) {
+      const existing = this.holidays.find((h) => h.tenantId === tenantId && h.date === item.date);
+      if (!existing) {
+        const h = this.createHoliday(tenantId, item);
+        added.push(h);
+      }
+    }
+    return this.getHolidays(tenantId, year);
   }
 
   public getAttendance(tenantId: string, date?: string): AttendanceRecord[] {

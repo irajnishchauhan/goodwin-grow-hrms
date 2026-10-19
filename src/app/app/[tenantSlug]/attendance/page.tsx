@@ -39,6 +39,7 @@ import {
 import { formatTimeTo12Hour, getLateCutoffDisplay } from '@/lib/attendanceCalculator';
 import { useCurrentUser } from '@/lib/auth/useCurrentUser';
 import RoleGuard from '@/components/RoleGuard';
+import HolidayCalendarManager from '@/components/HolidayCalendarManager';
 
 export default function TenantAttendancePage() {
   const params = useParams();
@@ -94,8 +95,8 @@ export default function TenantAttendancePage() {
   const [punchLoading, setPunchLoading] = useState(false);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
 
-  // Tab View: Daily Roster | Regularizations | Shift Schedules & Grace Policies
-  const [activeTab, setActiveTab] = useState<'attendance' | 'regularizations' | 'shifts'>('attendance');
+  // Tab View: Daily Roster | Regularizations | Shift Schedules | Holiday Calendar
+  const [activeTab, setActiveTab] = useState<'attendance' | 'regularizations' | 'shifts' | 'holidays'>('attendance');
 
   // Super Admin & Company Admin Detection (admin@goodwingrow.ai or rajnish or super_admin / company_admin)
   const canManageAttendance = Boolean(
@@ -358,7 +359,7 @@ export default function TenantAttendancePage() {
   };
 
   // Submit Regularization Request
-  const handleSubmitRegularization = async (e: React.FormEvent) => {
+  const handleSubmitRegularization = async (e: React.FormEvent, autoApprove: boolean = false) => {
     e.preventDefault();
     const effectiveEmpId = isEmployeeOnly ? currentEmp?.id || regEmpId : regEmpId;
     if (!effectiveEmpId) {
@@ -375,6 +376,7 @@ export default function TenantAttendancePage() {
 
     const emp = employees.find((e) => e.id === effectiveEmpId);
     const fullReason = `${regReasonCategory}${regRemarks ? ` — ${regRemarks}` : ''}`;
+    const reviewerName = user?.name || (isSuperAdmin ? 'Super Admin' : 'Company Admin');
 
     try {
       const res = await fetch(`/api/tenants/${tenantSlug}/attendance`, {
@@ -389,7 +391,9 @@ export default function TenantAttendancePage() {
           requestedClockOut: regClockOut,
           reason: fullReason,
           managerId: emp?.reportingManagerId,
-          managerName: emp?.reportingManagerName
+          managerName: emp?.reportingManagerName,
+          autoApprove,
+          reviewerName
         })
       });
 
@@ -397,14 +401,16 @@ export default function TenantAttendancePage() {
       if (json.success) {
         setRegFeedback({
           type: 'success',
-          message: 'Attendance regularization request submitted successfully for manager approval!'
+          message: autoApprove
+            ? 'Attendance regularized and approved immediately!'
+            : 'Attendance regularization request submitted successfully for manager approval!'
         });
         fetchAttendance(selectedDate);
         setTimeout(() => {
           setIsRegModalOpen(false);
           setRegRemarks('');
           setRegFeedback(null);
-        }, 1500);
+        }, 1200);
       } else {
         setRegFeedback({ type: 'error', message: json.error || 'Failed to submit regularization' });
       }
@@ -918,6 +924,18 @@ export default function TenantAttendancePage() {
               {shifts.length} Configured
             </span>
           </button>
+
+          <button
+            onClick={() => setActiveTab('holidays')}
+            className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold transition-all border-b-2 cursor-pointer ${
+              activeTab === 'holidays'
+                ? 'border-emerald-600 text-emerald-700 bg-emerald-50/50'
+                : 'border-transparent text-slate-500 hover:text-slate-900 hover:bg-slate-50'
+            }`}
+          >
+            <Sparkles className="w-4 h-4 text-purple-600" />
+            <span>Holiday Calendar</span>
+          </button>
         </div>
 
         {/* ==================================================================== */}
@@ -1196,8 +1214,16 @@ export default function TenantAttendancePage() {
                       visibleRecords.map((r) => {
                         const isSelected = selectedRecordIds.includes(r.id);
                         const emp = employees.find((e) => e.id === r.employeeId);
+                        const isRowRegularized =
+                          Boolean(r.notes?.toLowerCase().includes('regulariz')) ||
+                          regularizations.some(
+                            (reg) =>
+                              reg.employeeId === r.employeeId &&
+                              reg.attendanceDate === r.date &&
+                              reg.status === 'APPROVED'
+                          );
                         const isUnpunched = r.status === 'ABSENT' || !r.clockInTime;
-                        const isLate = r.status === 'LATE_ENTRY';
+                        const isLate = r.status === 'LATE_ENTRY' && !isRowRegularized;
                         const isHalf = r.status === 'HALF_DAY';
 
                         return (
@@ -1280,7 +1306,7 @@ export default function TenantAttendancePage() {
                               {r.status === 'PRESENT' && (
                                 <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
                                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-600"></span>
-                                  PRESENT
+                                  {isRowRegularized ? 'PRESENT · REGULARIZED' : 'PRESENT'}
                                 </span>
                               )}
                               {r.status === 'LATE_ENTRY' && (
@@ -1308,8 +1334,9 @@ export default function TenantAttendancePage() {
                                 </span>
                               )}
                               {r.status === 'HOLIDAY' && (
-                                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
-                                  WEEK OFF
+                                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-purple-50 text-purple-800 border border-purple-200">
+                                  <Sparkles className="w-3 h-3 text-purple-600" />
+                                  {r.notes?.toLowerCase().includes('holiday') ? 'HOLIDAY' : 'WEEK OFF'}
                                 </span>
                               )}
                             </td>
@@ -1325,15 +1352,45 @@ export default function TenantAttendancePage() {
 
                             <td className="px-5 py-4 text-right">
                               <div className="flex items-center justify-end gap-1.5 flex-wrap">
-                                {(isUnpunched || isLate || isHalf) && (
-                                  <button
-                                    onClick={() => handleQuickRegularize(r.employeeId, r.date)}
-                                    className="px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold text-[11px] transition-colors cursor-pointer"
-                                    title="Submit regularization request for this date"
-                                  >
-                                    Regularize
-                                  </button>
-                                )}
+                                {(() => {
+                                  const hasPendingReg = regularizations.some(
+                                    (reg) =>
+                                      reg.employeeId === r.employeeId &&
+                                      reg.attendanceDate === r.date &&
+                                      reg.status === 'PENDING'
+                                  );
+
+                                  if (hasPendingReg) {
+                                    return (
+                                      <span className="px-2 py-0.5 rounded-lg bg-amber-50 text-amber-700 border border-amber-200 font-bold text-[10px]">
+                                        Pending Reg.
+                                      </span>
+                                    );
+                                  }
+
+                                  if (isRowRegularized) {
+                                    return (
+                                      <span className="px-2 py-0.5 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold text-[10px] flex items-center gap-1">
+                                        <Check className="w-3 h-3 text-emerald-600" />
+                                        Regularized
+                                      </span>
+                                    );
+                                  }
+
+                                  if (isUnpunched || isLate || isHalf) {
+                                    return (
+                                      <button
+                                        onClick={() => handleQuickRegularize(r.employeeId, r.date)}
+                                        className="px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold text-[11px] transition-colors cursor-pointer"
+                                        title="Submit regularization request for this date"
+                                      >
+                                        Regularize
+                                      </button>
+                                    );
+                                  }
+
+                                  return null;
+                                })()}
 
                                 {canManageAttendance && (
                                   <>
@@ -1822,6 +1879,17 @@ export default function TenantAttendancePage() {
           </div>
         )}
 
+        {/* ==================================================================== */}
+        {/* TAB 4: CALENDAR YEAR HOLIDAYS */}
+        {/* ==================================================================== */}
+        {activeTab === 'holidays' && (
+          <HolidayCalendarManager
+            tenantSlug={tenantSlug}
+            canManage={canManageAttendance}
+            onHolidayChange={() => fetchAttendance(selectedDate)}
+          />
+        )}
+
         {/* Super Admin Edit Attendance Record Modal */}
         {editingRecord && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fade-in">
@@ -2219,18 +2287,32 @@ export default function TenantAttendancePage() {
                   />
                 </div>
 
-                <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-200">
+                <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200 flex-wrap">
                   <button
                     type="button"
                     onClick={() => setIsRegModalOpen(false)}
-                    className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs cursor-pointer"
+                    className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs cursor-pointer"
                   >
                     Cancel
                   </button>
+
+                  {canManageAttendance && (
+                    <button
+                      type="button"
+                      disabled={regSubmitting}
+                      onClick={(e) => handleSubmitRegularization(e, true)}
+                      className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md transition-all disabled:opacity-50 flex items-center gap-1.5 cursor-pointer"
+                      title="Directly approve and regularize this attendance record"
+                    >
+                      <Check className="w-3.5 h-3.5" />
+                      <span>{regSubmitting ? 'Processing...' : 'Approve & Regularize Instantly'}</span>
+                    </button>
+                  )}
+
                   <button
                     type="submit"
                     disabled={regSubmitting}
-                    className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md transition-all disabled:opacity-50 flex items-center gap-1.5 cursor-pointer"
+                    className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs shadow-md transition-all disabled:opacity-50 flex items-center gap-1.5 cursor-pointer"
                   >
                     <Send className="w-3.5 h-3.5" />
                     <span>{regSubmitting ? 'Submitting...' : 'Submit Request'}</span>

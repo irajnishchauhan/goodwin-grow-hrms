@@ -11,10 +11,12 @@ import {
   AlertCircle,
   X,
   ShieldCheck,
-  User
+  User,
+  Sparkles
 } from 'lucide-react';
 import { LeaveApplication, LeaveType, Employee, Tenant } from '@/lib/types';
 import { useCurrentUser } from '@/lib/auth/useCurrentUser';
+import HolidayCalendarManager from '@/components/HolidayCalendarManager';
 
 export default function TenantLeavesPage() {
   const params = useParams();
@@ -26,6 +28,7 @@ export default function TenantLeavesPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [tenant, setTenant] = useState<Tenant | null>(null);
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<'applications' | 'policies' | 'holidays'>('applications');
 
   // Apply Modal State
   const [modalOpen, setModalOpen] = useState(false);
@@ -187,6 +190,82 @@ export default function TenantLeavesPage() {
         </button>
       </div>
 
+      {/* Navigation Tabs */}
+      <div className="flex items-center gap-2 border-b border-slate-200 pb-px">
+        <button
+          type="button"
+          onClick={() => setActiveTab('applications')}
+          className={`flex items-center gap-2 px-4 py-2.5 font-bold text-xs border-b-2 transition-all cursor-pointer ${
+            activeTab === 'applications'
+              ? 'border-emerald-600 text-emerald-700 bg-emerald-50/50 rounded-t-xl'
+              : 'border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300'
+          }`}
+        >
+          <Calendar className="w-4 h-4" />
+          <span>Leave Requests & Approvals</span>
+          <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-slate-100 text-slate-700 border border-slate-200">
+            {visibleApplications.length}
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('policies')}
+          className={`flex items-center gap-2 px-4 py-2.5 font-bold text-xs border-b-2 transition-all cursor-pointer ${
+            activeTab === 'policies'
+              ? 'border-emerald-600 text-emerald-700 bg-emerald-50/50 rounded-t-xl'
+              : 'border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300'
+          }`}
+        >
+          <ShieldCheck className="w-4 h-4" />
+          <span>Leave Entitlement Quotas</span>
+          <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-slate-100 text-slate-700 border border-slate-200">
+            {leaveTypes.length}
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('holidays')}
+          className={`flex items-center gap-2 px-4 py-2.5 font-bold text-xs border-b-2 transition-all cursor-pointer ${
+            activeTab === 'holidays'
+              ? 'border-emerald-600 text-emerald-700 bg-emerald-50/50 rounded-t-xl'
+              : 'border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300'
+          }`}
+        >
+          <Sparkles className="w-4 h-4 text-purple-600" />
+          <span>Holiday Calendar</span>
+        </button>
+      </div>
+
+      {/* Tab: Holiday Calendar */}
+      {activeTab === 'holidays' && (
+        <HolidayCalendarManager tenantSlug={tenantSlug} canManage={!isEmployeeOnly} />
+      )}
+
+      {/* Tab: Leave Entitlement Quotas */}
+      {activeTab === 'policies' && (
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            {leaveTypes.map((lt) => (
+              <div key={lt.id} className="p-4 rounded-2xl bg-white border border-slate-200 shadow-xs space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-900">{lt.name}</span>
+                  <span className="font-mono text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
+                    {lt.code}
+                  </span>
+                </div>
+                <div className="text-2xl font-extrabold text-emerald-700">{lt.daysPerYear} Days</div>
+                <p className="text-[11px] text-slate-500 font-medium">Annual entitlement per employee (Paid)</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Tab: Leave Applications & Approvals */}
+      {activeTab === 'applications' && (
+        <div className="space-y-6">
       {/* Leave Type Policies */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {leaveTypes.map((lt) => (
@@ -290,6 +369,8 @@ export default function TenantLeavesPage() {
           </table>
         </div>
       </div>
+    </div>
+  )}
 
       {/* Apply Leave Modal */}
       {modalOpen && (

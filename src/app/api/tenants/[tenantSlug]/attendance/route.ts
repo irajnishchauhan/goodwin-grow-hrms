@@ -30,13 +30,14 @@ export async function GET(
     const { searchParams } = new URL(req.url);
     const targetDate = searchParams.get('date') || formatDateInTimezone(new Date(), timezone);
 
-    const [supaRecords, supaEmployees, supaRegularizations, supaShifts, supaLeaves] =
+    const [supaRecords, supaEmployees, supaRegularizations, supaShifts, supaLeaves, supaHolidays] =
       await Promise.all([
         SupabaseStore.getAttendance(tenant.id),
         SupabaseStore.getEmployees(tenant.id),
         SupabaseStore.getRegularizations(tenant.id),
         SupabaseStore.getShifts(tenant.id),
-        SupabaseStore.getLeaveApplications(tenant.id)
+        SupabaseStore.getLeaveApplications(tenant.id),
+        SupabaseStore.getHolidays(tenant.id)
       ]);
 
     if (supaEmployees && supaEmployees.length > 0) {
@@ -52,6 +53,7 @@ export async function GET(
       supaRegularizations !== null ? supaRegularizations : db.getRegularizations(tenant.id);
     const shifts = supaShifts !== null ? supaShifts : db.getShifts(tenant.id);
     const leaves = supaLeaves !== null ? supaLeaves : db.getLeaveApplications(tenant.id);
+    const holidays = supaHolidays !== null ? supaHolidays : db.getHolidays(tenant.id);
 
     // Filter out any automated/test benchmark entries
     const rawAttendance = supaRecords !== null ? supaRecords : db.getAttendance(tenant.id);
@@ -86,7 +88,9 @@ export async function GET(
       shifts,
       tenantId: tenant.id,
       excludedEmployeeIds,
-      timezone
+      timezone,
+      regularizations,
+      holidays
     });
 
     // Real logged attendance records (only actual punches, admin marks, and approved leaves)
@@ -113,6 +117,7 @@ export async function GET(
       employees,
       regularizations,
       shifts,
+      holidays,
       stats,
       date: targetDate,
       pendingRegularizationsCount: regularizations.filter((r) => r.status === 'PENDING').length
@@ -191,6 +196,33 @@ export async function POST(
       });
 
       await SupabaseStore.saveRegularization(reg);
+
+      if (body.autoApprove) {
+        const approvedReg = db.updateRegularizationStatus(
+          tenant.id,
+          reg.id,
+          'APPROVED',
+          body.reviewerName || 'Super Admin',
+          body.reason ? `Direct Regularization: ${body.reason}` : 'Direct Regularization'
+        );
+        await SupabaseStore.saveRegularization(approvedReg);
+
+        const att = db
+          .getAttendance(tenant.id, attendanceDate)
+          .find((a) => a.employeeId === employeeId);
+        if (att) {
+          await SupabaseStore.saveAttendance(att);
+        }
+
+        return NextResponse.json(
+          {
+            success: true,
+            message: 'Attendance regularized and approved instantly!',
+            data: approvedReg
+          },
+          { headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate' } }
+        );
+      }
 
       return NextResponse.json(
         {
