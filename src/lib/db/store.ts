@@ -22,7 +22,8 @@ import {
   ImportBatch,
   UserRole,
   OnboardingStep,
-  EmploymentType
+  EmploymentType,
+  AppNotification
 } from '../types';
 import {
   INITIAL_PLANS,
@@ -74,6 +75,26 @@ class HRMSDataStore {
   private jobApplicants: JobApplicant[] = [...INITIAL_JOB_APPLICANTS];
   private invitations: Invitation[] = [...INITIAL_INVITATIONS];
   private importBatches: ImportBatch[] = [];
+  private notifications: AppNotification[] = [
+    {
+      id: 'notif-1',
+      tenantId: 'tenant-goodwin-batteries-fleet',
+      title: 'Biometric Attendance Synchronized',
+      message: 'All daily biometric punches and shift calculations are active for your workspace.',
+      type: 'ATTENDANCE_MISSED',
+      isRead: false,
+      createdAt: '2026-10-21T09:00:00Z'
+    },
+    {
+      id: 'notif-2',
+      tenantId: 'tenant-goodwin-batteries-fleet',
+      title: 'October 2026 Payroll Cycle',
+      message: 'October payroll calculations generated. Pending payment confirmation.',
+      type: 'SALARY_PAID',
+      isRead: false,
+      createdAt: '2026-10-21T10:30:00Z'
+    }
+  ];
 
   // -------------------------------------------------------------
   // AUTHENTICATION, SESSIONS & CREDENTIALS
@@ -1700,6 +1721,15 @@ class HRMSDataStore {
       managerName: data.managerName || emp?.reportingManagerName || undefined
     };
     this.regularizations.unshift(newReq);
+
+    // Notify Manager / Admin
+    this.createNotification(tenantId, {
+      title: 'Missed-Punch Regularization Requested',
+      message: `${newReq.employeeName} requested punch correction for ${newReq.attendanceDate} (${newReq.requestedClockIn} - ${newReq.requestedClockOut}). Reason: "${newReq.reason}"`,
+      type: 'REGULARIZATION_SUBMITTED',
+      linkUrl: `/app/${tenantId}/attendance?tab=regularizations`
+    });
+
     return newReq;
   }
 
@@ -1759,6 +1789,16 @@ class HRMSDataStore {
         this.attendance.unshift(newAtt);
       }
     }
+
+    // Notify employee of regularization decision
+    this.createNotification(tenantId, {
+      title: `Missed-Punch Regularization ${status === 'APPROVED' ? 'Approved' : 'Declined'}`,
+      message: `Your punch correction request for ${req.attendanceDate} was marked as ${status} by ${reviewedBy}.${comment ? ' Comment: "' + comment + '"' : ''}`,
+      type: status === 'APPROVED' ? 'REGULARIZATION_APPROVED' : 'REGULARIZATION_REJECTED',
+      employeeId: req.employeeId,
+      linkUrl: `/app/${tenantId}/attendance`
+    });
+
     return req;
   }
 
@@ -1781,6 +1821,8 @@ class HRMSDataStore {
       startDate: string;
       endDate: string;
       totalDays: number;
+      isHalfDay?: boolean;
+      halfDayPeriod?: 'FIRST_HALF' | 'SECOND_HALF';
       reason: string;
     }
   ): LeaveApplication {
@@ -1789,6 +1831,7 @@ class HRMSDataStore {
 
     const leaveType = this.leaveTypes.find((lt) => lt.id === data.leaveTypeId && lt.tenantId === tenantId);
     const leaveTypeName = leaveType ? leaveType.name : 'Leave';
+    const computedDays = data.isHalfDay ? 0.5 : (Number(data.totalDays) || 1);
 
     const newApp: LeaveApplication = {
       id: `la-${Date.now()}`,
@@ -1798,14 +1841,25 @@ class HRMSDataStore {
       leaveTypeId: data.leaveTypeId,
       leaveTypeName,
       startDate: data.startDate,
-      endDate: data.endDate,
-      totalDays: data.totalDays,
+      endDate: data.isHalfDay ? data.startDate : data.endDate,
+      totalDays: computedDays,
+      isHalfDay: Boolean(data.isHalfDay),
+      halfDayPeriod: data.halfDayPeriod,
       reason: data.reason,
       status: 'PENDING',
       appliedAt: new Date().toISOString()
     };
 
     this.leaveApplications.unshift(newApp);
+
+    // Notify Manager / HR Admin
+    this.createNotification(tenantId, {
+      title: 'New Leave Request Received',
+      message: `${emp.firstName} ${emp.lastName} submitted a request for ${newApp.totalDays} day(s) ${leaveTypeName} (${newApp.startDate}${newApp.isHalfDay ? ' - ' + (newApp.halfDayPeriod === 'FIRST_HALF' ? '1st Half' : '2nd Half') : ''}). Reason: "${data.reason}"`,
+      type: 'LEAVE_SUBMITTED',
+      linkUrl: `/app/${tenantId}/leaves`
+    });
+
     return newApp;
   }
 
@@ -1851,6 +1905,16 @@ class HRMSDataStore {
       app.reviewedBy = reviewedBy;
       app.reviewComment = comment || (status === 'APPROVED' ? 'Approved by HR' : 'Rejected');
     }
+
+    // Send notification update to employee
+    this.createNotification(tenantId, {
+      title: `Leave Request ${status === 'APPROVED' ? 'Approved' : 'Declined'}`,
+      message: `Your ${app.leaveTypeName} application for ${app.startDate} (${app.totalDays} day) was marked as ${status} by ${reviewedBy}.${app.reviewComment ? ' Remark: "' + app.reviewComment + '"' : ''}`,
+      type: status === 'APPROVED' ? 'LEAVE_APPROVED' : 'LEAVE_REJECTED',
+      employeeId: app.employeeId,
+      linkUrl: `/app/${tenantId}/leaves`
+    });
+
     return app;
   }
 
@@ -2178,7 +2242,10 @@ class HRMSDataStore {
         taxDeduction: tax,
         totalDeductions,
         netPay,
-        paymentStatus: payableDays > 0 ? 'PAID' : 'PENDING',
+        paymentStatus: (existingIdx >= 0 && this.salarySlips[existingIdx].paymentStatus === 'PAID') ? 'PAID' : 'PENDING',
+        paymentConfirmedAt: existingIdx >= 0 ? this.salarySlips[existingIdx].paymentConfirmedAt : undefined,
+        paymentConfirmedBy: existingIdx >= 0 ? this.salarySlips[existingIdx].paymentConfirmedBy : undefined,
+        paymentReference: existingIdx >= 0 ? this.salarySlips[existingIdx].paymentReference : undefined,
         generatedDate: new Date().toISOString().split('T')[0]
       };
 
@@ -2202,6 +2269,113 @@ class HRMSDataStore {
     });
 
     return generatedSlips;
+  }
+
+  public confirmSalaryPayment(
+    tenantId: string,
+    slipId: string,
+    confirmedBy: string = 'Company Finance / Admin',
+    reference?: string
+  ): SalarySlip | null {
+    const slip = this.salarySlips.find((s) => s.id === slipId && s.tenantId === tenantId);
+    if (!slip) return null;
+
+    slip.paymentStatus = 'PAID';
+    slip.paymentConfirmedAt = new Date().toISOString();
+    slip.paymentConfirmedBy = confirmedBy;
+    slip.paymentReference = reference || `TXN-NEFT-${Date.now().toString().slice(-6)}`;
+
+    this.createNotification(tenantId, {
+      title: 'Salary Disbursed & Confirmed',
+      message: `Your net salary of ${slip.netPay.toLocaleString()} INR for ${slip.month} has been confirmed & disbursed via ${slip.paymentReference}.`,
+      type: 'SALARY_PAID',
+      employeeId: slip.employeeId,
+      linkUrl: `/app/${tenantId}/payroll`
+    });
+
+    return slip;
+  }
+
+  public confirmAllSalaryPayments(
+    tenantId: string,
+    month: string,
+    confirmedBy: string = 'Company Finance / Admin',
+    reference?: string
+  ): SalarySlip[] {
+    const slips = this.salarySlips.filter((s) => s.tenantId === tenantId && s.month === month);
+    slips.forEach((slip) => {
+      slip.paymentStatus = 'PAID';
+      slip.paymentConfirmedAt = new Date().toISOString();
+      slip.paymentConfirmedBy = confirmedBy;
+      slip.paymentReference = reference || `TXN-BATCH-${Date.now().toString().slice(-6)}`;
+
+      this.createNotification(tenantId, {
+        title: 'Salary Disbursed & Confirmed',
+        message: `Your net salary of ${slip.netPay.toLocaleString()} INR for ${slip.month} has been confirmed & disbursed.`,
+        type: 'SALARY_PAID',
+        employeeId: slip.employeeId,
+        linkUrl: `/app/${tenantId}/payroll`
+      });
+    });
+    return slips;
+  }
+
+  // -------------------------------------------------------------
+  // NOTIFICATIONS CENTER
+  // -------------------------------------------------------------
+  public getNotifications(tenantId: string, employeeIdOrEmail?: string): AppNotification[] {
+    return this.notifications.filter((n) => {
+      if (n.tenantId !== tenantId) return false;
+      if (employeeIdOrEmail) {
+        const query = employeeIdOrEmail.toLowerCase();
+        if (n.employeeId && n.employeeId.toLowerCase() !== query) return false;
+        if (n.recipientEmail && n.recipientEmail.toLowerCase() !== query) return false;
+      }
+      return true;
+    });
+  }
+
+  public createNotification(
+    tenantId: string,
+    data: Omit<AppNotification, 'id' | 'createdAt' | 'isRead' | 'tenantId'>
+  ): AppNotification {
+    const newNotif: AppNotification = {
+      id: `notif-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      tenantId,
+      userId: data.userId,
+      employeeId: data.employeeId,
+      recipientEmail: data.recipientEmail,
+      title: data.title,
+      message: data.message,
+      type: data.type,
+      isRead: false,
+      linkUrl: data.linkUrl,
+      createdAt: new Date().toISOString()
+    };
+    this.notifications.unshift(newNotif);
+    if (this.notifications.length > 100) {
+      this.notifications.pop();
+    }
+    return newNotif;
+  }
+
+  public markNotificationRead(tenantId: string, id: string): boolean {
+    const notif = this.notifications.find((n) => n.id === id && n.tenantId === tenantId);
+    if (notif) {
+      notif.isRead = true;
+      return true;
+    }
+    return false;
+  }
+
+  public markAllNotificationsRead(tenantId: string, employeeIdOrEmail?: string): void {
+    this.notifications.forEach((n) => {
+      if (n.tenantId === tenantId) {
+        if (!employeeIdOrEmail || n.employeeId === employeeIdOrEmail || n.recipientEmail === employeeIdOrEmail) {
+          n.isRead = true;
+        }
+      }
+    });
   }
 
   // -------------------------------------------------------------

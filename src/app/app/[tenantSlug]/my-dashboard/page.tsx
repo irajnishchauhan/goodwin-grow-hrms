@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { Employee, Shift, LeaveType, LeaveApplication, SalarySlip, Holiday, EmployeeDocument, Tenant } from '@/lib/types';
 import { useCurrentUser } from '@/lib/auth/useCurrentUser';
+import MonthlyAttendanceCalendar from '@/components/MonthlyAttendanceCalendar';
 
 export default function EmployeeSelfServiceDashboard() {
   const params = useParams();
@@ -70,6 +71,8 @@ export default function EmployeeSelfServiceDashboard() {
   const [selectedLeaveTypeId, setSelectedLeaveTypeId] = useState('');
   const [leaveStartDate, setLeaveStartDate] = useState('');
   const [leaveEndDate, setLeaveEndDate] = useState('');
+  const [isHalfDay, setIsHalfDay] = useState(false);
+  const [halfDayPeriod, setHalfDayPeriod] = useState<'FIRST_HALF' | 'SECOND_HALF'>('FIRST_HALF');
   const [leaveReason, setLeaveReason] = useState('');
   const [leaveSubmitting, setLeaveSubmitting] = useState(false);
   const [leaveFeedback, setLeaveFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
@@ -392,15 +395,27 @@ export default function EmployeeSelfServiceDashboard() {
     setLeaveFeedback(null);
 
     try {
-      const start = new Date(leaveStartDate);
-      const end = new Date(leaveEndDate);
-      if (end < start) {
-        setLeaveFeedback({ type: 'error', message: 'End date cannot be earlier than start date.' });
-        setLeaveSubmitting(false);
-        return;
+      const finalEndDate = isHalfDay ? leaveStartDate : leaveEndDate;
+      if (!isHalfDay) {
+        const start = new Date(leaveStartDate);
+        const end = new Date(leaveEndDate);
+        if (end < start) {
+          setLeaveFeedback({ type: 'error', message: 'End date cannot be earlier than start date.' });
+          setLeaveSubmitting(false);
+          return;
+        }
       }
 
-      const diffDays = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / (1000 * 3600 * 24)) + 1);
+      const diffDays = isHalfDay
+        ? 0.5
+        : Math.max(
+            1,
+            Math.ceil(
+              (new Date(leaveEndDate).getTime() - new Date(leaveStartDate).getTime()) /
+                (1000 * 3600 * 24)
+            ) + 1
+          );
+
       const targetLeaveTypeId = selectedLeaveTypeId || activeLeaveTypes[0]?.id;
 
       const res = await fetch(`/api/tenants/${tenantSlug}/leaves`, {
@@ -410,8 +425,10 @@ export default function EmployeeSelfServiceDashboard() {
           employeeId: currentEmp.id,
           leaveTypeId: targetLeaveTypeId,
           startDate: leaveStartDate,
-          endDate: leaveEndDate,
+          endDate: finalEndDate,
           totalDays: diffDays,
+          isHalfDay,
+          halfDayPeriod: isHalfDay ? halfDayPeriod : undefined,
           reason: leaveReason
         })
       });
@@ -421,6 +438,7 @@ export default function EmployeeSelfServiceDashboard() {
         setLeaveReason('');
         setLeaveStartDate('');
         setLeaveEndDate('');
+        setIsHalfDay(false);
         setLeaveModalOpen(false);
         await loadEmployeeDetails(currentEmp.id);
       } else {
@@ -616,40 +634,60 @@ export default function EmployeeSelfServiceDashboard() {
               </button>
             </div>
 
-            {/* Dynamic Leave Types Balances */}
+            {/* Dynamic Leave Types Balances (Available, Used, Pending) */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               {activeLeaveTypes.map((lt) => {
-                // Compute leaves consumed
-                const takenDays = leaveApps
-                  .filter(
-                    (app) =>
-                      (app.leaveTypeId === lt.id || app.leaveTypeName?.toLowerCase().includes(lt.code.toLowerCase())) &&
-                      app.status !== 'REJECTED' &&
-                      app.status !== 'CANCELLED'
-                  )
+                const empApps = leaveApps.filter(
+                  (app) =>
+                    app.leaveTypeId === lt.id ||
+                    app.leaveTypeName?.toLowerCase().includes(lt.code.toLowerCase())
+                );
+                const usedDays = empApps
+                  .filter((app) => app.status === 'APPROVED')
                   .reduce((sum, app) => sum + (Number(app.totalDays) || 0), 0);
+                const pendingDays = empApps
+                  .filter((app) => app.status === 'PENDING')
+                  .reduce((sum, app) => sum + (Number(app.totalDays) || 0), 0);
+                const availableDays = Math.max(0, lt.daysPerYear - usedDays - pendingDays);
 
-                const remainingDays = Math.max(0, lt.daysPerYear - takenDays);
-                const percentLeft = Math.round((remainingDays / lt.daysPerYear) * 100);
-
-                const badgeColor =
-                  lt.code === 'CL' ? 'bg-blue-500' : lt.code === 'SL' ? 'bg-rose-500' : 'bg-emerald-500';
+                const usedPct = lt.daysPerYear > 0 ? Math.min(100, Math.round((usedDays / lt.daysPerYear) * 100)) : 0;
+                const pendingPct = lt.daysPerYear > 0 ? Math.min(100, Math.round((pendingDays / lt.daysPerYear) * 100)) : 0;
 
                 return (
-                  <div key={lt.id} className="p-4 rounded-xl bg-slate-50/80 border border-slate-200/80 space-y-2">
+                  <div key={lt.id} className="p-4 rounded-xl bg-slate-50/90 border border-slate-200/90 space-y-2.5">
                     <div className="flex items-center justify-between">
-                      <span className="text-xs text-slate-700 font-semibold">{lt.name}</span>
-                      <span className={`w-2.5 h-2.5 rounded-full ${badgeColor}`}></span>
+                      <span className="text-xs text-slate-800 font-bold">{lt.name}</span>
+                      <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-slate-200 text-slate-700">
+                        {lt.code}
+                      </span>
                     </div>
-                    <div className="flex items-baseline gap-1.5">
-                      <span className="text-2xl font-black text-slate-900 font-mono">{remainingDays}</span>
-                      <span className="text-xs text-slate-500 font-medium">/ {lt.daysPerYear} days left</span>
+
+                    <div className="flex items-baseline justify-between">
+                      <div>
+                        <span className="text-2xl font-black text-emerald-700 font-mono">{availableDays}</span>
+                        <span className="text-xs text-slate-500 font-medium ml-1">Days Left</span>
+                      </div>
+                      <span className="text-[11px] text-slate-500 font-medium">Quota: {lt.daysPerYear}d</span>
                     </div>
-                    <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
+
+                    {/* Multi-segmented Progress Bar */}
+                    <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden flex">
                       <div
-                        className={`h-full rounded-full ${badgeColor}`}
-                        style={{ width: `${percentLeft}%` }}
-                      ></div>
+                        style={{ width: `${usedPct}%` }}
+                        className="bg-emerald-500 h-full transition-all"
+                        title={`Used: ${usedDays}d`}
+                      />
+                      <div
+                        style={{ width: `${pendingPct}%` }}
+                        className="bg-amber-400 h-full transition-all"
+                        title={`Pending: ${pendingDays}d`}
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-between text-[10px] text-slate-500 pt-0.5 font-medium">
+                      <span>Used: <strong className="text-slate-700">{usedDays}d</strong></span>
+                      <span>Pending: <strong className="text-amber-700">{pendingDays}d</strong></span>
+                      <span>Avail: <strong className="text-emerald-700">{availableDays}d</strong></span>
                     </div>
                   </div>
                 );
@@ -674,10 +712,18 @@ export default function EmployeeSelfServiceDashboard() {
                     className="p-3 rounded-xl bg-slate-50 border border-slate-200/90 flex items-center justify-between text-xs"
                   >
                     <div>
-                      <div className="font-bold text-slate-900">{app.leaveTypeName}</div>
+                      <div className="font-bold text-slate-900 flex items-center gap-2">
+                        <span>{app.leaveTypeName}</span>
+                        {app.isHalfDay && (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-800">
+                            {app.halfDayPeriod === 'FIRST_HALF' ? '0.5d (1st Half)' : '0.5d (2nd Half)'}
+                          </span>
+                        )}
+                      </div>
                       <div className="text-slate-500 text-[11px] mt-0.5">
-                        {app.startDate} to {app.endDate} &bull; {app.totalDays} day(s) &bull;{' '}
-                        <span className="text-slate-600 italic">"{app.reason}"</span>
+                        {app.startDate} {app.startDate !== app.endDate ? `to ${app.endDate}` : ''} &bull;{' '}
+                        {app.totalDays === 0.5 ? 'Half Day (0.5d)' : `${app.totalDays} day(s)`} &bull;{' '}
+                        <span className="text-slate-600 italic">&ldquo;{app.reason}&rdquo;</span>
                       </div>
                     </div>
                     <span
@@ -833,13 +879,37 @@ export default function EmployeeSelfServiceDashboard() {
         </div>
       </div>
 
+      {/* Row 3: Monthly Attendance Calendar & Working Hours */}
+      <div className="space-y-4 pt-2">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div>
+            <h2 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
+              <Clock className="w-5 h-5 text-emerald-600" />
+              <span>My Monthly Attendance &amp; Working Hours</span>
+            </h2>
+            <p className="text-xs text-slate-500 font-medium">
+              Daily punch records, total working hours, public holidays, and 1-click missed punch regularization.
+            </p>
+          </div>
+        </div>
+
+        <MonthlyAttendanceCalendar
+          tenantSlug={tenantSlug}
+          employeeId={currentEmp.id}
+          isEmployeeOnly={true}
+          onRequestRegularization={(d, r) => {
+            window.location.href = `/app/${tenantSlug}/attendance?tab=regularizations&action=request&date=${d}`;
+          }}
+        />
+      </div>
+
       {/* Apply Leave Modal (Light Theme) */}
       {leaveModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fade-in">
-          <div className="w-full max-w-md rounded-2xl bg-white border border-slate-200 shadow-2xl p-6 text-slate-900 space-y-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-lg rounded-2xl bg-white border border-slate-200 shadow-2xl p-6 text-slate-900 space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-slate-200">
               <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
-                <Calendar className="w-4 h-4 text-amber-600" />
+                <Calendar className="w-4 h-4 text-emerald-600" />
                 Apply for Time-Off
               </h3>
               <button
@@ -863,14 +933,14 @@ export default function EmployeeSelfServiceDashboard() {
               </div>
             )}
 
-            <form onSubmit={handleApplyLeave} className="space-y-4">
+            <form onSubmit={handleApplyLeave} className="space-y-4 text-xs">
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">Leave Category *</label>
                 <select
                   required
                   value={selectedLeaveTypeId}
                   onChange={(e) => setSelectedLeaveTypeId(e.target.value)}
-                  className="w-full px-3 py-2 text-xs font-medium rounded-xl bg-slate-50 border border-slate-300 text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500/30 cursor-pointer shadow-sm"
+                  className="w-full px-3 py-2 text-xs font-medium rounded-xl bg-slate-50 border border-slate-300 text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 cursor-pointer shadow-sm"
                 >
                   {activeLeaveTypes.map((lt) => (
                     <option key={lt.id} value={lt.id}>
@@ -880,25 +950,126 @@ export default function EmployeeSelfServiceDashboard() {
                 </select>
               </div>
 
+              {/* Day Option: Full Day vs Half Day */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">Leave Duration Type *</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsHalfDay(false);
+                    }}
+                    className={`p-2.5 rounded-xl border text-center font-bold transition-all cursor-pointer ${
+                      !isHalfDay
+                        ? 'border-emerald-600 bg-emerald-50/70 text-emerald-800 shadow-xs'
+                        : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100'
+                    }`}
+                  >
+                    Full Day(s)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsHalfDay(true);
+                      if (leaveStartDate) setLeaveEndDate(leaveStartDate);
+                    }}
+                    className={`p-2.5 rounded-xl border text-center font-bold transition-all cursor-pointer ${
+                      isHalfDay
+                        ? 'border-purple-600 bg-purple-50/70 text-purple-800 shadow-xs'
+                        : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100'
+                    }`}
+                  >
+                    Half Day (0.5 Day)
+                  </button>
+                </div>
+              </div>
+
+              {/* If Half Day: Show Session Selector */}
+              {isHalfDay && (
+                <div className="p-3 rounded-xl bg-purple-50/70 border border-purple-200 space-y-2">
+                  <label className="block font-bold text-purple-900">Select Half-Day Session *</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <label
+                      className={`flex flex-col p-2.5 rounded-xl border cursor-pointer text-left transition-all ${
+                        halfDayPeriod === 'FIRST_HALF'
+                          ? 'border-purple-600 bg-white text-purple-900 shadow-xs ring-1 ring-purple-500'
+                          : 'border-purple-200 bg-white/60 text-slate-700 hover:bg-white'
+                      }`}
+                    >
+                      <div className="flex items-center gap-1.5 font-bold">
+                        <input
+                          type="radio"
+                          name="halfDayPeriod"
+                          value="FIRST_HALF"
+                          checked={halfDayPeriod === 'FIRST_HALF'}
+                          onChange={() => setHalfDayPeriod('FIRST_HALF')}
+                          className="text-purple-600"
+                        />
+                        <span>First Half (Morning)</span>
+                      </div>
+                      <span className="text-[10px] text-slate-500 mt-1 pl-4">
+                        09:30 AM &ndash; 02:00 PM
+                      </span>
+                    </label>
+
+                    <label
+                      className={`flex flex-col p-2.5 rounded-xl border cursor-pointer text-left transition-all ${
+                        halfDayPeriod === 'SECOND_HALF'
+                          ? 'border-purple-600 bg-white text-purple-900 shadow-xs ring-1 ring-purple-500'
+                          : 'border-purple-200 bg-white/60 text-slate-700 hover:bg-white'
+                      }`}
+                    >
+                      <div className="flex items-center gap-1.5 font-bold">
+                        <input
+                          type="radio"
+                          name="halfDayPeriod"
+                          value="SECOND_HALF"
+                          checked={halfDayPeriod === 'SECOND_HALF'}
+                          onChange={() => setHalfDayPeriod('SECOND_HALF')}
+                          className="text-purple-600"
+                        />
+                        <span>Second Half (Afternoon)</span>
+                      </div>
+                      <span className="text-[10px] text-slate-500 mt-1 pl-4">
+                        02:00 PM &ndash; 06:30 PM
+                      </span>
+                    </label>
+                  </div>
+                  <p className="text-[10px] text-purple-700 font-medium">
+                    Links to your attendance roster with a <strong>0.5 day</strong> quota deduction.
+                  </p>
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Start Date *</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    {isHalfDay ? 'Leave Date *' : 'Start Date *'}
+                  </label>
                   <input
                     type="date"
                     required
                     value={leaveStartDate}
-                    onChange={(e) => setLeaveStartDate(e.target.value)}
-                    className="w-full px-3 py-2 text-xs font-medium rounded-xl bg-slate-50 border border-slate-300 text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500/30 shadow-sm"
+                    onChange={(e) => {
+                      setLeaveStartDate(e.target.value);
+                      if (isHalfDay) setLeaveEndDate(e.target.value);
+                    }}
+                    className="w-full px-3 py-2 text-xs font-medium rounded-xl bg-slate-50 border border-slate-300 text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 shadow-sm"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">End Date *</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    {isHalfDay ? 'End Date (Locked) *' : 'End Date *'}
+                  </label>
                   <input
                     type="date"
                     required
-                    value={leaveEndDate}
+                    disabled={isHalfDay}
+                    value={isHalfDay ? leaveStartDate : leaveEndDate}
                     onChange={(e) => setLeaveEndDate(e.target.value)}
-                    className="w-full px-3 py-2 text-xs font-medium rounded-xl bg-slate-50 border border-slate-300 text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500/30 shadow-sm"
+                    className={`w-full px-3 py-2 text-xs font-medium rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 shadow-sm ${
+                      isHalfDay ? 'bg-slate-100 text-slate-500 cursor-not-allowed' : 'bg-slate-50 text-slate-900'
+                    }`}
                   />
                 </div>
               </div>
@@ -908,10 +1079,10 @@ export default function EmployeeSelfServiceDashboard() {
                 <textarea
                   required
                   rows={3}
-                  placeholder="e.g. Family function / Medical consultation"
+                  placeholder="e.g. Personal work / Medical appointment"
                   value={leaveReason}
                   onChange={(e) => setLeaveReason(e.target.value)}
-                  className="w-full px-3 py-2 text-xs font-medium rounded-xl bg-slate-50 border border-slate-300 text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500/30 shadow-sm"
+                  className="w-full px-3 py-2 text-xs font-medium rounded-xl bg-slate-50 border border-slate-300 text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 shadow-sm"
                 ></textarea>
               </div>
 
@@ -926,9 +1097,9 @@ export default function EmployeeSelfServiceDashboard() {
                 <button
                   type="submit"
                   disabled={leaveSubmitting}
-                  className="px-5 py-2 text-xs font-bold rounded-xl bg-amber-600 hover:bg-amber-500 text-white transition-all shadow-sm disabled:opacity-50 cursor-pointer"
+                  className="px-5 py-2 text-xs font-bold rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white transition-all shadow-sm disabled:opacity-50 cursor-pointer"
                 >
-                  {leaveSubmitting ? 'Submitting...' : 'Submit Request'}
+                  {leaveSubmitting ? 'Submitting...' : isHalfDay ? 'Apply for Half-Day (0.5)' : 'Submit Leave Request'}
                 </button>
               </div>
             </form>
@@ -961,7 +1132,14 @@ export default function EmployeeSelfServiceDashboard() {
               <div><span className="text-slate-500">Employee:</span> <span className="font-bold text-slate-900">{viewingSlip.employeeName}</span></div>
               <div><span className="text-slate-500">Code:</span> <span className="font-mono font-semibold">{viewingSlip.employeeCode}</span></div>
               <div><span className="text-slate-500">Department:</span> {viewingSlip.departmentName}</div>
-              <div><span className="text-slate-500">Payment Status:</span> <span className="text-emerald-700 font-bold">DISBURSED</span></div>
+              <div>
+                <span className="text-slate-500">Payment Status:</span>{' '}
+                {viewingSlip.paymentStatus === 'PAID' ? (
+                  <span className="text-emerald-700 font-bold">PAID &amp; CREDITED</span>
+                ) : (
+                  <span className="text-amber-700 font-bold">PENDING CONFIRMATION</span>
+                )}
+              </div>
             </div>
 
             <div className="grid grid-cols-2 gap-4 text-xs">

@@ -37,6 +37,28 @@ export const OWNER_USER: User = {
   createdAt: '2026-04-01T10:00:00Z'
 };
 
+export const DEMO_EMPLOYEE_USER: User = {
+  id: 'emp-goodwin-batteries-fleet-1792190007419',
+  name: 'Kiran Patidar',
+  email: 'kiranpatidar.goodwinbatteries@gmail.com',
+  passwordHash: 'password123',
+  avatarUrl: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=120&auto=format&fit=crop&q=80',
+  isSuperAdmin: false,
+  memberships: [
+    {
+      id: 'm-kiran-1',
+      tenantId: 'tenant-goodwin-batteries-fleet',
+      tenantName: 'Goodwin Batteries Pvt Ltd',
+      tenantSlug: 'goodwin-batteries-fleet',
+      role: 'EMPLOYEE',
+      status: 'ACTIVE'
+    }
+  ],
+  activeTenantId: 'tenant-goodwin-batteries-fleet',
+  isActive: true,
+  createdAt: '2026-04-01T10:00:00Z'
+};
+
 export const DEMO_PERSONAS: Record<string, PersonaDemo[]> = {
   'goodwin-batteries': [
     {
@@ -46,6 +68,14 @@ export const DEMO_PERSONAS: Record<string, PersonaDemo[]> = {
       role: 'COMPANY_ADMIN',
       title: 'Company Owner & Managing Director',
       avatarUrl: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120&auto=format&fit=crop&q=80'
+    },
+    {
+      id: 'emp-goodwin-batteries-fleet-1792190007419',
+      name: 'Kiran Patidar',
+      email: 'kiranpatidar.goodwinbatteries@gmail.com',
+      role: 'EMPLOYEE',
+      title: 'Employee (Self-Service ESS)',
+      avatarUrl: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=120&auto=format&fit=crop&q=80'
     }
   ],
   'goodwin-batteries-fleet': [
@@ -56,6 +86,14 @@ export const DEMO_PERSONAS: Record<string, PersonaDemo[]> = {
       role: 'COMPANY_ADMIN',
       title: 'Company Owner & Managing Director',
       avatarUrl: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120&auto=format&fit=crop&q=80'
+    },
+    {
+      id: 'emp-goodwin-batteries-fleet-1792190007419',
+      name: 'Kiran Patidar',
+      email: 'kiranpatidar.goodwinbatteries@gmail.com',
+      role: 'EMPLOYEE',
+      title: 'Employee (Self-Service ESS)',
+      avatarUrl: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=120&auto=format&fit=crop&q=80'
     }
   ]
 };
@@ -70,21 +108,17 @@ export function useCurrentUser(tenantSlug?: string) {
       const stored = localStorage.getItem('currentUser');
       if (stored) {
         const parsed = JSON.parse(stored);
-        // If stored user is an employee or legacy demo, upgrade to Owner
-        if (
+        if (parsed?.email?.includes('kiranpatidar') || parsed?.email?.includes('sunil.kumar')) {
+          setUser(DEMO_EMPLOYEE_USER);
+        } else if (
           !parsed ||
-          parsed.email?.includes('sunil.kumar') ||
-          parsed.email?.includes('rajesh.sharma') ||
-          parsed.email?.toLowerCase().includes('rajnish')
+          parsed.email?.toLowerCase().includes('rajnish') ||
+          parsed.id === 'user-bat-owner'
         ) {
           setUser(OWNER_USER);
           localStorage.setItem('currentUser', JSON.stringify(OWNER_USER));
           document.cookie = `gg_user=${encodeURIComponent(JSON.stringify(OWNER_USER))}; path=/; max-age=86400`;
         } else {
-          // Ensure owner permissions are maintained
-          if (parsed.isSuperAdmin || parsed.email?.includes('admin@goodwingrow.ai')) {
-            parsed.role = 'COMPANY_ADMIN';
-          }
           setUser(parsed);
         }
       } else {
@@ -117,7 +151,13 @@ export function useCurrentUser(tenantSlug?: string) {
   }, [syncUser]);
 
   const switchUserByEmail = (email: string) => {
-    const target = INITIAL_USERS.find((u) => u.email.toLowerCase() === email.toLowerCase()) || OWNER_USER;
+    let target: User;
+    if (email.toLowerCase().includes('kiran') || email.toLowerCase().includes('sunil')) {
+      target = DEMO_EMPLOYEE_USER;
+    } else {
+      target =
+        INITIAL_USERS.find((u) => u.email.toLowerCase() === email.toLowerCase()) || OWNER_USER;
+    }
     if (target) {
       localStorage.setItem('currentUser', JSON.stringify(target));
       document.cookie = `gg_user=${encodeURIComponent(JSON.stringify(target))}; path=/; max-age=86400`;

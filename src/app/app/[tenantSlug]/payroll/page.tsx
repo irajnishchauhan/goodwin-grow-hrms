@@ -12,7 +12,10 @@ import {
   X,
   CheckCircle2,
   ShieldCheck,
-  Building2
+  Building2,
+  Clock,
+  AlertCircle,
+  Send
 } from 'lucide-react';
 import { SalarySlip, Tenant } from '@/lib/types';
 import { useCurrentUser } from '@/lib/auth/useCurrentUser';
@@ -27,6 +30,11 @@ export default function TenantPayrollPage() {
   const [tenant, setTenant] = useState<Tenant | null>(null);
   const [loading, setLoading] = useState(true);
   const [runningBatch, setRunningBatch] = useState(false);
+  const [confirmingAll, setConfirmingAll] = useState(false);
+  const [confirmingSlipId, setConfirmingSlipId] = useState<string | null>(null);
+  const [paymentRefModalOpen, setPaymentRefModalOpen] = useState(false);
+  const [targetSlipForPayment, setTargetSlipForPayment] = useState<SalarySlip | null>(null);
+  const [paymentRefInput, setPaymentRefInput] = useState('');
   const [batchMsg, setBatchMsg] = useState<string | null>(null);
 
   // Payslip Modal
@@ -92,6 +100,60 @@ export default function TenantPayrollPage() {
     }
   };
 
+  const handleConfirmSinglePayment = async (slipId: string, reference?: string) => {
+    setConfirmingSlipId(slipId);
+    try {
+      const res = await fetch(`/api/tenants/${tenantSlug}/payroll`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'CONFIRM_PAYMENT',
+          slipId,
+          paymentReference: reference || `NEFT-${Date.now().toString().slice(-6)}`
+        })
+      });
+      const json = await res.json();
+      if (json.success) {
+        setBatchMsg(json.message);
+        setPaymentRefModalOpen(false);
+        setTargetSlipForPayment(null);
+        setPaymentRefInput('');
+        if (activeSlip && activeSlip.id === slipId) {
+          setActiveSlip({ ...activeSlip, paymentStatus: 'PAID' });
+        }
+        fetchPayroll();
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setConfirmingSlipId(null);
+    }
+  };
+
+  const handleConfirmAllPayments = async () => {
+    setConfirmingAll(true);
+    try {
+      const res = await fetch(`/api/tenants/${tenantSlug}/payroll`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'CONFIRM_ALL',
+          month: '2026-10',
+          paymentReference: `BATCH-NEFT-${Date.now().toString().slice(-6)}`
+        })
+      });
+      const json = await res.json();
+      if (json.success) {
+        setBatchMsg(json.message);
+        fetchPayroll();
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setConfirmingAll(false);
+    }
+  };
+
   // Filter slips if employee
   const myEmp = employees.find(
     (e) =>
@@ -113,6 +175,10 @@ export default function TenantPayrollPage() {
   const totalDeductions = visibleSlips.reduce((sum, s) => sum + s.totalDeductions, 0);
   const totalNet = visibleSlips.reduce((sum, s) => sum + s.netPay, 0);
 
+  const paidSlips = visibleSlips.filter((s) => s.paymentStatus === 'PAID');
+  const pendingSlips = visibleSlips.filter((s) => s.paymentStatus !== 'PAID');
+  const paidNetTotal = paidSlips.reduce((sum, s) => sum + s.netPay, 0);
+
   return (
     <div className="space-y-6 max-w-6xl">
       {/* Header */}
@@ -124,20 +190,35 @@ export default function TenantPayrollPage() {
           </h1>
           <p className="text-xs text-slate-500 mt-1">
             {isEmployeeOnly
-              ? `Personal monthly payslips and tax deductions for ${user?.name || 'Employee'}`
-              : `Salary structure engine, automated attendance-based calculations, and payslip disbursement for ${tenant?.name}`}
+              ? `Personal monthly payslips and verified payment confirmations for ${user?.name || 'Employee'}`
+              : `Salary structure engine, automated attendance proration, and verified disbursement for ${tenant?.name}`}
           </p>
         </div>
 
         {!isEmployeeOnly && (
-          <button
-            onClick={handleRunPayroll}
-            disabled={runningBatch}
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs shadow-xs transition-all disabled:opacity-50 cursor-pointer"
-          >
-            <Play className="w-3.5 h-3.5 fill-white" />
-            <span>{runningBatch ? 'Processing Batch...' : 'Recalculate October 2026 Payroll'}</span>
-          </button>
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={handleRunPayroll}
+              disabled={runningBatch || confirmingAll}
+              className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs shadow-xs transition-all disabled:opacity-50 cursor-pointer"
+            >
+              <Play className="w-3.5 h-3.5 fill-white" />
+              <span>{runningBatch ? 'Calculating...' : 'Recalculate Batch'}</span>
+            </button>
+
+            <button
+              onClick={handleConfirmAllPayments}
+              disabled={confirmingAll || runningBatch || visibleSlips.length === 0 || pendingSlips.length === 0}
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs shadow-xs transition-all disabled:opacity-50 cursor-pointer"
+            >
+              <CheckCircle2 className="w-4 h-4" />
+              <span>
+                {confirmingAll
+                  ? 'Confirming Payments...'
+                  : `Confirm & Disburse All (${pendingSlips.length} Pending)`}
+              </span>
+            </button>
+          </div>
         )}
       </div>
 
@@ -160,7 +241,7 @@ export default function TenantPayrollPage() {
             {tenant?.currency} {totalGross.toLocaleString()}
           </div>
           <p className="text-[11px] text-slate-500 mt-1">
-            {isEmployeeOnly ? 'Earned gross for logged attendance' : 'Prorated by attendance days logged'}
+            {isEmployeeOnly ? 'Earned gross for logged attendance' : 'Prorated strictly by attendance days logged'}
           </p>
         </div>
 
@@ -176,14 +257,26 @@ export default function TenantPayrollPage() {
 
         <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-xs">
           <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-            {isEmployeeOnly ? 'My Net Take-Home Pay' : 'Net Salary Disbursed'}
+            {isEmployeeOnly ? 'My Net Take-Home Pay' : 'Disbursement Status'}
           </div>
-          <div className={`text-2xl sm:text-3xl font-extrabold mt-1 ${totalNet > 0 ? 'text-emerald-700' : 'text-slate-700'}`}>
+          <div className={`text-2xl sm:text-3xl font-extrabold mt-1 ${paidNetTotal > 0 ? 'text-emerald-700' : 'text-slate-900'}`}>
             {tenant?.currency} {totalNet.toLocaleString()}
           </div>
-          <p className={`text-[11px] font-medium mt-1 ${totalNet > 0 ? 'text-emerald-700' : 'text-slate-500'}`}>
-            {totalNet > 0 ? '✓ Credited to employee bank accounts' : '₹0 disbursed (Prorated: No entry = No pay)'}
-          </p>
+          <div className="mt-1 flex items-center gap-1.5 text-[11px] font-medium">
+            {pendingSlips.length === 0 && paidSlips.length > 0 ? (
+              <span className="text-emerald-700 flex items-center gap-1">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                ✓ All {paidSlips.length} salaries confirmed &amp; disbursed
+              </span>
+            ) : pendingSlips.length > 0 ? (
+              <span className="text-amber-700 flex items-center gap-1">
+                <Clock className="w-3.5 h-3.5 text-amber-600" />
+                {pendingSlips.length} pending confirmation • {paidSlips.length} paid
+              </span>
+            ) : (
+              <span className="text-slate-500">No payroll records</span>
+            )}
+          </div>
         </div>
       </div>
 
@@ -203,10 +296,10 @@ export default function TenantPayrollPage() {
                 <th className="px-6 py-3.5">Employee</th>
                 <th className="px-6 py-3.5">Code</th>
                 <th className="px-6 py-3.5">Gross Pay</th>
-                <th className="px-6 py-3.5">PF & Tax Deductions</th>
+                <th className="px-6 py-3.5">PF &amp; Tax Deductions</th>
                 <th className="px-6 py-3.5">Net Take-Home</th>
                 <th className="px-6 py-3.5">Disbursement Status</th>
-                <th className="px-6 py-3.5 text-right">Payslip</th>
+                <th className="px-6 py-3.5 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
@@ -215,7 +308,7 @@ export default function TenantPayrollPage() {
                   <td colSpan={7} className="px-6 py-8 text-center text-slate-500 text-xs">
                     {isEmployeeOnly
                       ? 'No personal payslips found on record for your employee account.'
-                      : 'No payroll slips generated for this period. Click "Recalculate October 2026 Payroll" above.'}
+                      : 'No payroll slips generated for this period. Click "Recalculate Batch" above.'}
                   </td>
                 </tr>
               ) : (
@@ -233,16 +326,38 @@ export default function TenantPayrollPage() {
                       {tenant?.currency} {slip.netPay.toLocaleString()}
                     </td>
                     <td className="px-6 py-4">
-                      <span
-                        className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
-                          slip.paymentStatus === 'PAID'
-                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                            : 'bg-amber-50 text-amber-700 border border-amber-200'
-                        }`}
-                      >
-                        <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                        {slip.paymentStatus}
-                      </span>
+                      {slip.paymentStatus === 'PAID' ? (
+                        <div className="flex flex-col gap-0.5">
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 w-fit">
+                            <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                            Paid &amp; Credited
+                          </span>
+                          {slip.paymentReference && (
+                            <span className="text-[10px] font-mono text-slate-500 pl-1 truncate max-w-[130px]" title={slip.paymentReference}>
+                              Ref: {slip.paymentReference}
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="flex flex-col gap-1">
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200 w-fit">
+                            <Clock className="w-3 h-3 text-amber-600" />
+                            Pending Confirmation
+                          </span>
+                          {!isEmployeeOnly && (
+                            <button
+                              onClick={() => {
+                                setTargetSlipForPayment(slip);
+                                setPaymentRefInput(`NEFT-${Date.now().toString().slice(-6)}`);
+                                setPaymentRefModalOpen(true);
+                              }}
+                              className="text-[10px] font-bold text-emerald-700 hover:text-emerald-800 hover:underline flex items-center gap-1 cursor-pointer w-fit"
+                            >
+                              <span>Confirm Payment</span> &rarr;
+                            </button>
+                          )}
+                        </div>
+                      )}
                     </td>
                     <td className="px-6 py-4 text-right">
                       <button
@@ -383,18 +498,39 @@ export default function TenantPayrollPage() {
             </div>
 
             {/* Net Take-Home Card */}
-            <div className="mx-6 mb-6 p-4 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-between">
+            <div className="mx-6 mb-6 p-4 rounded-xl bg-slate-50 border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
-                <span className="text-[10px] uppercase font-bold text-emerald-800 tracking-wider">
+                <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">
                   Net Salary Take-Home
                 </span>
-                <div className="text-2xl font-black text-emerald-900 mt-0.5">
+                <div className="text-2xl font-black text-emerald-700 mt-0.5">
                   {tenant?.currency} {activeSlip.netPay.toLocaleString()}
                 </div>
               </div>
-              <div className="text-right text-[11px] text-emerald-700">
-                <div className="font-semibold">Disbursed via Direct Bank Transfer</div>
-                <div className="font-mono text-emerald-800">Status: {activeSlip.paymentStatus}</div>
+              <div className="text-right text-[11px] space-y-1">
+                {activeSlip.paymentStatus === 'PAID' ? (
+                  <>
+                    <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">
+                      <CheckCircle2 className="w-3 h-3 text-emerald-700" />
+                      Paid &amp; Credited to Bank Account
+                    </div>
+                    {activeSlip.paymentReference && (
+                      <div className="text-slate-500 font-mono text-[10px]">
+                        Ref: {activeSlip.paymentReference}
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800">
+                      <Clock className="w-3 h-3 text-amber-700" />
+                      Pending Payment Confirmation
+                    </div>
+                    <div className="text-slate-500 text-[10px]">
+                      Calculated from attendance roster. Pending finance clearance.
+                    </div>
+                  </>
+                )}
               </div>
             </div>
 
@@ -404,13 +540,93 @@ export default function TenantPayrollPage() {
                 Generated by Goodwin Grow HRMS Payroll Engine
               </span>
               <div className="flex items-center gap-2">
+                {!isEmployeeOnly && activeSlip.paymentStatus !== 'PAID' && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTargetSlipForPayment(activeSlip);
+                      setPaymentRefInput(`NEFT-${Date.now().toString().slice(-6)}`);
+                      setPaymentRefModalOpen(true);
+                    }}
+                    className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs shadow-sm cursor-pointer"
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>Confirm Payment Now</span>
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => window.print()}
-                  className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs shadow-sm cursor-pointer"
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-800 font-semibold text-xs shadow-sm cursor-pointer"
                 >
                   <Download className="w-3.5 h-3.5" />
                   <span>Download / Print Slip</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Payment Reference Confirmation Modal for Admin */}
+      {paymentRefModalOpen && targetSlipForPayment && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-md rounded-2xl bg-white border border-slate-200 shadow-2xl overflow-hidden text-slate-900">
+            <div className="bg-slate-900 px-6 py-4 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+                <h3 className="text-base font-bold text-white">Confirm Salary Payment</h3>
+              </div>
+              <button
+                onClick={() => setPaymentRefModalOpen(false)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4 text-xs">
+              <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 space-y-1">
+                <div className="font-bold text-sm">
+                  {targetSlipForPayment.employeeName} ({targetSlipForPayment.employeeCode})
+                </div>
+                <div className="text-xs text-emerald-800 font-semibold">
+                  Net Payable: {tenant?.currency} {targetSlipForPayment.netPay.toLocaleString()}
+                </div>
+                <p className="text-[10px] text-emerald-700">
+                  Confirming this transaction will mark the payslip as &ldquo;Paid&rdquo; and notify the employee.
+                </p>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">
+                  Bank Reference / Transaction UTR Number *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={paymentRefInput}
+                  onChange={(e) => setPaymentRefInput(e.target.value)}
+                  placeholder="e.g. NEFT-98472312 or IMPS-493820"
+                  className="w-full px-3 py-2 rounded-xl border border-slate-300 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => setPaymentRefModalOpen(false)}
+                  className="px-4 py-2 font-medium text-slate-600 hover:text-slate-900 rounded-xl hover:bg-slate-100 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={Boolean(confirmingSlipId)}
+                  onClick={() => handleConfirmSinglePayment(targetSlipForPayment.id, paymentRefInput)}
+                  className="px-5 py-2 font-semibold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-md cursor-pointer disabled:opacity-50"
+                >
+                  {confirmingSlipId ? 'Processing...' : 'Confirm & Mark Paid'}
                 </button>
               </div>
             </div>

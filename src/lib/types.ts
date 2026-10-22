@@ -184,6 +184,7 @@ export type AttendanceStatus =
   | 'HALF_DAY'
   | 'ON_LEAVE'
   | 'LATE_ENTRY'
+  | 'NOT_PUNCHED_IN'
   | 'HOLIDAY';
 
 export interface Shift {
@@ -206,6 +207,7 @@ export interface AttendanceRecord {
   clockInTime?: string;
   clockOutTime?: string;
   workingHours: number;
+  totalHours?: number;
   status: AttendanceStatus;
   notes?: string;
   shiftName?: string;
@@ -260,11 +262,38 @@ export interface LeaveApplication {
   startDate: string;
   endDate: string;
   totalDays: number;
+  isHalfDay?: boolean;
+  halfDayPeriod?: 'FIRST_HALF' | 'SECOND_HALF';
   reason: string;
   status: LeaveStatus;
   appliedAt: string;
   reviewedBy?: string;
   reviewComment?: string;
+}
+
+// Notifications
+export type NotificationType =
+  | 'LEAVE_SUBMITTED'
+  | 'LEAVE_APPROVED'
+  | 'LEAVE_REJECTED'
+  | 'REGULARIZATION_SUBMITTED'
+  | 'REGULARIZATION_APPROVED'
+  | 'REGULARIZATION_REJECTED'
+  | 'SALARY_PAID'
+  | 'ATTENDANCE_MISSED';
+
+export interface AppNotification {
+  id: string;
+  tenantId: string;
+  userId?: string;
+  employeeId?: string;
+  recipientEmail?: string;
+  title: string;
+  message: string;
+  type: NotificationType;
+  isRead: boolean;
+  linkUrl?: string;
+  createdAt: string;
 }
 
 // Payroll
@@ -298,6 +327,9 @@ export interface SalarySlip {
   totalDeductions: number;
   netPay: number;
   paymentStatus: 'PAID' | 'PENDING' | 'PROCESSING';
+  paymentConfirmedAt?: string;
+  paymentConfirmedBy?: string;
+  paymentReference?: string;
   generatedDate: string;
 }
 

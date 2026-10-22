@@ -40,6 +40,7 @@ import { formatTimeTo12Hour, getLateCutoffDisplay } from '@/lib/attendanceCalcul
 import { useCurrentUser } from '@/lib/auth/useCurrentUser';
 import RoleGuard from '@/components/RoleGuard';
 import HolidayCalendarManager from '@/components/HolidayCalendarManager';
+import MonthlyAttendanceCalendar from '@/components/MonthlyAttendanceCalendar';
 
 export default function TenantAttendancePage() {
   const params = useParams();
@@ -71,6 +72,7 @@ export default function TenantAttendancePage() {
     halfDayCount: number;
     onLeaveCount: number;
     absentCount: number;
+    notPunchedInCount?: number;
     activeShift?: {
       id: string;
       name: string;
@@ -88,15 +90,16 @@ export default function TenantAttendancePage() {
     lateCount: 0,
     halfDayCount: 0,
     onLeaveCount: 0,
-    absentCount: 0
+    absentCount: 0,
+    notPunchedInCount: 0
   });
 
   const [loading, setLoading] = useState(true);
   const [punchLoading, setPunchLoading] = useState(false);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
 
-  // Tab View: Daily Roster | Regularizations | Shift Schedules | Holiday Calendar
-  const [activeTab, setActiveTab] = useState<'attendance' | 'regularizations' | 'shifts' | 'holidays'>('attendance');
+  // Tab View: Daily Roster | Monthly Calendar | Regularizations | Shift Schedules | Holiday Calendar
+  const [activeTab, setActiveTab] = useState<'attendance' | 'calendar' | 'regularizations' | 'shifts' | 'holidays'>('attendance');
 
   // Super Admin & Company Admin Detection (admin@goodwingrow.ai or rajnish or super_admin / company_admin)
   const canManageAttendance = Boolean(
@@ -165,7 +168,7 @@ export default function TenantAttendancePage() {
 
   // Attendance Status Filter
   const [statusFilter, setStatusFilter] = useState<
-    'ALL' | 'PRESENT' | 'LATE_ENTRY' | 'HALF_DAY' | 'ON_LEAVE' | 'ABSENT' | 'ROSTER'
+    'ALL' | 'PRESENT' | 'LATE_ENTRY' | 'HALF_DAY' | 'ON_LEAVE' | 'ABSENT' | 'NOT_PUNCHED_IN' | 'ROSTER'
   >('ALL');
 
   // Regularization Filters
@@ -724,7 +727,7 @@ export default function TenantAttendancePage() {
 
   // Filter records by status, deleted exclusions, and role
   const sourceList =
-    statusFilter === 'ABSENT' || statusFilter === 'ROSTER'
+    statusFilter === 'ABSENT' || statusFilter === 'NOT_PUNCHED_IN' || statusFilter === 'ROSTER'
       ? roster.length > 0
         ? roster
         : records
@@ -746,6 +749,7 @@ export default function TenantAttendancePage() {
     if (statusFilter === 'HALF_DAY') return r.status === 'HALF_DAY';
     if (statusFilter === 'ON_LEAVE') return r.status === 'ON_LEAVE';
     if (statusFilter === 'ABSENT') return r.status === 'ABSENT';
+    if (statusFilter === 'NOT_PUNCHED_IN') return r.status === 'NOT_PUNCHED_IN';
     return true;
   });
 
@@ -890,6 +894,21 @@ export default function TenantAttendancePage() {
           </button>
 
           <button
+            onClick={() => setActiveTab('calendar')}
+            className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold transition-all border-b-2 cursor-pointer ${
+              activeTab === 'calendar'
+                ? 'border-emerald-600 text-emerald-700 bg-emerald-50/50'
+                : 'border-transparent text-slate-500 hover:text-slate-900 hover:bg-slate-50'
+            }`}
+          >
+            <Calendar className="w-4 h-4 text-emerald-600" />
+            <span>Monthly Attendance Calendar</span>
+            <span className="px-2 py-0.5 rounded-full text-[10px] bg-emerald-100 text-emerald-800 font-bold">
+              Full Month
+            </span>
+          </button>
+
+          <button
             onClick={() => setActiveTab('regularizations')}
             className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold transition-all border-b-2 cursor-pointer ${
               activeTab === 'regularizations'
@@ -993,39 +1012,49 @@ export default function TenantAttendancePage() {
               </div>
             )}
 
-            {/* KPI Metric Cards */}
-            <div className="grid grid-cols-2 lg:grid-cols-5 gap-3.5">
+            {/* KPI Metric Cards - Distinct Metrics for Clarity */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3.5">
               <div className="p-4 rounded-2xl bg-white border border-slate-200/90 shadow-xs">
                 <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Total Workforce</div>
                 <div className="text-2xl font-black text-slate-900 mt-1 font-mono">{stats.totalEmployees}</div>
-                <p className="text-[10px] text-slate-500 font-medium mt-0.5">Active employees</p>
+                <p className="text-[10px] text-slate-500 font-medium mt-0.5">Active team members</p>
               </div>
 
               <div className="p-4 rounded-2xl bg-emerald-50/60 border border-emerald-200/90 shadow-xs">
                 <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-700">Present (On-Time)</div>
                 <div className="text-2xl font-black text-emerald-800 mt-1 font-mono">{stats.onTimeCount}</div>
-                <p className="text-[10px] text-emerald-600 font-medium mt-0.5">Punched within grace</p>
+                <p className="text-[10px] text-emerald-600 font-medium mt-0.5">Within grace period</p>
               </div>
 
               <div className="p-4 rounded-2xl bg-amber-50/60 border border-amber-200/90 shadow-xs">
                 <div className="text-[10px] font-bold uppercase tracking-wider text-amber-700">Late Arrivals</div>
                 <div className="text-2xl font-black text-amber-800 mt-1 font-mono">{stats.lateCount}</div>
-                <p className="text-[10px] text-amber-600 font-medium mt-0.5">Punched after {activeShift.lateCutoff}</p>
+                <p className="text-[10px] text-amber-600 font-medium mt-0.5">Past {activeShift.lateCutoff}</p>
               </div>
 
-              <div className="p-4 rounded-2xl bg-indigo-50/60 border border-indigo-200/90 shadow-xs">
-                <div className="text-[10px] font-bold uppercase tracking-wider text-indigo-700">Half Day</div>
-                <div className="text-2xl font-black text-indigo-800 mt-1 font-mono">{stats.halfDayCount}</div>
-                <p className="text-[10px] text-indigo-600 font-medium mt-0.5">4.0 - 7.5 hrs worked</p>
+              <div className="p-4 rounded-2xl bg-purple-50/60 border border-purple-200/90 shadow-xs">
+                <div className="text-[10px] font-bold uppercase tracking-wider text-purple-700">Half Day</div>
+                <div className="text-2xl font-black text-purple-800 mt-1 font-mono">{stats.halfDayCount}</div>
+                <p className="text-[10px] text-purple-600 font-medium mt-0.5">0.5 day attendance</p>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-blue-50/60 border border-blue-200/90 shadow-xs">
+                <div className="text-[10px] font-bold uppercase tracking-wider text-blue-700">On Leave</div>
+                <div className="text-2xl font-black text-blue-800 mt-1 font-mono">{stats.onLeaveCount}</div>
+                <p className="text-[10px] text-blue-600 font-medium mt-0.5">Approved time-off</p>
               </div>
 
               <div className="p-4 rounded-2xl bg-rose-50/60 border border-rose-200/90 shadow-xs">
-                <div className="text-[10px] font-bold uppercase tracking-wider text-rose-700">Absent / On Leave</div>
+                <div className="text-[10px] font-bold uppercase tracking-wider text-rose-700">
+                  {selectedDate === getLocalTodayDate() ? 'Not Punched In' : 'Absent (Unpunched)'}
+                </div>
                 <div className="text-2xl font-black text-rose-800 mt-1 font-mono">
-                  {stats.absentCount + stats.onLeaveCount}
+                  {selectedDate === getLocalTodayDate()
+                    ? (stats.notPunchedInCount ?? stats.absentCount)
+                    : stats.absentCount}
                 </div>
                 <p className="text-[10px] text-rose-600 font-medium mt-0.5">
-                  {stats.onLeaveCount} On Leave · {stats.absentCount} Unpunched
+                  {selectedDate === getLocalTodayDate() ? "Today's pending punch" : 'Historical absence'}
                 </p>
               </div>
             </div>
@@ -1043,7 +1072,8 @@ export default function TenantAttendancePage() {
                     { key: 'LATE_ENTRY', label: `Late (${stats.lateCount})` },
                     { key: 'HALF_DAY', label: `Half Day (${stats.halfDayCount})` },
                     { key: 'ON_LEAVE', label: `On Leave (${stats.onLeaveCount})` },
-                    { key: 'ABSENT', label: `Unpunched (${stats.absentCount})` },
+                    { key: 'NOT_PUNCHED_IN', label: `Not Punched In (${stats.notPunchedInCount ?? (selectedDate === getLocalTodayDate() ? stats.absentCount : 0)})` },
+                    { key: 'ABSENT', label: `Absent (${selectedDate === getLocalTodayDate() ? 0 : stats.absentCount})` },
                     { key: 'ROSTER', label: `Full Workforce (${stats.totalEmployees})` }
                   ] as const
                 ).map((tab) => (
@@ -1422,6 +1452,25 @@ export default function TenantAttendancePage() {
                 </table>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* ==================================================================== */}
+        {/* TAB 1.5: MONTHLY ATTENDANCE CALENDAR */}
+        {/* ==================================================================== */}
+        {activeTab === 'calendar' && (
+          <div className="space-y-6">
+            <MonthlyAttendanceCalendar
+              tenantSlug={tenantSlug}
+              employeeId={isEmployeeOnly ? currentEmp?.id : undefined}
+              isEmployeeOnly={isEmployeeOnly}
+              onRequestRegularization={(d, r) => {
+                setRegDate(d);
+                if (r) setRegRemarks(r);
+                setRegFeedback(null);
+                setIsRegModalOpen(true);
+              }}
+            />
           </div>
         )}
 

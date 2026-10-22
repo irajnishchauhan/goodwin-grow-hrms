@@ -106,11 +106,20 @@ export async function POST(
     }
 
     const body = await req.json();
-    const { employeeId, leaveTypeId, startDate, endDate, totalDays, reason } = body;
+    const {
+      employeeId,
+      leaveTypeId,
+      startDate,
+      endDate,
+      totalDays,
+      isHalfDay,
+      halfDayPeriod,
+      reason
+    } = body;
     db.invalidateCache(tenant.id);
     db.invalidateCache(tenantSlug);
 
-    if (!employeeId || !leaveTypeId || !startDate || !endDate || !reason) {
+    if (!employeeId || !leaveTypeId || !startDate || (!endDate && !isHalfDay) || !reason) {
       return NextResponse.json({ success: false, error: 'Missing required leave fields' }, { status: 400 });
     }
 
@@ -167,8 +176,10 @@ export async function POST(
       employeeId,
       leaveTypeId,
       startDate,
-      endDate,
-      totalDays: Number(totalDays) || 1,
+      endDate: isHalfDay ? startDate : endDate,
+      totalDays: isHalfDay ? 0.5 : (Number(totalDays) || 1),
+      isHalfDay: Boolean(isHalfDay),
+      halfDayPeriod: halfDayPeriod,
       reason
     });
 

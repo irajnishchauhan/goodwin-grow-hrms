@@ -143,12 +143,12 @@ export function evaluateAttendanceStatus(
 } {
   if (!clockIn) {
     return {
-      status: 'ABSENT',
+      status: isHistoricalDate ? 'ABSENT' : 'NOT_PUNCHED_IN',
       workingHours: 0,
       isLate: false,
       lateMinutes: 0,
       isHalfDay: false,
-      effectiveHoursText: '0.0 hrs'
+      effectiveHoursText: isHistoricalDate ? '0.0 hrs (Absent)' : 'Not Punched In'
     };
   }
 
@@ -265,6 +265,7 @@ export function buildDailyWorkforceRoster({
     halfDayCount: number;
     onLeaveCount: number;
     absentCount: number;
+    notPunchedInCount: number;
     activeShift: {
       id: string;
       name: string;
@@ -313,6 +314,7 @@ export function buildDailyWorkforceRoster({
   let halfDayCount = 0;
   let onLeaveCount = 0;
   let absentCount = 0;
+  let notPunchedInCount = 0;
 
   const targetDateObj = new Date(date + 'T00:00:00Z');
   const isSunday = targetDateObj.getUTCDay() === 0;
@@ -336,6 +338,16 @@ export function buildDailyWorkforceRoster({
           halfDayMinHours: 4.0
         }
       : defaultPolicy;
+
+    // Check if employee has an approved leave application covering this date
+    const approvedLeave = leaveApplications.find(
+      (l) =>
+        l.employeeId === emp.id &&
+        l.status === 'APPROVED' &&
+        date >= l.startDate &&
+        date <= l.endDate
+    );
+    const isHalfDayLeave = Boolean(approvedLeave && (approvedLeave.isHalfDay || Number(approvedLeave.totalDays) === 0.5));
 
     if (punch) {
       // Check if this record has been regularized or manually overridden
@@ -361,14 +373,23 @@ export function buildDailyWorkforceRoster({
         isHistoricalDate
       );
 
-      // If approved regularized, the status MUST be PRESENT (regularization exempts late/half-day)
+      // Determine final status
       let finalStatus: AttendanceStatus;
-      if (isRegularized) {
+      let finalNote: string;
+
+      if (isHalfDayLeave) {
+        // If employee took approved half-day leave and also punched in
+        finalStatus = 'HALF_DAY';
+        finalNote = punch.notes || `Approved Half-Day Leave (${approvedLeave?.halfDayPeriod === 'FIRST_HALF' ? '1st Half' : '2nd Half'}) + Worked ${evalResult.workingHours}h`;
+      } else if (isRegularized) {
         finalStatus = 'PRESENT';
+        finalNote = punch.notes || 'Attendance Regularized & Approved by Manager';
       } else if (isManualAdminOverride && punch.status && punch.status !== 'ABSENT') {
         finalStatus = punch.status as AttendanceStatus;
+        finalNote = punch.notes || 'Status updated by administrator';
       } else {
         finalStatus = evalResult.status;
+        finalNote = punch.notes || (evalResult.isLate ? `Clocked in ${evalResult.lateMinutes}m after grace` : 'Biometric Web Punch');
       }
 
       // Preserve working hours if already recorded (e.g. from manual edit or regularization)
@@ -387,7 +408,7 @@ export function buildDailyWorkforceRoster({
         clockOutTime: punch.clockOutTime,
         workingHours: finalWorkingHours,
         status: finalStatus,
-        notes: punch.notes || (evalResult.isLate ? `Clocked in ${evalResult.lateMinutes}m after grace` : 'Biometric Web Punch'),
+        notes: finalNote,
         shiftName: shift?.name || emp.shiftName || 'General Day Shift'
       };
 
@@ -402,33 +423,41 @@ export function buildDailyWorkforceRoster({
       }
     } else {
       // No punch recorded by employee on this date
-      // 1. Check if employee has an approved leave application
-      const approvedLeave = leaveApplications.find(
-        (l) =>
-          l.employeeId === emp.id &&
-          l.status === 'APPROVED' &&
-          date >= l.startDate &&
-          date <= l.endDate
-      );
-
-      // 2. Check if date is an official company / calendar holiday
+      // Check if date is an official company / calendar holiday
       const matchedHoliday = holidays?.find((h) => h.date === date);
 
       if (approvedLeave) {
-        onLeaveCount++;
-        roster.push({
-          id: `leave-att-${emp.id}-${date}`,
-          tenantId,
-          employeeId: emp.id,
-          employeeName: `${emp.firstName} ${emp.lastName}`.trim(),
-          date,
-          clockInTime: undefined,
-          clockOutTime: undefined,
-          workingHours: 0,
-          status: 'ON_LEAVE',
-          notes: `Approved Leave: ${approvedLeave.leaveTypeName || 'Leave'}`,
-          shiftName: shift?.name || emp.shiftName || 'General Day Shift'
-        });
+        if (isHalfDayLeave) {
+          halfDayCount++;
+          roster.push({
+            id: `leave-half-att-${emp.id}-${date}`,
+            tenantId,
+            employeeId: emp.id,
+            employeeName: `${emp.firstName} ${emp.lastName}`.trim(),
+            date,
+            clockInTime: undefined,
+            clockOutTime: undefined,
+            workingHours: 0,
+            status: 'HALF_DAY',
+            notes: `Approved Half-Day Leave (${approvedLeave.halfDayPeriod === 'FIRST_HALF' ? 'First Half (Morning)' : 'Second Half (Afternoon)'} - 0.5 Day)`,
+            shiftName: shift?.name || emp.shiftName || 'General Day Shift'
+          });
+        } else {
+          onLeaveCount++;
+          roster.push({
+            id: `leave-att-${emp.id}-${date}`,
+            tenantId,
+            employeeId: emp.id,
+            employeeName: `${emp.firstName} ${emp.lastName}`.trim(),
+            date,
+            clockInTime: undefined,
+            clockOutTime: undefined,
+            workingHours: 0,
+            status: 'ON_LEAVE',
+            notes: `Approved Leave: ${approvedLeave.leaveTypeName || 'Leave'}`,
+            shiftName: shift?.name || emp.shiftName || 'General Day Shift'
+          });
+        }
       } else if (matchedHoliday) {
         roster.push({
           id: `holiday-att-${emp.id}-${date}`,
@@ -459,7 +488,7 @@ export function buildDailyWorkforceRoster({
           notes: 'Weekly Off (Sunday)',
           shiftName: shift?.name || emp.shiftName || 'General Day Shift'
         });
-      } else {
+      } else if (isHistoricalDate) {
         absentCount++;
         roster.push({
           id: `absent-att-${emp.id}-${date}`,
@@ -472,6 +501,21 @@ export function buildDailyWorkforceRoster({
           workingHours: 0,
           status: 'ABSENT',
           notes: 'Unpunched (Absent without leave)',
+          shiftName: shift?.name || emp.shiftName || 'General Day Shift'
+        });
+      } else {
+        notPunchedInCount++;
+        roster.push({
+          id: `not-punched-att-${emp.id}-${date}`,
+          tenantId,
+          employeeId: emp.id,
+          employeeName: `${emp.firstName} ${emp.lastName}`.trim(),
+          date,
+          clockInTime: undefined,
+          clockOutTime: undefined,
+          workingHours: 0,
+          status: 'NOT_PUNCHED_IN',
+          notes: 'Not Punched In (Shift in progress / Pending punch)',
           shiftName: shift?.name || emp.shiftName || 'General Day Shift'
         });
       }
@@ -488,6 +532,7 @@ export function buildDailyWorkforceRoster({
       halfDayCount,
       onLeaveCount,
       absentCount,
+      notPunchedInCount,
       activeShift: {
         id: defaultShift?.id || 'default-shift',
         name: defaultShift?.name || 'General Day Shift',

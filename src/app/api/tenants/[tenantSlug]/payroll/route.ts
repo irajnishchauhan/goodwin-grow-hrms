@@ -132,3 +132,68 @@ export async function POST(
     return NextResponse.json({ success: false, error: message }, { status: 400 });
   }
 }
+
+export async function PATCH(
+  req: Request,
+  context: { params: Promise<{ tenantSlug: string }> }
+) {
+  try {
+    const { tenantSlug } = await context.params;
+    const tenant = (await SupabaseStore.getTenantBySlug(tenantSlug)) || (await db.getResolvedTenant(tenantSlug, true));
+    if (!tenant) {
+      return NextResponse.json({ success: false, error: 'Tenant not found' }, { status: 404 });
+    }
+
+    const body = await req.json();
+    const { action, slipId, month, confirmedBy, reference, paymentReference } = body;
+    const finalRef = paymentReference || reference;
+    db.invalidateCache(tenant.id);
+    db.invalidateCache(tenantSlug);
+
+    const supaSlips = await SupabaseStore.getSalarySlips(tenant.id);
+    if (supaSlips && supaSlips.length > 0) {
+      db.syncSalarySlips(supaSlips);
+    }
+
+    if (action === 'CONFIRM_ALL') {
+      const targetMonth = month || '2026-10';
+      const updatedSlips = db.confirmAllSalaryPayments(
+        tenant.id,
+        targetMonth,
+        confirmedBy || 'Company Finance',
+        finalRef
+      );
+      await Promise.all(updatedSlips.map((s) => SupabaseStore.saveSalarySlip(s)));
+      return NextResponse.json({
+        success: true,
+        message: `Payment confirmed and marked as PAID for all ${updatedSlips.length} employees for ${targetMonth}.`,
+        data: updatedSlips
+      });
+    }
+
+    if (!slipId) {
+      return NextResponse.json({ success: false, error: 'Salary slip ID required' }, { status: 400 });
+    }
+
+    const updatedSlip = db.confirmSalaryPayment(
+      tenant.id,
+      slipId,
+      confirmedBy || 'Company Finance',
+      finalRef
+    );
+    if (!updatedSlip) {
+      return NextResponse.json({ success: false, error: 'Salary slip not found' }, { status: 404 });
+    }
+
+    await SupabaseStore.saveSalarySlip(updatedSlip);
+
+    return NextResponse.json({
+      success: true,
+      message: `Salary slip payment confirmed and marked as PAID.`,
+      data: updatedSlip
+    });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Error confirming payment';
+    return NextResponse.json({ success: false, error: message }, { status: 400 });
+  }
+}

@@ -111,8 +111,13 @@ export async function GET(
     });
     const loggedRecords = Array.from(recordMap.values());
 
+    const targetMonth = searchParams.get('month') || targetDate.substring(0, 7);
+    const monthRecords = realPunchRecords.filter((r) => r.date.startsWith(targetMonth));
+
     const payload = {
       records: loggedRecords,
+      monthRecords,
+      leaves,
       roster,
       employees,
       regularizations,
@@ -120,6 +125,7 @@ export async function GET(
       holidays,
       stats,
       date: targetDate,
+      month: targetMonth,
       pendingRegularizationsCount: regularizations.filter((r) => r.status === 'PENDING').length
     };
 
