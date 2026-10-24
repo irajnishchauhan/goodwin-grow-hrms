@@ -10,8 +10,7 @@ import {
   Eye,
   EyeOff,
   ArrowRight,
-  AlertCircle,
-  KeyRound
+  AlertCircle
 } from 'lucide-react';
 
 function LoginForm() {
@@ -60,13 +59,6 @@ function LoginForm() {
       setLoading(false);
     }
   };
-
-  const fillQuickLogin = (fillEmail: string) => {
-    setEmail(fillEmail);
-    setPassword('password123');
-    setError(null);
-  };
-
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col justify-center items-center p-4 font-sans selection:bg-emerald-500 selection:text-white">
@@ -180,49 +172,6 @@ function LoginForm() {
             </Link>
           </div>
         </div>
-
-        {/* Goodwin Batteries Team Quick Logins */}
-        <div className="p-4 rounded-2xl bg-slate-900/60 border border-slate-800 text-xs space-y-2">
-          <div className="flex items-center gap-1.5 text-slate-400 font-semibold text-[11px]">
-            <KeyRound className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Goodwin Batteries Workspace Credentials</span>
-          </div>
-          <div className="grid grid-cols-2 gap-2 text-[11px]">
-            <button
-              type="button"
-              onClick={() => fillQuickLogin('sameergoodwinbatteries@gmail.com')}
-              className="p-2 rounded-xl bg-slate-950 border border-slate-800 hover:border-emerald-500/50 text-left transition-colors cursor-pointer"
-            >
-              <div className="font-bold text-white truncate">Sameer Meena</div>
-              <div className="text-[10px] text-slate-400 truncate">Employee (sameergoodwinbatteries...)</div>
-            </button>
-            <button
-              type="button"
-              onClick={() => fillQuickLogin('kiranpatidar.goodwinbatteries@gmail.com')}
-              className="p-2 rounded-xl bg-slate-950 border border-slate-800 hover:border-emerald-500/50 text-left transition-colors cursor-pointer"
-            >
-              <div className="font-bold text-white truncate">Kiran Patidar</div>
-              <div className="text-[10px] text-slate-400 truncate">Employee (kiranpatidar...)</div>
-            </button>
-            <button
-              type="button"
-              onClick={() => fillQuickLogin('rajnish.goodwinbatteries@gmail.com')}
-              className="p-2 rounded-xl bg-slate-950 border border-slate-800 hover:border-amber-500/50 text-left transition-colors cursor-pointer"
-            >
-              <div className="font-bold text-amber-300 truncate">Rajnish Chauhan</div>
-              <div className="text-[10px] text-slate-400 truncate">Company Admin & Owner</div>
-            </button>
-            <button
-              type="button"
-              onClick={() => fillQuickLogin('admin@goodwingrow.ai')}
-              className="p-2 rounded-xl bg-slate-950 border border-slate-800 hover:border-purple-500/50 text-left transition-colors cursor-pointer"
-            >
-              <div className="font-bold text-purple-300 truncate">Super Admin</div>
-              <div className="text-[10px] text-slate-400 truncate">Platform Console</div>
-            </button>
-          </div>
-        </div>
-
       </div>
     </div>
   );
