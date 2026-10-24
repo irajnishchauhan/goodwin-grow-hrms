@@ -199,6 +199,28 @@ export async function POST(
         return NextResponse.json({ success: true, message: 'Step updated', data: { tenant: updatedTenant } }, noStoreHeader);
       }
 
+      case 'update-working-days': {
+        const { workingDays, weeklyOffDays } = body;
+        const updatedTenant = {
+          ...tenant,
+          workingDays: Array.isArray(workingDays) ? workingDays : tenant.workingDays,
+          weeklyOffDays: Array.isArray(weeklyOffDays) ? weeklyOffDays : tenant.weeklyOffDays,
+          updatedAt: new Date().toISOString()
+        };
+        await SupabaseStore.saveTenant(updatedTenant);
+        db.upsertTenant(updatedTenant);
+        db.invalidateCache(tenant.id);
+        db.invalidateCache(tenantSlug);
+        return NextResponse.json(
+          {
+            success: true,
+            message: 'Working days and weekly off schedule policy updated successfully',
+            data: { tenant: updatedTenant }
+          },
+          noStoreHeader
+        );
+      }
+
       case 'clear-workspace': {
         db.clearWorkspaceData(tenant.id);
         await SupabaseStore.clearTenantData(tenant.id);

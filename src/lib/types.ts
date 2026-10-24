@@ -56,6 +56,8 @@ export interface Tenant {
   trialStatus: boolean;
   onboardingChecklist: OnboardingStep[];
   orgTreeRootId?: string;
+  workingDays?: string[]; // e.g. ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY']
+  weeklyOffDays?: string[]; // e.g. [] for 7-day operation with no weekly off, or ['SUNDAY']
   createdAt: string;
   updatedAt: string;
 }
@@ -331,6 +333,18 @@ export interface SalarySlip {
   paymentConfirmedBy?: string;
   paymentReference?: string;
   generatedDate: string;
+  // Keka Standard Payroll Metrics
+  totalCalendarDays?: number;
+  payableDays?: number;
+  lopDays?: number;
+  designationTitle?: string;
+  bankName?: string;
+  bankAccountNumber?: string;
+  panOrTaxId?: string;
+  uan?: string;
+  workLocation?: string;
+  joiningDate?: string;
+  paymentMode?: string;
 }
 
 // Recruitment & ATS

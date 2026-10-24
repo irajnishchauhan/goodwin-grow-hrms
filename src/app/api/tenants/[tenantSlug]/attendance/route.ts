@@ -90,7 +90,9 @@ export async function GET(
       excludedEmployeeIds,
       timezone,
       regularizations,
-      holidays
+      holidays,
+      workingDays: tenant.workingDays,
+      weeklyOffDays: tenant.weeklyOffDays
     });
 
     // Real logged attendance records (only actual punches, admin marks, and approved leaves)
@@ -124,6 +126,8 @@ export async function GET(
       shifts,
       holidays,
       stats,
+      workingDays: tenant.workingDays || ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'],
+      weeklyOffDays: tenant.weeklyOffDays || [],
       date: targetDate,
       month: targetMonth,
       pendingRegularizationsCount: regularizations.filter((r) => r.status === 'PENDING').length

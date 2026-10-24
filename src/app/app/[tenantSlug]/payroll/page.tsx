@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { SalarySlip, Tenant } from '@/lib/types';
 import { useCurrentUser } from '@/lib/auth/useCurrentUser';
+import { downloadPayslipPDF } from '@/lib/pdf/generatePayslipPDF';
 
 export default function TenantPayrollPage() {
   const params = useParams();
@@ -360,13 +361,26 @@ export default function TenantPayrollPage() {
                       )}
                     </td>
                     <td className="px-6 py-4 text-right">
-                      <button
-                        onClick={() => setActiveSlip(slip)}
-                        className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-semibold border border-slate-200 transition-colors cursor-pointer"
-                      >
-                        <FileText className="w-3.5 h-3.5 text-emerald-600" />
-                        <span>View Slip</span>
-                      </button>
+                      <div className="flex items-center justify-end gap-1.5">
+                        <button
+                          onClick={() => setActiveSlip(slip)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-semibold border border-slate-200 transition-colors cursor-pointer"
+                        >
+                          <FileText className="w-3.5 h-3.5 text-emerald-600" />
+                          <span>View</span>
+                        </button>
+                        <button
+                          onClick={() => {
+                            const emp = employees.find((e) => e.id === slip.employeeId);
+                            downloadPayslipPDF(slip, tenant, emp);
+                          }}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer"
+                          title="Download Professional Keka Style PDF Salary Slip"
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                          <span>PDF</span>
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -428,7 +442,27 @@ export default function TenantPayrollPage() {
               </div>
               <div>
                 <span className="text-slate-500 block text-[10px] uppercase font-semibold">Pay Period</span>
-                <span className="text-slate-800 font-medium">{activeSlip.month}</span>
+                <span className="text-slate-800 font-medium">{activeSlip.month} (1 to End of Month)</span>
+              </div>
+            </div>
+
+            {/* Keka Standard Attendance Strip */}
+            <div className="bg-slate-100/70 px-6 py-2.5 border-b border-slate-200 grid grid-cols-3 sm:grid-cols-4 gap-3 text-xs">
+              <div>
+                <span className="text-slate-500 block text-[10px] uppercase font-bold">Calendar Days</span>
+                <span className="font-mono font-bold text-slate-800">{activeSlip.totalCalendarDays || 31} Days</span>
+              </div>
+              <div>
+                <span className="text-slate-500 block text-[10px] uppercase font-bold">Payable Days</span>
+                <span className="font-mono font-bold text-emerald-700">{activeSlip.payableDays !== undefined ? activeSlip.payableDays : (activeSlip.totalCalendarDays || 31)} Days</span>
+              </div>
+              <div>
+                <span className="text-slate-500 block text-[10px] uppercase font-bold">Loss of Pay (LOP)</span>
+                <span className="font-mono font-bold text-rose-600">{activeSlip.lopDays !== undefined ? activeSlip.lopDays : 0} Days</span>
+              </div>
+              <div>
+                <span className="text-slate-500 block text-[10px] uppercase font-bold">Saturday Policy</span>
+                <span className="font-bold text-amber-700">Active Working Day</span>
               </div>
             </div>
 
@@ -556,11 +590,14 @@ export default function TenantPayrollPage() {
                 )}
                 <button
                   type="button"
-                  onClick={() => window.print()}
-                  className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-800 font-semibold text-xs shadow-sm cursor-pointer"
+                  onClick={() => {
+                    const emp = employees.find((e) => e.id === activeSlip.employeeId);
+                    downloadPayslipPDF(activeSlip, tenant, emp);
+                  }}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md transition-colors cursor-pointer"
                 >
                   <Download className="w-3.5 h-3.5" />
-                  <span>Download / Print Slip</span>
+                  <span>Download Keka PDF Slip</span>
                 </button>
               </div>
             </div>

@@ -160,8 +160,12 @@ export class SupabaseStore {
       subscriptionRenewal: t.subscription_renewal,
       billingContact: t.billing_contact,
       trialStatus: t.trial_status,
-      onboardingChecklist: (t.onboarding_checklist || []).filter((s: any) => s.id !== '__org_root__'),
+      onboardingChecklist: (t.onboarding_checklist || []).filter((s: any) => !s.id?.startsWith('__')),
       orgTreeRootId: (t.onboarding_checklist || []).find((s: any) => s.id === '__org_root__')?.title,
+      workingDays: (t.onboarding_checklist || []).find((s: any) => s.id === '__working_days__')?.description?.split(',') || ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'],
+      weeklyOffDays: (t.onboarding_checklist || []).find((s: any) => s.id === '__weekly_off_days__')?.description !== undefined
+        ? ((t.onboarding_checklist || []).find((s: any) => s.id === '__weekly_off_days__')?.description?.split(',').filter(Boolean) || [])
+        : [],
       createdAt: t.created_at,
       updatedAt: t.updated_at
     };
@@ -217,8 +221,12 @@ export class SupabaseStore {
       subscriptionRenewal: t.subscription_renewal,
       billingContact: t.billing_contact,
       trialStatus: t.trial_status,
-      onboardingChecklist: (t.onboarding_checklist || []).filter((s: any) => s.id !== '__org_root__'),
+      onboardingChecklist: (t.onboarding_checklist || []).filter((s: any) => !s.id?.startsWith('__')),
       orgTreeRootId: (t.onboarding_checklist || []).find((s: any) => s.id === '__org_root__')?.title,
+      workingDays: (t.onboarding_checklist || []).find((s: any) => s.id === '__working_days__')?.description?.split(',') || ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'],
+      weeklyOffDays: (t.onboarding_checklist || []).find((s: any) => s.id === '__weekly_off_days__')?.description !== undefined
+        ? ((t.onboarding_checklist || []).find((s: any) => s.id === '__weekly_off_days__')?.description?.split(',').filter(Boolean) || [])
+        : [],
       createdAt: t.created_at,
       updatedAt: t.updated_at
     };
@@ -236,12 +244,30 @@ export class SupabaseStore {
     SupabaseStore.invalidate(tenant.slug);
     SupabaseStore.invalidate('all_tenants');
 
-    const checklistWithMeta = [...(tenant.onboardingChecklist || []).filter((s: any) => s.id !== '__org_root__')];
+    const checklistWithMeta = [...(tenant.onboardingChecklist || []).filter((s: any) => !s.id?.startsWith('__'))];
     if (tenant.orgTreeRootId) {
       checklistWithMeta.push({
         id: '__org_root__',
         title: tenant.orgTreeRootId,
         description: 'Organization Root Leader',
+        completed: true,
+        route: ''
+      });
+    }
+    if (tenant.workingDays) {
+      checklistWithMeta.push({
+        id: '__working_days__',
+        title: 'Working Days Policy',
+        description: tenant.workingDays.join(','),
+        completed: true,
+        route: ''
+      });
+    }
+    if (tenant.weeklyOffDays) {
+      checklistWithMeta.push({
+        id: '__weekly_off_days__',
+        title: 'Weekly Off Days Policy',
+        description: tenant.weeklyOffDays.join(','),
         completed: true,
         route: ''
       });

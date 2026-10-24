@@ -243,7 +243,9 @@ export function buildDailyWorkforceRoster({
   excludedEmployeeIds,
   timezone,
   regularizations,
-  holidays
+  holidays,
+  workingDays,
+  weeklyOffDays
 }: {
   date: string;
   employees: Employee[];
@@ -255,6 +257,8 @@ export function buildDailyWorkforceRoster({
   timezone?: string;
   regularizations?: RegularizationRequest[];
   holidays?: Holiday[];
+  workingDays?: string[];
+  weeklyOffDays?: string[];
 }): {
   roster: AttendanceRecord[];
   stats: {
@@ -317,7 +321,10 @@ export function buildDailyWorkforceRoster({
   let notPunchedInCount = 0;
 
   const targetDateObj = new Date(date + 'T00:00:00Z');
-  const isSunday = targetDateObj.getUTCDay() === 0;
+  const dayOfWeek = targetDateObj.getUTCDay(); // 0=Sun, 1=Mon, ..., 6=Sat
+  const dayNames = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
+  const currentDayName = dayNames[dayOfWeek];
+  const isWeeklyOff = Boolean(weeklyOffDays && weeklyOffDays.includes(currentDayName));
 
   activeEmployees.forEach((emp) => {
     const punch = punchMap.get(emp.id);
@@ -474,7 +481,7 @@ export function buildDailyWorkforceRoster({
             : `Public Holiday: ${matchedHoliday.name}`,
           shiftName: shift?.name || emp.shiftName || 'General Day Shift'
         });
-      } else if (isSunday) {
+      } else if (isWeeklyOff) {
         roster.push({
           id: `off-att-${emp.id}-${date}`,
           tenantId,
@@ -485,7 +492,7 @@ export function buildDailyWorkforceRoster({
           clockOutTime: undefined,
           workingHours: 0,
           status: 'HOLIDAY',
-          notes: 'Weekly Off (Sunday)',
+          notes: `Weekly Off (${currentDayName.charAt(0) + currentDayName.slice(1).toLowerCase()})`,
           shiftName: shift?.name || emp.shiftName || 'General Day Shift'
         });
       } else if (isHistoricalDate) {

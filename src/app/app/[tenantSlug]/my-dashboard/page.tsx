@@ -26,6 +26,7 @@ import {
 import { Employee, Shift, LeaveType, LeaveApplication, SalarySlip, Holiday, EmployeeDocument, Tenant } from '@/lib/types';
 import { useCurrentUser } from '@/lib/auth/useCurrentUser';
 import MonthlyAttendanceCalendar from '@/components/MonthlyAttendanceCalendar';
+import { downloadPayslipPDF } from '@/lib/pdf/generatePayslipPDF';
 
 export default function EmployeeSelfServiceDashboard() {
   const params = useParams();
@@ -782,6 +783,12 @@ export default function EmployeeSelfServiceDashboard() {
                 <div className="text-right">Deductions: ₹{payslips[0].totalDeductions.toLocaleString()}</div>
               </div>
 
+              <div className="p-2 rounded-lg bg-slate-50 border border-slate-200 text-[10px] text-slate-600 flex items-center justify-between font-mono">
+                <span>Payable: <strong className="text-emerald-700">{payslips[0].payableDays !== undefined ? payslips[0].payableDays : (payslips[0].totalCalendarDays || 31)}d</strong></span>
+                <span>LOP: <strong className="text-rose-600">{payslips[0].lopDays !== undefined ? payslips[0].lopDays : 0}d</strong></span>
+                <span>Cycle: <strong>1 to End of Month</strong></span>
+              </div>
+
               {payslips[0].netPay === 0 && (
                 <div className="p-2.5 rounded-lg bg-amber-50/90 border border-amber-200/80 text-[11px] text-amber-800 font-medium flex items-center gap-1.5">
                   <AlertCircle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
@@ -789,14 +796,24 @@ export default function EmployeeSelfServiceDashboard() {
                 </div>
               )}
 
-              <button
-                type="button"
-                onClick={() => setViewingSlip(payslips[0])}
-                className="w-full py-2 px-3 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
-              >
-                <Download className="w-3.5 h-3.5" />
-                <span>View / Download Payslip</span>
-              </button>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setViewingSlip(payslips[0])}
+                  className="py-2 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-900 text-xs font-bold flex items-center justify-center gap-1.5 border border-slate-200 transition-colors cursor-pointer"
+                >
+                  <FileText className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>View Details</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => downloadPayslipPDF(payslips[0], tenant, currentEmp)}
+                  className="py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Download PDF</span>
+                </button>
+              </div>
             </div>
           ) : (
             <div className="p-4 rounded-xl bg-slate-50 border border-dashed border-slate-200 text-center text-xs text-slate-500 font-medium">
@@ -1186,11 +1203,11 @@ export default function EmployeeSelfServiceDashboard() {
               </button>
               <button
                 type="button"
-                onClick={() => alert('Printing / PDF export')}
-                className="px-4 py-2 text-xs font-bold rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white flex items-center gap-1.5 cursor-pointer shadow-sm"
+                onClick={() => downloadPayslipPDF(viewingSlip, tenant, currentEmp)}
+                className="px-5 py-2 text-xs font-bold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-1.5 cursor-pointer shadow-sm transition-colors"
               >
                 <Download className="w-3.5 h-3.5" />
-                <span>Export PDF</span>
+                <span>Download Keka PDF Slip</span>
               </button>
             </div>
           </div>

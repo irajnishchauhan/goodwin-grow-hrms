@@ -46,6 +46,10 @@ export default function MonthlyAttendanceCalendar({
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [selectedDayDetails, setSelectedDayDetails] = useState<string | null>(null);
+  const [weeklyOffDays, setWeeklyOffDays] = useState<string[]>([]);
+  const [workingDays, setWorkingDays] = useState<string[]>([
+    'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'
+  ]);
 
   // Sync initialEmployeeId if provided
   useEffect(() => {
@@ -72,6 +76,12 @@ export default function MonthlyAttendanceCalendar({
         setHolidays(json.data.holidays || []);
         setRegularizations(json.data.regularizations || []);
         setShifts(json.data.shifts || []);
+        if (json.data.weeklyOffDays) {
+          setWeeklyOffDays(json.data.weeklyOffDays);
+        }
+        if (json.data.workingDays) {
+          setWorkingDays(json.data.workingDays);
+        }
         if (json.data.employees && json.data.employees.length > 0) {
           setEmployees(json.data.employees);
           if (!selectedEmpId && !initialEmployeeId) {
@@ -184,7 +194,9 @@ export default function MonthlyAttendanceCalendar({
     const dStr = `${yearStr}-${monthStr}-${String(d).padStart(2, '0')}`;
     const dateObj = new Date(year, month - 1, d);
     const dayOfWeek = dateObj.getDay();
-    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+    const dayNames = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
+    const currentDayName = dayNames[dayOfWeek];
+    const isWeeklyOff = weeklyOffDays.includes(currentDayName);
     const isHoliday = holidaysMap.has(dStr);
     const isFuture = dStr > todayStr;
     const isToday = dStr === todayStr;
@@ -209,7 +221,7 @@ export default function MonthlyAttendanceCalendar({
       if (leave.isHalfDay) {
         halfDays++;
       }
-    } else if (!isWeekend && !isHoliday) {
+    } else if (!isWeeklyOff && !isHoliday) {
       if (isToday) {
         notPunchedInDays++;
       } else if (!isFuture) {
@@ -339,14 +351,18 @@ export default function MonthlyAttendanceCalendar({
       {/* Calendar Grid */}
       <div className="rounded-2xl bg-white border border-slate-200 overflow-hidden shadow-xs">
         {/* Days of Week Header */}
-        <div className="grid grid-cols-7 border-b border-slate-200 bg-slate-50/90 text-[11px] font-extrabold text-slate-600 text-center uppercase tracking-wider py-3">
-          <div>Mon</div>
-          <div>Tue</div>
-          <div>Wed</div>
-          <div>Thu</div>
-          <div>Fri</div>
-          <div className="text-rose-500">Sat</div>
-          <div className="text-rose-500">Sun</div>
+        <div className="grid grid-cols-7 border-b border-slate-200 bg-slate-50/90 text-[11px] font-extrabold text-center uppercase tracking-wider py-3">
+          <div className="text-slate-700">Mon</div>
+          <div className="text-slate-700">Tue</div>
+          <div className="text-slate-700">Wed</div>
+          <div className="text-slate-700">Thu</div>
+          <div className="text-slate-700">Fri</div>
+          <div className={weeklyOffDays.includes('SATURDAY') ? 'text-rose-500' : 'text-slate-700 font-bold'}>
+            Sat {weeklyOffDays.includes('SATURDAY') ? '(Off)' : '(Work)'}
+          </div>
+          <div className={weeklyOffDays.includes('SUNDAY') ? 'text-rose-500' : 'text-slate-700 font-bold'}>
+            Sun {weeklyOffDays.includes('SUNDAY') ? '(Off)' : '(Work)'}
+          </div>
         </div>
 
         {/* Days Grid */}
@@ -362,7 +378,9 @@ export default function MonthlyAttendanceCalendar({
             const dayStr = `${yearStr}-${monthStr}-${String(dayNum).padStart(2, '0')}`;
             const dateObj = new Date(year, month - 1, dayNum);
             const dayOfWeek = dateObj.getDay(); // 0=Sun, 6=Sat
-            const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+            const dayNames = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
+            const currentDayName = dayNames[dayOfWeek];
+            const isWeeklyOff = weeklyOffDays.includes(currentDayName);
             const isHoliday = holidaysMap.get(dayStr);
             const punch = empPunchesMap.get(dayStr);
             const leave = empLeavesMap.get(dayStr);
@@ -393,8 +411,8 @@ export default function MonthlyAttendanceCalendar({
             } else if (isHoliday) {
               badgeText = 'Holiday';
               badgeClass = 'bg-purple-50 text-purple-700 border-purple-200';
-            } else if (isWeekend) {
-              badgeText = 'Weekend';
+            } else if (isWeeklyOff) {
+              badgeText = 'Weekly Off';
               badgeClass = 'bg-slate-100 text-slate-500 border-slate-200';
             } else if (isToday) {
               isNotPunchedIn = true;
@@ -416,7 +434,7 @@ export default function MonthlyAttendanceCalendar({
                 className={`min-h-32 p-2 sm:p-2.5 flex flex-col justify-between transition-colors relative cursor-pointer ${
                   isToday
                     ? 'bg-emerald-50/40 ring-2 ring-emerald-500/60 z-10'
-                    : isWeekend
+                    : isWeeklyOff
                     ? 'bg-slate-50/60'
                     : 'bg-white hover:bg-slate-50/80'
                 }`}
@@ -427,7 +445,7 @@ export default function MonthlyAttendanceCalendar({
                     className={`inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-black font-mono ${
                       isToday
                         ? 'bg-emerald-600 text-white shadow-xs'
-                        : isWeekend
+                        : isWeeklyOff
                         ? 'text-slate-400'
                         : 'text-slate-800'
                     }`}
@@ -483,7 +501,7 @@ export default function MonthlyAttendanceCalendar({
                     <div className="text-[10px] text-purple-700 font-medium truncate">
                       {isHoliday.name}
                     </div>
-                  ) : isWeekend ? (
+                  ) : isWeeklyOff ? (
                     <div className="text-[10px] text-slate-400 font-medium">Weekly Off</div>
                   ) : isNotPunchedIn ? (
                     <div className="text-[10px] text-amber-700 font-medium flex items-center gap-1">

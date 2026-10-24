@@ -102,6 +102,13 @@ export default function CompanySetupWizardPage() {
   const [newShiftEnd, setNewShiftEnd] = useState('23:00');
   const [newShiftGrace, setNewShiftGrace] = useState(10);
 
+  // Step 4: Working Days & Weekly Off Policy state
+  const [workingDays, setWorkingDays] = useState<string[]>([
+    'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'
+  ]);
+  const [weeklyOffDays, setWeeklyOffDays] = useState<string[]>([]);
+  const [savingWorkingDays, setSavingWorkingDays] = useState(false);
+
   // Step 5: Leave form state
   const [editingLeaves, setEditingLeaves] = useState<Record<string, number>>({});
   const [newLeaveName, setNewLeaveName] = useState('');
@@ -154,6 +161,12 @@ export default function CompanySetupWizardPage() {
         setPrimaryColor(t.primaryColor || '#D97706');
         setLogoUrl(t.logoUrl || '');
         setChecklist(t.onboardingChecklist || []);
+        if (t.workingDays) {
+          setWorkingDays(t.workingDays);
+        }
+        if (t.weeklyOffDays !== undefined) {
+          setWeeklyOffDays(t.weeklyOffDays);
+        }
 
         setDepartments(json.data.departments || []);
         setDesignations(json.data.designations || []);
@@ -430,6 +443,68 @@ export default function CompanySetupWizardPage() {
     } catch (err) {
       console.error(err);
       showToast('Error removing shift');
+    }
+  };
+
+  // Step 4: Toggle Individual Day (Working vs Weekly Off)
+  const handleToggleWorkingDay = (dayId: string) => {
+    if (weeklyOffDays.includes(dayId)) {
+      setWeeklyOffDays(weeklyOffDays.filter((d) => d !== dayId));
+      if (!workingDays.includes(dayId)) {
+        setWorkingDays([...workingDays, dayId]);
+      }
+    } else {
+      setWorkingDays(workingDays.filter((d) => d !== dayId));
+      if (!weeklyOffDays.includes(dayId)) {
+        setWeeklyOffDays([...weeklyOffDays, dayId]);
+      }
+    }
+  };
+
+  // Step 4: Apply Working Days Preset Schedule
+  const handleApplyPreset = (preset: '7_DAYS_WORK' | '6_DAYS_MON_SAT' | '5_DAYS_MON_FRI') => {
+    if (preset === '7_DAYS_WORK') {
+      setWorkingDays(['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY']);
+      setWeeklyOffDays([]);
+      showToast('Preset applied: All 7 Days Working (No Weekly Off - Goodwin Standard)');
+    } else if (preset === '6_DAYS_MON_SAT') {
+      setWorkingDays(['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY']);
+      setWeeklyOffDays(['SUNDAY']);
+      showToast('Preset applied: 6 Days Working (Mon - Sat Working, Sunday Off)');
+    } else if (preset === '5_DAYS_MON_FRI') {
+      setWorkingDays(['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY']);
+      setWeeklyOffDays(['SATURDAY', 'SUNDAY']);
+      showToast('Preset applied: 5 Days Working (Mon - Fri Working, Sat & Sun Off)');
+    }
+  };
+
+  // Step 4: Save Working Days & Weekly Off Policy to Server
+  const handleSaveWorkingDaysPolicy = async () => {
+    try {
+      setSavingWorkingDays(true);
+      const res = await fetch(`/api/tenants/${tenantSlug}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'update-working-days',
+          workingDays,
+          weeklyOffDays
+        })
+      });
+      const json = await res.json();
+      if (json.success) {
+        if (json.data?.tenant) {
+          setTenant(json.data.tenant);
+        }
+        showToast('Company Working Days & Weekly Off schedule saved successfully');
+      } else {
+        showToast(`Error: ${json.error || 'Failed to save schedule'}`);
+      }
+    } catch (err) {
+      console.error(err);
+      showToast('Error saving working days policy');
+    } finally {
+      setSavingWorkingDays(false);
     }
   };
 
@@ -1128,14 +1203,173 @@ export default function CompanySetupWizardPage() {
           {/* STEP 4: SHIFT & ATTENDANCE POLICIES */}
           {activeStepIndex === 3 && (
             <div className="space-y-6 animate-fade-in text-xs">
-              <div className="pb-4 border-b border-slate-800">
-                <h2 className="text-base font-bold text-white flex items-center gap-2">
-                  <Clock className="w-5 h-5 text-amber-400" />
-                  <span>Step 4: Shift Schedules & Biometric Grace Minutes</span>
-                </h2>
-                <p className="text-slate-400 mt-0.5">
-                  Configure active factory shifts, start/end times, and biometric auto-punch grace period.
-                </p>
+              <div className="pb-4 border-b border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-base font-bold text-white flex items-center gap-2">
+                    <Clock className="w-5 h-5 text-amber-400" />
+                    <span>Step 4: Working Days Policy & Shift Schedules</span>
+                  </h2>
+                  <p className="text-slate-400 mt-0.5">
+                    Configure company working days, weekly off rules, and active factory shift schedules.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-500/10 border border-amber-500/30 text-amber-300">
+                    Goodwin Standard: Saturday Working
+                  </span>
+                </div>
+              </div>
+
+              {/* Working Days & Weekly Off Policy CRUD Card */}
+              <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-4 shadow-sm">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-800/80">
+                  <div>
+                    <h3 className="font-bold text-white text-sm flex items-center gap-2">
+                      <Calendar className="w-4 h-4 text-emerald-400" />
+                      <span>Company Working Days &amp; Weekly Off Schedule (CRUD)</span>
+                    </h3>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      Define which days of the week require attendance punches. Saturday is set as a standard working day with active production shifts.
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      disabled={savingWorkingDays}
+                      onClick={handleSaveWorkingDaysPolicy}
+                      className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-1.5 shadow-md transition-all cursor-pointer disabled:opacity-50"
+                    >
+                      <Save className="w-3.5 h-3.5" />
+                      <span>{savingWorkingDays ? 'Saving Policy...' : 'Save Schedule Policy'}</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Quick Presets */}
+                <div className="space-y-1.5">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                    Quick Policy Presets:
+                  </span>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleApplyPreset('7_DAYS_WORK')}
+                      className={`px-3 py-1.5 rounded-xl text-[11px] font-bold transition-all border cursor-pointer ${
+                        weeklyOffDays.length === 0
+                          ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-300 ring-1 ring-emerald-500/40'
+                          : 'bg-slate-950 border-slate-800 text-slate-300 hover:bg-slate-800'
+                      }`}
+                    >
+                      ⚡ All 7 Days Working (No Weekly Off - Goodwin Standard)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleApplyPreset('6_DAYS_MON_SAT')}
+                      className={`px-3 py-1.5 rounded-xl text-[11px] font-bold transition-all border cursor-pointer ${
+                        weeklyOffDays.length === 1 && weeklyOffDays.includes('SUNDAY')
+                          ? 'bg-amber-500/20 border-amber-500/50 text-amber-300 ring-1 ring-amber-500/40'
+                          : 'bg-slate-950 border-slate-800 text-slate-300 hover:bg-slate-800'
+                      }`}
+                    >
+                      6 Days (Mon - Sat Working, Sunday Off)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleApplyPreset('5_DAYS_MON_FRI')}
+                      className={`px-3 py-1.5 rounded-xl text-[11px] font-bold transition-all border cursor-pointer ${
+                        weeklyOffDays.length === 2 && weeklyOffDays.includes('SATURDAY') && weeklyOffDays.includes('SUNDAY')
+                          ? 'bg-purple-500/20 border-purple-500/50 text-purple-300 ring-1 ring-purple-500/40'
+                          : 'bg-slate-950 border-slate-800 text-slate-300 hover:bg-slate-800'
+                      }`}
+                    >
+                      5 Days (Mon - Fri Working, Sat &amp; Sun Off)
+                    </button>
+                  </div>
+                </div>
+
+                {/* 7 Days of the Week Grid */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-2.5 pt-2">
+                  {[
+                    { id: 'MONDAY', name: 'Monday', short: 'Mon' },
+                    { id: 'TUESDAY', name: 'Tuesday', short: 'Tue' },
+                    { id: 'WEDNESDAY', name: 'Wednesday', short: 'Wed' },
+                    { id: 'THURSDAY', name: 'Thursday', short: 'Thu' },
+                    { id: 'FRIDAY', name: 'Friday', short: 'Fri' },
+                    { id: 'SATURDAY', name: 'Saturday', short: 'Sat' },
+                    { id: 'SUNDAY', name: 'Sunday', short: 'Sun' }
+                  ].map((d) => {
+                    const isOff = weeklyOffDays.includes(d.id);
+                    const isSaturday = d.id === 'SATURDAY';
+                    return (
+                      <div
+                        key={d.id}
+                        className={`p-3 rounded-xl border transition-all flex flex-col justify-between min-h-[105px] ${
+                          isOff
+                            ? 'bg-rose-950/20 border-rose-900/40 text-slate-300'
+                            : isSaturday
+                            ? 'bg-amber-950/20 border-amber-500/40 text-white ring-1 ring-amber-500/30'
+                            : 'bg-slate-950 border-slate-800 text-white'
+                        }`}
+                      >
+                        <div>
+                          <div className="flex items-center justify-between">
+                            <span className="font-extrabold text-sm">{d.name}</span>
+                            <span className="font-mono text-[10px] text-slate-500">{d.short}</span>
+                          </div>
+
+                          <div className="mt-1.5">
+                            {isOff ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[9px] font-bold bg-rose-500/20 border border-rose-500/40 text-rose-300">
+                                Weekly Off
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[9px] font-bold bg-emerald-500/20 border border-emerald-500/40 text-emerald-300">
+                                Working Day
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="pt-2 border-t border-slate-800/80 mt-2">
+                          <button
+                            type="button"
+                            onClick={() => handleToggleWorkingDay(d.id)}
+                            className={`w-full py-1 px-1.5 rounded-lg text-[10px] font-bold transition-colors cursor-pointer ${
+                              isOff
+                                ? 'bg-slate-800 hover:bg-emerald-600 hover:text-white text-slate-300'
+                                : 'bg-slate-800 hover:bg-rose-600 hover:text-white text-slate-300'
+                            }`}
+                          >
+                            {isOff ? '+ Set as Working' : 'Set as Off'}
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Schedule Summary Bar */}
+                <div className="p-3 rounded-xl bg-slate-950 border border-slate-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-[11px]">
+                  <div className="flex items-center gap-4 text-slate-300">
+                    <div>
+                      <span className="text-slate-500">Working Days / Week: </span>
+                      <strong className="text-emerald-400 font-mono font-bold text-xs">
+                        {7 - weeklyOffDays.length} of 7 days
+                      </strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-500">Weekly Offs: </span>
+                      <strong className="text-rose-400 font-mono font-bold text-xs">
+                        {weeklyOffDays.length === 0 ? '0 days (Continuous Operation)' : `${weeklyOffDays.length} day(s)`}
+                      </strong>
+                    </div>
+                  </div>
+
+                  <div className="text-[10px] text-slate-400 font-mono">
+                    Saturday Policy: <span className="text-amber-400 font-bold">{weeklyOffDays.includes('SATURDAY') ? 'Off' : 'Active Working Day'}</span>
+                  </div>
+                </div>
               </div>
 
               {/* Editable Shifts */}

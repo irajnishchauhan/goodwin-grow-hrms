@@ -103,6 +103,8 @@ export const INITIAL_TENANTS: Tenant[] = [
       { id: 'step-7', title: 'Employee Data Import', description: 'Individual entry and bulk spreadsheet import', completed: false, route: '/app/goodwin-batteries-fleet/setup' },
       { id: 'step-8', title: 'Invite Employees', description: 'Send activation links to workforce', completed: false, route: '/app/goodwin-batteries-fleet/setup' }
     ],
+    workingDays: ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'],
+    weeklyOffDays: [], // Goodwin HRMS: Saturday is working, NO weekly off
     createdAt: '2026-10-16T22:00:38.000Z',
     updatedAt: '2026-10-16T22:00:38.000Z'
   },
