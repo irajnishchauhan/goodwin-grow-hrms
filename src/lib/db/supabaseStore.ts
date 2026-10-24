@@ -940,12 +940,12 @@ export class SupabaseStore {
         employee_id: rec.employeeId,
         employee_name: rec.employeeName,
         date: rec.date,
-        clock_in_time: rec.clockInTime,
-        clock_out_time: rec.clockOutTime,
-        working_hours: rec.workingHours,
+        clock_in_time: rec.clockInTime || null,
+        clock_out_time: rec.clockOutTime || null,
+        working_hours: rec.workingHours ?? 0,
         status: rec.status,
-        notes: rec.notes,
-        shift_name: rec.shiftName
+        notes: rec.notes || null,
+        shift_name: rec.shiftName || null
       },
       { onConflict: 'tenant_id,employee_id,date' }
     );

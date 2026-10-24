@@ -185,7 +185,7 @@ export function evaluateAttendanceStatus(
   }
 
   const clockOutMin = parseTimeToMinutes(clockOut);
-  if (clockInMin === null || clockOutMin === null || clockOutMin <= clockInMin) {
+  if (clockInMin === null || clockOutMin === null) {
     return {
       status: isLate ? 'LATE_ENTRY' : 'PRESENT',
       workingHours: 0,
@@ -196,9 +196,12 @@ export function evaluateAttendanceStatus(
     };
   }
 
-  // Calculate elapsed working hours
-  const totalMinutes = clockOutMin - clockInMin;
-  const workedHours = Math.round((totalMinutes / 60) * 10) / 10;
+  // Calculate elapsed working hours (handle same-minute punches and midnight crossing)
+  let totalMinutes = clockOutMin - clockInMin;
+  if (totalMinutes < 0) {
+    totalMinutes += 1440; // Overnight shift
+  }
+  const workedHours = Math.max(0.1, Math.round((totalMinutes / 60) * 10) / 10);
 
   if (workedHours >= policy.fullDayMinHours) {
     return {
@@ -305,11 +308,8 @@ export function buildDailyWorkforceRoster({
   punchRecords
     .filter((r) => r.date === date)
     .forEach((r) => {
-      // Don't overwrite if existing punch has clockOut
-      const existing = punchMap.get(r.employeeId);
-      if (!existing || (r.clockOutTime && !existing.clockOutTime)) {
-        punchMap.set(r.employeeId, r);
-      }
+      // Store latest punch record for this employee on this date
+      punchMap.set(r.employeeId, r);
     });
 
   const roster: AttendanceRecord[] = [];

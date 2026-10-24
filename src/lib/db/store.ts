@@ -1553,7 +1553,11 @@ class HRMSDataStore {
 
   public syncAttendance(records: AttendanceRecord[]): void {
     for (const r of records) {
-      const idx = this.attendance.findIndex((a) => a.id === r.id);
+      const idx = this.attendance.findIndex(
+        (a) =>
+          a.id === r.id ||
+          (a.tenantId === r.tenantId && a.employeeId === r.employeeId && a.date === r.date)
+      );
       if (idx >= 0) {
         this.attendance[idx] = r;
       } else {
@@ -1664,14 +1668,14 @@ class HRMSDataStore {
         const evalRes = evaluateAttendanceStatus(record.clockInTime, timeStr, policy);
         record.workingHours = evalRes.workingHours;
         record.status = evalRes.status;
-        if (notes) record.notes = notes;
+        record.notes = notes || `Shift Completed (${evalRes.effectiveHoursText})`;
       } else if (action === 'IN') {
         record.clockInTime = timeStr;
         record.clockOutTime = undefined;
         const evalRes = evaluateAttendanceStatus(timeStr, undefined, policy);
         record.workingHours = 0;
         record.status = evalRes.status;
-        if (notes) record.notes = notes;
+        record.notes = notes || (evalRes.isLate ? `Clocked in ${evalRes.lateMinutes}m after grace` : 'Mobile Web Punch-In');
       }
     }
     return record;

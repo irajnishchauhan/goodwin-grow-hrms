@@ -299,6 +299,19 @@ export default function EmployeeSelfServiceDashboard() {
     }
   }, [tenantSlug, authLoading, user?.email, user?.id]);
 
+  // Synchronize dashboard whenever a punch is recorded from top navbar or attendance page
+  useEffect(() => {
+    const handlePunchEvent = () => {
+      if (selectedEmpId) {
+        loadEmployeeDetails(selectedEmpId);
+      }
+    };
+    window.addEventListener('hrms-attendance-punch', handlePunchEvent);
+    return () => {
+      window.removeEventListener('hrms-attendance-punch', handlePunchEvent);
+    };
+  }, [selectedEmpId, tenantSlug]);
+
   const handleSwitchEmployee = (empId: string) => {
     setSelectedEmpId(empId);
     setPunchMessage(null);
@@ -346,7 +359,7 @@ export default function EmployeeSelfServiceDashboard() {
           employeeId: currentEmp.id,
           employeeEmail: currentEmp.workEmail,
           action,
-          notes: action === 'IN' ? 'Mobile Web Punch-In' : 'Mobile Web Punch-Out',
+          notes: action === 'IN' ? 'Keka Web Punch-In' : 'Keka Web Punch-Out',
           clientTime: timeNow,
           clientDate,
           timezone: userTz
@@ -360,15 +373,16 @@ export default function EmployeeSelfServiceDashboard() {
           setIsClockedIn(true);
           setClockInTime(returnedRec?.clockInTime || timeNow);
           setClockOutTime(null);
-          setPunchMessage(`Successfully punched IN at ${returnedRec?.clockInTime || timeNow}. Have a productive day!`);
+          setPunchMessage(`Successfully clocked IN at ${returnedRec?.clockInTime || timeNow}. Have a productive day!`);
         } else {
           setIsClockedIn(false);
           setClockOutTime(returnedRec?.clockOutTime || timeNow);
-          setPunchMessage(`Successfully punched OUT at ${returnedRec?.clockOutTime || timeNow}. Have a great evening!`);
+          setPunchMessage(`Successfully clocked OUT at ${returnedRec?.clockOutTime || timeNow}. Have a great evening!`);
         }
 
         // Seamlessly update monthRecords & attendance history
         setCalendarKey((k) => k + 1);
+        window.dispatchEvent(new Event('hrms-attendance-punch'));
       } else {
         setIsClockedIn(prevIsClockedIn);
         setClockInTime(prevClockIn);

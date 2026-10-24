@@ -17,7 +17,7 @@ import {
   Plus,
   UserPlus
 } from 'lucide-react';
-import { Tenant, Employee, LeaveApplication, AttendanceRecord, SalarySlip } from '@/lib/types';
+import { Tenant, Employee, LeaveApplication, AttendanceRecord, SalarySlip, RegularizationRequest } from '@/lib/types';
 
 export default function TenantOverviewPage() {
   const router = useRouter();
@@ -35,6 +35,7 @@ export default function TenantOverviewPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [leaves, setLeaves] = useState<LeaveApplication[]>([]);
   const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
+  const [regularizations, setRegularizations] = useState<RegularizationRequest[]>([]);
   const [slips, setSlips] = useState<SalarySlip[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -67,6 +68,7 @@ export default function TenantOverviewPage() {
 
       if (attJson.success) {
         setAttendance(attJson.data.records || []);
+        setRegularizations(attJson.data.regularizations || []);
       }
 
       if (payJson.success) {
@@ -93,7 +95,7 @@ export default function TenantOverviewPage() {
         body: JSON.stringify({
           leaveId,
           status,
-          reviewedBy: 'HR Director',
+          reviewedBy: user?.name || 'HR Director',
           comment: status === 'APPROVED' ? 'Approved by HR Director' : 'Declined due to scheduling'
         })
       });
@@ -106,7 +108,29 @@ export default function TenantOverviewPage() {
     }
   };
 
+  const handleRegularizationAction = async (regId: string, status: 'APPROVED' | 'REJECTED') => {
+    try {
+      const res = await fetch(`/api/tenants/${tenantSlug}/attendance/regularization`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          regularizationId: regId,
+          status,
+          reviewedBy: user?.name || 'Company Admin',
+          comment: status === 'APPROVED' ? 'Attendance regularization approved' : 'Declined'
+        })
+      });
+      const json = await res.json();
+      if (json.success) {
+        fetchWorkspaceData();
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   const pendingLeaves = leaves.filter((l) => l.status === 'PENDING');
+  const pendingRegularizations = regularizations.filter((r) => r.status === 'PENDING');
   const presentCount = attendance.filter((a) => a.status === 'PRESENT' || a.status === 'LATE_ENTRY').length;
   const totalPayroll = slips.reduce((sum, s) => sum + s.netPay, 0);
 
@@ -292,6 +316,68 @@ export default function TenantOverviewPage() {
                           <XCircle className="w-3 h-3" /> Reject
                         </button>
                       </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Pending Attendance Regularization Approvals */}
+          <div className="p-6 rounded-2xl bg-white border border-slate-200 shadow-xs space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                <Clock className="w-4 h-4 text-emerald-600" />
+                Pending Punch Regularizations
+              </h2>
+              <Link
+                href={`/app/${tenantSlug}/attendance?tab=regularizations`}
+                className="text-xs text-emerald-700 hover:text-emerald-800 font-semibold"
+              >
+                View All
+              </Link>
+            </div>
+
+            {pendingRegularizations.length === 0 ? (
+              <div className="py-8 text-center text-xs text-slate-500">
+                ✓ No pending punch regularizations awaiting approval.
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {pendingRegularizations.map((reg) => (
+                  <div
+                    key={reg.id}
+                    className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2.5 text-xs"
+                  >
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <div className="font-bold text-slate-900">{reg.employeeName}</div>
+                        <div className="text-slate-500 text-[11px]">
+                          Date: <span className="font-semibold text-slate-800">{reg.attendanceDate}</span> ({reg.requestedClockIn} – {reg.requestedClockOut})
+                        </div>
+                      </div>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                        Correction
+                      </span>
+                    </div>
+
+                    <p className="text-slate-700 italic bg-white p-2 rounded-lg border border-slate-200 text-[11px]">
+                      &ldquo;{reg.reason}&rdquo;
+                    </p>
+
+                    <div className="flex items-center justify-end gap-2 pt-1">
+                      <button
+                        onClick={() => handleRegularizationAction(reg.id, 'APPROVED')}
+                        className="flex items-center gap-1 px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-[11px] shadow-xs cursor-pointer"
+                      >
+                        <CheckCircle2 className="w-3 h-3" /> Approve
+                      </button>
+                      <button
+                        onClick={() => handleRegularizationAction(reg.id, 'REJECTED')}
+                        className="flex items-center gap-1 px-3 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-semibold text-[11px] cursor-pointer"
+                      >
+                        <XCircle className="w-3 h-3" /> Reject
+                      </button>
                     </div>
                   </div>
                 ))}
