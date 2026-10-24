@@ -105,30 +105,27 @@ export function useCurrentUser(tenantSlug?: string) {
   const syncUser = useCallback(() => {
     if (typeof window === 'undefined') return;
     try {
-      const stored = localStorage.getItem('currentUser');
+      let stored = localStorage.getItem('currentUser');
+      if (!stored) {
+        // Fallback: check cookie gg_user
+        const match = document.cookie.match(/(?:^|;\s*)gg_user=([^;]+)/);
+        if (match && match[1]) {
+          stored = decodeURIComponent(match[1]);
+        }
+      }
+
       if (stored) {
         const parsed = JSON.parse(stored);
-        if (parsed?.email?.includes('kiranpatidar') || parsed?.email?.includes('sunil.kumar')) {
-          setUser(DEMO_EMPLOYEE_USER);
-        } else if (
-          !parsed ||
-          parsed.email?.toLowerCase().includes('rajnish') ||
-          parsed.id === 'user-bat-owner'
-        ) {
-          setUser(OWNER_USER);
-          localStorage.setItem('currentUser', JSON.stringify(OWNER_USER));
-          document.cookie = `gg_user=${encodeURIComponent(JSON.stringify(OWNER_USER))}; path=/; max-age=86400`;
-        } else {
+        if (parsed && typeof parsed === 'object' && parsed.email) {
           setUser(parsed);
+        } else {
+          setUser(null);
         }
       } else {
-        // Default to Owner
-        setUser(OWNER_USER);
-        localStorage.setItem('currentUser', JSON.stringify(OWNER_USER));
-        document.cookie = `gg_user=${encodeURIComponent(JSON.stringify(OWNER_USER))}; path=/; max-age=86400`;
+        setUser(null);
       }
     } catch {
-      setUser(OWNER_USER);
+      setUser(null);
     } finally {
       setLoading(false);
     }
@@ -175,19 +172,11 @@ export function useCurrentUser(tenantSlug?: string) {
     window.location.href = '/login';
   };
 
-  // Determine active role for current tenant - Default to COMPANY_ADMIN (Owner)
-  let role: UserRole = 'COMPANY_ADMIN';
-  if (user?.isSuperAdmin) {
-    role = 'SUPER_ADMIN';
-  } else if (user) {
-    const isOwner =
-      user.email?.toLowerCase().includes('rajnish') ||
-      user.id === 'user-bat-owner' ||
-      user.id === 'user-bat-rajnish' ||
-      user.email === 'admin@goodwingrow.ai';
-
-    if (isOwner) {
-      role = 'COMPANY_ADMIN';
+  // Determine active role for current tenant - Default to EMPLOYEE
+  let role: UserRole = 'EMPLOYEE';
+  if (user) {
+    if (user.isSuperAdmin || user.email?.toLowerCase() === 'admin@goodwingrow.ai') {
+      role = 'SUPER_ADMIN';
     } else if (tenantSlug) {
       const membership = user.memberships?.find(
         (m) => m.tenantSlug === tenantSlug || m.tenantId === tenantSlug
@@ -196,18 +185,25 @@ export function useCurrentUser(tenantSlug?: string) {
         role = membership.role;
       } else if (user.memberships?.[0]) {
         role = user.memberships[0].role;
+      } else if (user.email?.toLowerCase().includes('rajnish') || user.id === 'user-bat-owner') {
+        role = 'COMPANY_ADMIN';
+      } else {
+        role = 'EMPLOYEE';
       }
     } else if (user.memberships?.[0]) {
       role = user.memberships[0].role;
+    } else if (user.email?.toLowerCase().includes('rajnish') || user.id === 'user-bat-owner') {
+      role = 'COMPANY_ADMIN';
+    } else {
+      role = 'EMPLOYEE';
     }
   }
 
-  const isSuperAdmin = Boolean(user?.isSuperAdmin || role === 'SUPER_ADMIN');
-  const isCompanyAdmin = Boolean(isSuperAdmin || role === 'COMPANY_ADMIN');
-  const isHRAdmin = Boolean(isCompanyAdmin || role === 'HR_ADMIN');
-  const isManager = Boolean(isHRAdmin || role === 'MANAGER');
-  // Company owner is NEVER restricted to employee only
-  const isEmployeeOnly = !isCompanyAdmin && role === 'EMPLOYEE';
+  const isSuperAdmin = Boolean(user && (user.isSuperAdmin || role === 'SUPER_ADMIN'));
+  const isCompanyAdmin = Boolean(user && (isSuperAdmin || role === 'COMPANY_ADMIN'));
+  const isHRAdmin = Boolean(user && (isCompanyAdmin || role === 'HR_ADMIN'));
+  const isManager = Boolean(user && (isHRAdmin || role === 'MANAGER'));
+  const isEmployeeOnly = Boolean(!user || (!isCompanyAdmin && !isHRAdmin && !isManager));
 
   const currentPersonas = (tenantSlug && DEMO_PERSONAS[tenantSlug]) || DEMO_PERSONAS['goodwin-batteries-fleet'] || [
     {

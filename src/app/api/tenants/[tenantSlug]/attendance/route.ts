@@ -95,7 +95,7 @@ export async function GET(
 
     // Real logged attendance records (only actual punches, admin marks, and approved leaves)
     const rosterPunches = roster.filter(
-      (r) => !r.id.startsWith('absent-') && !r.id.startsWith('off-')
+      (r) => !r.id.startsWith('absent-') && !r.id.startsWith('off-') && !r.id.startsWith('not-punched-')
     );
 
     // Merge with any direct target date punch records to ensure 100% visibility
@@ -272,7 +272,13 @@ export async function POST(
       db.syncShifts(supaShifts);
     }
 
-    const emp = db.getEmployeeById(tenant.id, employeeId);
+    let emp = db.getEmployeeById(tenant.id, employeeId);
+    if (!emp && body.employeeEmail) {
+      emp =
+        db.getEmployees(tenant.id).find(
+          (e) => e.workEmail?.toLowerCase() === body.employeeEmail.toLowerCase()
+        ) || null;
+    }
     if (!emp) {
       return NextResponse.json(
         { success: false, error: 'Employee not found for attendance punch' },
@@ -280,12 +286,13 @@ export async function POST(
       );
     }
 
+    const effectiveEmpId = emp.id;
     const today = clientDate || formatDateInTimezone(new Date(), timezone);
-    db.clearExcludedAttendanceKey(tenant.id, employeeId, today);
+    db.clearExcludedAttendanceKey(tenant.id, effectiveEmpId, today);
 
     const record = db.recordPunch(
       tenant.id,
-      employeeId,
+      effectiveEmpId,
       action,
       notes,
       clientTime,

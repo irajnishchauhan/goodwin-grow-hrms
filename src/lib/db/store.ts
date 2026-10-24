@@ -1667,8 +1667,9 @@ class HRMSDataStore {
         if (notes) record.notes = notes;
       } else if (action === 'IN') {
         record.clockInTime = timeStr;
-        const evalRes = evaluateAttendanceStatus(timeStr, record.clockOutTime, policy);
-        record.workingHours = evalRes.workingHours;
+        record.clockOutTime = undefined;
+        const evalRes = evaluateAttendanceStatus(timeStr, undefined, policy);
+        record.workingHours = 0;
         record.status = evalRes.status;
         if (notes) record.notes = notes;
       }

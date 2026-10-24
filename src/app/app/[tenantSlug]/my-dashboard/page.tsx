@@ -55,6 +55,7 @@ export default function EmployeeSelfServiceDashboard() {
   const [clockOutTime, setClockOutTime] = useState<string | null>(null);
   const [punchLoading, setPunchLoading] = useState(false);
   const [punchMessage, setPunchMessage] = useState<string | null>(null);
+  const [calendarKey, setCalendarKey] = useState(0);
   const [activeShift, setActiveShift] = useState<{
     id: string;
     name: string;
@@ -243,11 +244,14 @@ export default function EmployeeSelfServiceDashboard() {
           setActiveShift(attJson.data.stats.activeShift);
         }
         const records = attJson.data?.records || [];
-        const todayRec = records.find(
-          (r: any) => r.employeeId === empId && r.date === localToday
-        );
+        const roster = attJson.data?.roster || [];
+        const monthRecs = attJson.data?.monthRecords || [];
+        const todayRec =
+          records.find((r: any) => r.employeeId === empId && r.date === localToday) ||
+          roster.find((r: any) => r.employeeId === empId && r.date === localToday && (r.clockInTime || r.clockOutTime)) ||
+          monthRecs.find((r: any) => r.employeeId === empId && r.date === localToday);
 
-        if (todayRec) {
+        if (todayRec && todayRec.clockInTime) {
           setIsClockedIn(!todayRec.clockOutTime);
           setClockInTime(todayRec.clockInTime || null);
           setClockOutTime(todayRec.clockOutTime || null);
@@ -313,7 +317,6 @@ export default function EmployeeSelfServiceDashboard() {
     setPunchLoading(true);
     setPunchMessage(null);
 
-    // Keka-style instant optimistic punch feedback
     const timeNow = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const prevIsClockedIn = isClockedIn;
     const prevClockIn = clockInTime;
@@ -322,6 +325,7 @@ export default function EmployeeSelfServiceDashboard() {
     if (action === 'IN') {
       setIsClockedIn(true);
       setClockInTime(timeNow);
+      setClockOutTime(null);
       setPunchMessage(`Clocked In at ${timeNow} (In Progress)`);
     } else {
       setIsClockedIn(false);
@@ -333,27 +337,13 @@ export default function EmployeeSelfServiceDashboard() {
     const clientDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
     const userTz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Kolkata';
 
-    // Immediately unblock from localStorage deleted keys for this tenant
-    try {
-      const delKey = `${currentEmp.id}::${clientDate}`;
-      const stored = localStorage.getItem(`hrms_deleted_att_${tenantSlug}`);
-      if (stored) {
-        const keys: string[] = JSON.parse(stored);
-        localStorage.setItem(
-          `hrms_deleted_att_${tenantSlug}`,
-          JSON.stringify(keys.filter((k) => k !== delKey))
-        );
-      }
-    } catch {
-      // ignore
-    }
-
     try {
       const res = await fetch(`/api/tenants/${tenantSlug}/attendance`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           employeeId: currentEmp.id,
+          employeeEmail: currentEmp.workEmail,
           action,
           notes: action === 'IN' ? 'Mobile Web Punch-In' : 'Mobile Web Punch-Out',
           clientTime: timeNow,
@@ -364,13 +354,20 @@ export default function EmployeeSelfServiceDashboard() {
 
       const json = await res.json();
       if (json.success) {
+        const returnedRec = json.data;
         if (action === 'IN') {
-          setPunchMessage(`Successfully punched IN at ${timeNow}.`);
+          setIsClockedIn(true);
+          setClockInTime(returnedRec?.clockInTime || timeNow);
+          setClockOutTime(null);
+          setPunchMessage(`Successfully punched IN at ${returnedRec?.clockInTime || timeNow}. Have a productive day!`);
         } else {
-          setPunchMessage(`Successfully punched OUT at ${timeNow}. Have a great evening!`);
+          setIsClockedIn(false);
+          setClockOutTime(returnedRec?.clockOutTime || timeNow);
+          setPunchMessage(`Successfully punched OUT at ${returnedRec?.clockOutTime || timeNow}. Have a great evening!`);
         }
-        // Refresh attendance records
-        await loadEmployeeDetails(currentEmp.id);
+
+        // Seamlessly update monthRecords & attendance history
+        setCalendarKey((k) => k + 1);
       } else {
         setIsClockedIn(prevIsClockedIn);
         setClockInTime(prevClockIn);
@@ -384,7 +381,7 @@ export default function EmployeeSelfServiceDashboard() {
       setPunchMessage('Failed to record punch. Please check your network connection.');
     } finally {
       setPunchLoading(false);
-      setTimeout(() => setPunchMessage(null), 5000);
+      setTimeout(() => setPunchMessage(null), 6000);
     }
   };
 
@@ -572,12 +569,12 @@ export default function EmployeeSelfServiceDashboard() {
             <div className="grid grid-cols-2 gap-3">
               <button
                 type="button"
-                disabled={isClockedIn || punchLoading || Boolean(clockOutTime)}
+                disabled={isClockedIn || punchLoading}
                 onClick={() => handlePunch('IN')}
                 className="py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs transition-all shadow-sm disabled:opacity-40 disabled:hover:bg-emerald-600 flex items-center justify-center gap-1.5 cursor-pointer disabled:cursor-not-allowed"
               >
                 <CheckCircle2 className="w-4 h-4" />
-                <span>Punch In</span>
+                <span>{punchLoading && !isClockedIn ? 'Punching In...' : clockOutTime ? 'Punch In Again' : 'Punch In'}</span>
               </button>
 
               <button
@@ -587,7 +584,7 @@ export default function EmployeeSelfServiceDashboard() {
                 className="py-3 px-4 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs transition-all shadow-sm disabled:opacity-40 disabled:hover:bg-rose-600 flex items-center justify-center gap-1.5 cursor-pointer disabled:cursor-not-allowed"
               >
                 <Clock className="w-4 h-4" />
-                <span>Punch Out</span>
+                <span>{punchLoading && isClockedIn ? 'Punching Out...' : 'Punch Out'}</span>
               </button>
             </div>
 
@@ -894,6 +891,7 @@ export default function EmployeeSelfServiceDashboard() {
         </div>
 
         <MonthlyAttendanceCalendar
+          key={calendarKey}
           tenantSlug={tenantSlug}
           employeeId={currentEmp.id}
           isEmployeeOnly={true}

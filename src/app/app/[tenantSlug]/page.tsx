@@ -23,13 +23,13 @@ export default function TenantOverviewPage() {
   const router = useRouter();
   const params = useParams();
   const tenantSlug = params.tenantSlug as string;
-  const { isEmployeeOnly } = useCurrentUser(tenantSlug);
+  const { user, isEmployeeOnly, loading: authLoading } = useCurrentUser(tenantSlug);
 
   useEffect(() => {
-    if (isEmployeeOnly) {
+    if (!authLoading && isEmployeeOnly) {
       router.replace(`/app/${tenantSlug}/my-dashboard`);
     }
-  }, [isEmployeeOnly, tenantSlug, router]);
+  }, [authLoading, isEmployeeOnly, tenantSlug, router]);
 
   const [tenant, setTenant] = useState<Tenant | null>(null);
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -152,7 +152,7 @@ export default function TenantOverviewPage() {
           </div>
         </div>
 
-        {employees.length === 0 && (
+        {!loading && employees.length === 0 && (
           <div className="p-6 rounded-2xl bg-gradient-to-r from-amber-50 via-white to-white border border-amber-200 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 rounded-2xl bg-amber-100 border border-amber-200 flex items-center justify-center text-amber-700 shrink-0">

@@ -2,11 +2,13 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import Navbar from '@/components/Navbar';
 import TenantSecurityVerification from '@/components/TenantSecurityVerification';
 import OnboardTenantModal from '@/components/OnboardTenantModal';
 import EditTenantModal from '@/components/EditTenantModal';
 import DeleteTenantModal from '@/components/DeleteTenantModal';
+import { useCurrentUser } from '@/lib/auth/useCurrentUser';
 import {
   Building2,
   Users,
@@ -28,6 +30,9 @@ import {
 import { Tenant, AuditLogEntry } from '@/lib/types';
 
 export default function SuperAdminPage() {
+  const router = useRouter();
+  const { user, isSuperAdmin, loading: authLoading } = useCurrentUser();
+
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [editingTenant, setEditingTenant] = useState<Tenant | null>(null);
   const [deletingTenant, setDeletingTenant] = useState<Tenant | null>(null);
@@ -41,6 +46,21 @@ export default function SuperAdminPage() {
   });
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
+
+  useEffect(() => {
+    if (!authLoading && !isSuperAdmin) {
+      router.replace('/login?redirect=/super-admin');
+    }
+  }, [authLoading, isSuperAdmin, router]);
+
+  if (authLoading || !isSuperAdmin) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col justify-center items-center p-4">
+        <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin mb-3"></div>
+        <p className="text-xs text-slate-400">Verifying Super Admin Authorization...</p>
+      </div>
+    );
+  }
 
   const fetchPlatformData = async () => {
     try {
