@@ -15,6 +15,9 @@ function SelectCompanyContent() {
   const [userName, setUserName] = useState('');
 
   useEffect(() => {
+    if (typeof document !== 'undefined') {
+      document.title = 'Select Company Workspace | Goodwin Grow HRMS';
+    }
     // Check localStorage session
     const raw = localStorage.getItem('currentUser');
     if (raw) {

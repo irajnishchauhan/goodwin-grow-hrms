@@ -39,6 +39,9 @@ function AccountActivationForm() {
 
   // Validate token if provided in query string
   useEffect(() => {
+    if (typeof document !== 'undefined') {
+      document.title = 'Activate Account | Goodwin Grow HRMS';
+    }
     if (initialToken) {
       validateToken(initialToken);
     }

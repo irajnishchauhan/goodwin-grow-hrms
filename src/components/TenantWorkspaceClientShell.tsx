@@ -67,6 +67,45 @@ export default function TenantWorkspaceClientShell({
     }
   }, [authLoading, user, pathname, tenantSlug, router]);
 
+  // Dynamically set browser tab title and favicon to company name and Goodwin logo
+  useEffect(() => {
+    if (typeof document !== 'undefined') {
+      const pageTitle = pathname.includes('/attendance')
+        ? 'Time & Attendance'
+        : pathname.includes('/leaves')
+        ? 'Leave Management'
+        : pathname.includes('/payroll')
+        ? 'Payroll & Salary Slips'
+        : pathname.includes('/my-dashboard')
+        ? 'Employee Self-Service'
+        : pathname.includes('/employees')
+        ? 'Employees Directory'
+        : pathname.includes('/org-chart')
+        ? 'Organization Tree'
+        : pathname.includes('/recruitment')
+        ? 'Recruitment & ATS'
+        : pathname.includes('/documents')
+        ? 'Document Vault'
+        : pathname.includes('/setup')
+        ? 'Setup Wizard'
+        : pathname.includes('/invitations')
+        ? 'Invitations & Access'
+        : pathname.includes('/settings')
+        ? 'Settings'
+        : 'Workforce Portal';
+
+      document.title = `${tenant.name} | ${pageTitle}`;
+
+      let link: HTMLLinkElement | null = document.querySelector("link[rel*='icon']");
+      if (!link) {
+        link = document.createElement('link');
+        link.rel = 'shortcut icon';
+        document.head.appendChild(link);
+      }
+      link.href = tenant.logoUrl || '/goodwin-logo.png';
+    }
+  }, [pathname, tenant.name, tenant.logoUrl]);
+
   const primaryColor = tenant.primaryColor || '#059669';
 
   if (authLoading || !user) {

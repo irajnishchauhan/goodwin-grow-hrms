@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -26,6 +26,12 @@ export default function ForgotPasswordPage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [step, setStep] = useState<'VERIFY_EMAIL' | 'SET_PASSWORD'>('VERIFY_EMAIL');
+
+  useEffect(() => {
+    if (typeof document !== 'undefined') {
+      document.title = 'Reset Password | Goodwin Grow HRMS';
+    }
+  }, []);
 
   const handleVerifyEmail = async (e: React.FormEvent) => {
     e.preventDefault();

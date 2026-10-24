@@ -75,6 +75,9 @@ export default function PlatformHomePage() {
   };
 
   useEffect(() => {
+    if (typeof document !== 'undefined') {
+      document.title = 'Goodwin Grow HRMS | Enterprise Workforce & Payroll Gateway';
+    }
     fetchTenants();
     fetchSupabaseHealth();
   }, []);

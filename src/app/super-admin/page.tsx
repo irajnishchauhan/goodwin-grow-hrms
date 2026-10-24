@@ -79,6 +79,9 @@ export default function SuperAdminPage() {
   };
 
   useEffect(() => {
+    if (typeof document !== 'undefined') {
+      document.title = 'Super Admin Console | Goodwin Grow HRMS';
+    }
     fetchPlatformData();
   }, []);
 
