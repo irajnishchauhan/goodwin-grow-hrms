@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Tenant, UserRole } from '@/lib/types';
 import { useCurrentUser } from '@/lib/auth/useCurrentUser';
 import {
@@ -46,6 +46,7 @@ export default function TenantWorkspaceClientShell({
 }: TenantWorkspaceClientShellProps) {
   const router = useRouter();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const {
     user,
     role,
@@ -404,7 +405,33 @@ export default function TenantWorkspaceClientShell({
               <div className="space-y-0.5">
                 {section.items.map((item) => {
                   const Icon = item.icon;
-                  const isActive = pathname === item.href.split('?')[0];
+                  const itemPath = item.href.split('?')[0];
+                  const itemQuery = item.href.split('?')[1];
+                  let isActive = false;
+
+                  if (pathname === itemPath) {
+                    if (itemQuery) {
+                      const itemParams = new URLSearchParams(itemQuery);
+                      const itemTab = itemParams.get('tab');
+                      const currentTab = searchParams.get('tab');
+                      if (itemTab && currentTab) {
+                        isActive = itemTab === currentTab || (itemTab === 'types' && currentTab === 'policies');
+                      } else {
+                        isActive = false;
+                      }
+                    } else {
+                      const currentTab = searchParams.get('tab');
+                      if (itemPath.endsWith('/payroll')) {
+                        isActive = !currentTab || currentTab === 'register';
+                      } else if (itemPath.endsWith('/leaves')) {
+                        isActive = !currentTab || currentTab === 'applications';
+                      } else if (itemPath.endsWith('/attendance')) {
+                        isActive = !currentTab || currentTab === 'attendance';
+                      } else {
+                        isActive = true;
+                      }
+                    }
+                  }
                   return (
                     <Link
                       key={item.href}

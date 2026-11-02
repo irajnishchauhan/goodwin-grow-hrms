@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
 import {
   Calendar,
   Plus,
@@ -20,6 +20,7 @@ import HolidayCalendarManager from '@/components/HolidayCalendarManager';
 
 export default function TenantLeavesPage() {
   const params = useParams();
+  const searchParams = useSearchParams();
   const tenantSlug = params.tenantSlug as string;
   const { user, isEmployeeOnly, isManager } = useCurrentUser(tenantSlug);
 
@@ -28,7 +29,22 @@ export default function TenantLeavesPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [tenant, setTenant] = useState<Tenant | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'applications' | 'policies' | 'holidays'>('applications');
+
+  const tabParam = searchParams?.get('tab');
+  const [activeTab, setActiveTab] = useState<'applications' | 'policies' | 'holidays'>(
+    tabParam === 'types' || tabParam === 'policies' ? 'policies' : tabParam === 'holidays' ? 'holidays' : 'applications'
+  );
+
+  useEffect(() => {
+    const t = searchParams?.get('tab');
+    if (t === 'types' || t === 'policies') {
+      setActiveTab('policies');
+    } else if (t === 'holidays') {
+      setActiveTab('holidays');
+    } else if (t === 'applications' || !t) {
+      setActiveTab('applications');
+    }
+  }, [searchParams]);
 
   // Apply Modal State
   const [modalOpen, setModalOpen] = useState(false);

@@ -49,8 +49,10 @@ export default async function TenantWorkspaceLayout({ children, params }: Tenant
   }
 
   return (
-    <TenantWorkspaceClientShell tenant={tenant} tenantSlug={tenantSlug}>
-      {children}
-    </TenantWorkspaceClientShell>
+    <React.Suspense fallback={<div className="min-h-screen bg-slate-900 flex items-center justify-center text-white text-xs font-mono">Loading Goodwin Grow HRMS Workspace...</div>}>
+      <TenantWorkspaceClientShell tenant={tenant} tenantSlug={tenantSlug}>
+        {children}
+      </TenantWorkspaceClientShell>
+    </React.Suspense>
   );
 }
