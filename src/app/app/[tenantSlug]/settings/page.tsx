@@ -96,6 +96,7 @@ export default function TenantSettingsPage() {
   const [sandwichLeavePolicy, setSandwichLeavePolicy] = useState(true);
 
   const [savedMsg, setSavedMsg] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState(false);
 
   useEffect(() => {
@@ -139,9 +140,10 @@ export default function TenantSettingsPage() {
     const file = e.target.files?.[0];
     if (!file) return;
     if (file.size > 2 * 1024 * 1024) {
-      alert('Logo image must be smaller than 2MB');
+      setErrorMsg('Logo image must be smaller than 2MB');
       return;
     }
+    setErrorMsg(null);
     const reader = new FileReader();
     reader.onload = () => {
       if (typeof reader.result === 'string') {
@@ -155,6 +157,7 @@ export default function TenantSettingsPage() {
     e.preventDefault();
     try {
       setSaving(true);
+      setErrorMsg(null);
       const payload = {
         name,
         companyCode,
@@ -188,11 +191,11 @@ export default function TenantSettingsPage() {
         router.refresh();
         setTimeout(() => setSavedMsg(false), 4000);
       } else {
-        alert(json.error || 'Failed to save settings');
+        setErrorMsg(json.error || 'Failed to save settings');
       }
     } catch (err) {
       console.error('Failed to save workspace settings:', err);
-      alert('Error updating workspace settings');
+      setErrorMsg('Error updating workspace settings');
     } finally {
       setSaving(false);
     }
@@ -248,6 +251,20 @@ export default function TenantSettingsPage() {
             <div>
               <span className="font-semibold">Settings Successfully Persisted!</span> Workspace settings, regional preferences, and brand themes have been saved and synced with cloud database.
             </div>
+          </div>
+        )}
+
+        {/* Error Alert */}
+        {errorMsg && (
+          <div className="p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center justify-between gap-2.5 shadow-sm animate-fade-in">
+            <span className="font-semibold">⚠️ {errorMsg}</span>
+            <button
+              type="button"
+              onClick={() => setErrorMsg(null)}
+              className="text-rose-700 hover:text-rose-900 font-bold text-xs"
+            >
+              Dismiss
+            </button>
           </div>
         )}
 

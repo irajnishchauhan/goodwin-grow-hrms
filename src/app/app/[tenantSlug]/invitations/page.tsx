@@ -143,10 +143,11 @@ export default function TenantInvitationsPage() {
         setActionMsg(`✓ Invitation dispatched to ${json.data.email}`);
         fetchInvitations();
       } else {
-        alert(json.error || 'Failed to dispatch invitation');
+        setActionMsg(`⚠️ ${json.error || 'Failed to dispatch invitation'}`);
       }
     } catch (e) {
       console.error(e);
+      setActionMsg('⚠️ Error dispatching invitation');
     }
   };
 
@@ -179,10 +180,11 @@ export default function TenantInvitationsPage() {
         setActionMsg(`✓ Password successfully reset for ${resetEmail}`);
         fetchInvitations();
       } else {
-        alert(json.error || 'Failed to reset password');
+        setActionMsg(`⚠️ ${json.error || 'Failed to reset password'}`);
       }
     } catch (err) {
       console.error(err);
+      setActionMsg('⚠️ Error communicating with server for password reset');
     } finally {
       setResetLoading(false);
     }
@@ -213,10 +215,11 @@ export default function TenantInvitationsPage() {
         setActionMsg(`✓ Invitation link refreshed and resent to ${inv.email}.`);
         fetchInvitations();
       } else {
-        alert(json.error || 'Failed to resend invitation');
+        setActionMsg(`⚠️ ${json.error || 'Failed to resend invitation'}`);
       }
     } catch (e) {
       console.error(e);
+      setActionMsg('⚠️ Error resending invitation');
     }
   };
 
@@ -238,10 +241,11 @@ export default function TenantInvitationsPage() {
         setActionMsg(`✓ Fresh invitation link generated for ${inv.employeeName} (${inv.email}).`);
         fetchInvitations();
       } else {
-        alert(json.error || 'Failed to reinvite employee');
+        setActionMsg(`⚠️ ${json.error || 'Failed to reinvite employee'}`);
       }
     } catch (e) {
       console.error(e);
+      setActionMsg('⚠️ Error generating new invitation');
     }
   };
 
@@ -274,11 +278,12 @@ export default function TenantInvitationsPage() {
         setConfirmModal({ isOpen: false, inv: null, actionType: 'REVOKE', loading: false });
         fetchInvitations();
       } else {
-        alert(json.error || 'Failed to update status');
+        setActionMsg(`⚠️ ${json.error || 'Failed to update status'}`);
         setConfirmModal((prev) => ({ ...prev, loading: false }));
       }
     } catch (e) {
       console.error(e);
+      setActionMsg('⚠️ Error updating invitation status');
       setConfirmModal((prev) => ({ ...prev, loading: false }));
     }
   };

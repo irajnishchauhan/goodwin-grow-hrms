@@ -189,11 +189,11 @@ export default function TenantLeavesPage() {
       if (json.success) {
         setApplications((prev) => prev.filter((a) => a.id !== leaveId));
       } else {
-        alert(json.error || 'Failed to withdraw leave application');
+        setError(json.error || 'Failed to withdraw leave application');
       }
     } catch (e) {
       console.error(e);
-      alert('Error withdrawing leave application');
+      setError('Error withdrawing leave application');
     }
   };
 
