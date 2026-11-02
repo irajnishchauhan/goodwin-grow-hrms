@@ -78,6 +78,7 @@ export default function TenantOrgChartPage() {
   const [rootType, setRootType] = useState<'OWNER' | 'EMPLOYEE'>('OWNER');
   const [designatedRootEmpId, setDesignatedRootEmpId] = useState<string>('');
   const [reportingDraft, setReportingDraft] = useState<Record<string, string>>({});
+  const [hierarchyError, setHierarchyError] = useState<string | null>(null);
 
   const fetchEmployees = async () => {
     try {
@@ -229,6 +230,21 @@ export default function TenantOrgChartPage() {
     return { rootNode: currentRoot, unassignedNodes: unassigned };
   }, [employees, rootType, designatedRootEmpId, ownerHeadNode, selectedDept, searchQuery]);
 
+  // Anti-Cycle Safeguard: Retrieve all downstream subordinates for a given employee
+  const getSubordinateIds = (empId: string, visited = new Set<string>()): Set<string> => {
+    visited.add(empId);
+    employees.forEach((e) => {
+      if (e.reportingManagerId === empId && !visited.has(e.id)) {
+        getSubordinateIds(e.id, visited);
+      }
+    });
+    return visited;
+  };
+
+  const invalidQuickManagerIds = useMemo(() => {
+    return editingEmployee ? getSubordinateIds(editingEmployee.id) : new Set<string>();
+  }, [editingEmployee, employees]);
+
   // Save full hierarchy batch
   const handleSaveHierarchy = async () => {
     setIsSavingHierarchy(true);
@@ -289,11 +305,11 @@ export default function TenantOrgChartPage() {
           setSaveSuccessMsg(null);
         }, 1200);
       } else {
-        alert(data.error || 'Failed to save hierarchy changes');
+        setHierarchyError(data.error || 'Failed to save hierarchy changes');
       }
     } catch (err) {
       console.error(err);
-      alert('Error updating organization hierarchy');
+      setHierarchyError('Error updating organization hierarchy');
     } finally {
       setIsSavingHierarchy(false);
     }
@@ -337,16 +353,109 @@ export default function TenantOrgChartPage() {
         setEditingEmployee(null);
         await fetchEmployees();
       } else {
-        alert(data.error || 'Failed to update reporting line');
+        setHierarchyError(data.error || 'Failed to update reporting line');
       }
     } catch (err) {
       console.error(err);
-      alert('Network error updating reporting line');
+      setHierarchyError('Network error updating reporting line');
     }
+  };
+
+  // Recursive Tree Node Renderer supporting arbitrary hierarchy depth
+  const renderOrgNode = (member: HierarchyNode, depth: number = 1): React.ReactNode => {
+    const cardWidth = depth === 1 ? 'w-72' : depth === 2 ? 'w-64' : 'w-56';
+
+    return (
+      <div key={member.id} className="flex flex-col items-center">
+        {/* Vertical Connector into Card */}
+        <div className="w-0.5 h-6 bg-slate-300 -mt-2 mb-2"></div>
+
+        {/* Employee Card */}
+        <div className={`${cardWidth} p-4 rounded-2xl bg-white border border-slate-200 hover:border-emerald-500/80 hover:shadow-lg transition-all text-center space-y-2.5 relative group shadow-xs`}>
+          {/* Role Pill */}
+          <div className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 text-[10px] font-semibold uppercase tracking-wider">
+            <Briefcase className="w-3 h-3 text-slate-400" />
+            <span className="truncate max-w-[140px]">{member.department}</span>
+          </div>
+
+          <div className="w-12 h-12 mx-auto rounded-full bg-slate-100 border-2 border-slate-200 group-hover:border-emerald-400 flex items-center justify-center font-bold text-slate-700 text-sm transition-colors shadow-xs">
+            {member.avatarUrl ? (
+              <img
+                src={member.avatarUrl}
+                alt={member.name}
+                className="w-full h-full rounded-full object-cover"
+              />
+            ) : (
+              <span>
+                {member.name.split(' ')[0]?.[0]}
+                {member.name.split(' ')[1]?.[0] || ''}
+              </span>
+            )}
+          </div>
+
+          <div>
+            <h4 className="font-bold text-slate-900 text-xs sm:text-sm truncate">{member.name}</h4>
+            <p className="text-xs text-emerald-700 font-semibold truncate">{member.designation}</p>
+            <p className="text-[10px] text-slate-400 font-mono mt-0.5 truncate">{member.email}</p>
+          </div>
+
+          <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
+            <span className="font-mono text-slate-600 font-medium">{member.code}</span>
+            <span className="text-slate-600 bg-slate-100 px-2 py-0.5 rounded text-[10px] font-medium">
+              {member.directReports.length} Reports
+            </span>
+          </div>
+
+          {/* Change Manager Action */}
+          {canEditHierarchy && member.rawEmployee && (
+            <div className="pt-1 border-t border-slate-100">
+              <button
+                onClick={() => {
+                  setEditingEmployee(member.rawEmployee!);
+                  setSelectedNewManagerId(member.reportingManagerId || 'OWNER');
+                }}
+                className="w-full py-1.5 rounded-lg bg-slate-50 hover:bg-emerald-50 text-slate-700 hover:text-emerald-700 border border-slate-200 hover:border-emerald-200 text-xs font-semibold transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <Edit3 className="w-3 h-3 text-emerald-600" />
+                <span>Change Manager</span>
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Recursive Sub-Reports */}
+        {member.directReports.length > 0 && (
+          <div className="flex flex-col items-center mt-3">
+            <div className="w-0.5 h-6 bg-slate-300"></div>
+            {member.directReports.length > 1 && (
+              <div className="h-0.5 bg-slate-300 w-3/4 mb-4 relative">
+                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 absolute left-0 -top-[2px]"></div>
+                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 absolute right-0 -top-[2px]"></div>
+              </div>
+            )}
+            <div className="flex flex-wrap justify-center gap-6">
+              {member.directReports.map((subMember) => renderOrgNode(subMember, depth + 1))}
+            </div>
+          </div>
+        )}
+      </div>
+    );
   };
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-16">
+      {hierarchyError && (
+        <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-semibold flex items-center justify-between animate-fade-in">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+            <span>{hierarchyError}</span>
+          </div>
+          <button onClick={() => setHierarchyError(null)} className="text-rose-500 hover:text-rose-700 cursor-pointer">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {/* Page Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-3xl border border-slate-200/80 shadow-sm">
         <div className="space-y-1">
@@ -545,101 +654,9 @@ export default function TenantOrgChartPage() {
               </div>
             )}
 
-            {/* Direct Reports Grid */}
-            <div className="flex flex-wrap justify-center gap-8 w-full max-w-6xl">
-              {rootNode.directReports.map((member) => (
-                <div key={member.id} className="flex flex-col items-center">
-                  {/* Vertical Connector into Card */}
-                  {rootNode.directReports.length > 1 && (
-                    <div className="w-0.5 h-6 bg-slate-300 -mt-8 mb-2"></div>
-                  )}
-
-                  {/* Employee Card */}
-                  <div className="w-72 p-5 rounded-2xl bg-white border border-slate-200 hover:border-emerald-500/80 hover:shadow-lg transition-all text-center space-y-3 relative group shadow-xs">
-                    {/* Role Pill */}
-                    <div className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 text-[10px] font-semibold uppercase tracking-wider">
-                      <Briefcase className="w-3 h-3 text-slate-400" />
-                      <span>{member.department}</span>
-                    </div>
-
-                    <div className="w-14 h-14 mx-auto rounded-full bg-slate-100 border-2 border-slate-200 group-hover:border-emerald-400 flex items-center justify-center font-bold text-slate-700 text-base transition-colors shadow-xs">
-                      {member.avatarUrl ? (
-                        <img
-                          src={member.avatarUrl}
-                          alt={member.name}
-                          className="w-full h-full rounded-full object-cover"
-                        />
-                      ) : (
-                        <span>
-                          {member.name.split(' ')[0]?.[0]}
-                          {member.name.split(' ')[1]?.[0] || ''}
-                        </span>
-                      )}
-                    </div>
-
-                    <div>
-                      <h4 className="font-bold text-slate-900 text-sm">{member.name}</h4>
-                      <p className="text-xs text-emerald-700 font-semibold">{member.designation}</p>
-                      <p className="text-[10px] text-slate-400 font-mono mt-0.5">{member.email}</p>
-                    </div>
-
-                    <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
-                      <span className="font-mono text-slate-600 font-medium">{member.code}</span>
-                      <span className="text-slate-600 bg-slate-100 px-2 py-0.5 rounded text-[10px] font-medium">
-                        {member.directReports.length} Reports
-                      </span>
-                    </div>
-
-                    {/* Change Manager Action */}
-                    {canEditHierarchy && member.rawEmployee && (
-                      <div className="pt-1 border-t border-slate-100">
-                        <button
-                          onClick={() => {
-                            setEditingEmployee(member.rawEmployee!);
-                            setSelectedNewManagerId(member.reportingManagerId || 'OWNER');
-                          }}
-                          className="w-full py-1.5 rounded-lg bg-slate-50 hover:bg-emerald-50 text-slate-700 hover:text-emerald-700 border border-slate-200 hover:border-emerald-200 text-xs font-semibold transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-                        >
-                          <Edit3 className="w-3 h-3 text-emerald-600" />
-                          <span>Change Manager</span>
-                        </button>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Level 3: Nested Direct Reports (if any) */}
-                  {member.directReports.length > 0 && (
-                    <div className="flex flex-col items-center mt-4">
-                      <div className="w-0.5 h-6 bg-slate-300"></div>
-                      <div className="flex flex-wrap justify-center gap-4 mt-2">
-                        {member.directReports.map((subMember) => (
-                          <div
-                            key={subMember.id}
-                            className="w-60 p-3.5 rounded-xl bg-white border border-slate-200 hover:border-emerald-400 shadow-xs text-center space-y-2"
-                          >
-                            <h5 className="font-bold text-slate-800 text-xs">{subMember.name}</h5>
-                            <p className="text-[11px] text-emerald-700">{subMember.designation}</p>
-                            <span className="text-[10px] text-slate-400 font-mono">
-                              {subMember.code}
-                            </span>
-                            {canEditHierarchy && subMember.rawEmployee && (
-                              <button
-                                onClick={() => {
-                                  setEditingEmployee(subMember.rawEmployee!);
-                                  setSelectedNewManagerId(subMember.reportingManagerId || 'OWNER');
-                                }}
-                                className="w-full mt-1 text-[10px] text-emerald-700 hover:underline font-semibold cursor-pointer"
-                              >
-                                Reassign Manager
-                              </button>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ))}
+            {/* Direct Reports Grid (Recursive Arbitrary Depth) */}
+            <div className="flex flex-wrap justify-center gap-8 w-full max-w-7xl">
+              {rootNode.directReports.map((member) => renderOrgNode(member, 1))}
             </div>
           </div>
         ) : (
@@ -951,11 +968,14 @@ export default function TenantOrgChartPage() {
                 </option>
                 {employees
                   .filter((e) => e.id !== editingEmployee.id)
-                  .map((e) => (
-                    <option key={e.id} value={e.id}>
-                      {e.firstName} {e.lastName} ({e.designationTitle})
-                    </option>
-                  ))}
+                  .map((e) => {
+                    const isSubordinate = invalidQuickManagerIds.has(e.id);
+                    return (
+                      <option key={e.id} value={e.id} disabled={isSubordinate}>
+                        {e.firstName} {e.lastName} ({e.designationTitle}){isSubordinate ? ' — [Subordinate: Causes Cycle]' : ''}
+                      </option>
+                    );
+                  })}
               </select>
             </div>
 

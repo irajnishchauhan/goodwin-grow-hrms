@@ -1807,6 +1807,15 @@ class HRMSDataStore {
     return req;
   }
 
+  public deleteRegularization(tenantId: string, regId: string): boolean {
+    const idx = this.regularizations.findIndex((r) => r.tenantId === tenantId && r.id === regId);
+    if (idx !== -1) {
+      this.regularizations.splice(idx, 1);
+      return true;
+    }
+    return false;
+  }
+
   // -------------------------------------------------------------
   // LEAVE MANAGEMENT
   // -------------------------------------------------------------

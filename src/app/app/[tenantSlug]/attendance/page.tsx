@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, Suspense } from 'react';
+import React, { useState, useEffect, useMemo, Suspense } from 'react';
 import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import {
   Clock,
@@ -60,6 +60,7 @@ function AttendanceContent() {
     searchParams.get('date') || getLocalTodayDate()
   );
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
+  const [monthRecords, setMonthRecords] = useState<AttendanceRecord[]>([]);
   const [roster, setRoster] = useState<AttendanceRecord[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [regularizations, setRegularizations] = useState<RegularizationRequest[]>([]);
@@ -240,6 +241,9 @@ function AttendanceContent() {
       if (json.success) {
         const fetchedRecords: AttendanceRecord[] = json.data.records || [];
         setRecords(fetchedRecords);
+        if (json.data.monthRecords) {
+          setMonthRecords(json.data.monthRecords);
+        }
         if (json.data.roster) {
           setRoster(json.data.roster);
         }
@@ -528,6 +532,27 @@ function AttendanceContent() {
     }
   };
 
+  // Withdraw Regularization Request
+  const handleWithdrawRegularization = async (regId: string) => {
+    if (!confirm('Are you sure you want to withdraw this regularization request?')) return;
+    try {
+      const res = await fetch(`/api/tenants/${tenantSlug}/attendance?regularizationId=${encodeURIComponent(regId)}`, {
+        method: 'DELETE'
+      });
+      const json = await res.json();
+      if (json.success) {
+        setRegularizations((prev) => prev.filter((r) => r.id !== regId));
+        setStatusMsg('Regularization request withdrawn successfully.');
+        setTimeout(() => setStatusMsg(null), 3000);
+      } else {
+        setStatusMsg(json.error || 'Failed to withdraw regularization');
+      }
+    } catch (err) {
+      console.error('Error withdrawing regularization:', err);
+      setStatusMsg('Error communicating with server');
+    }
+  };
+
   // Quick Open Regularization Modal for a specific unpunched or half-day record
   const handleQuickRegularize = (empId: string, attDate: string) => {
     setRegEmpId(empId);
@@ -625,11 +650,11 @@ function AttendanceContent() {
         setDeletingRecord(null);
         fetchAttendance(selectedDate);
       } else {
-        alert(json.error || 'Failed to delete attendance record');
+        setStatusMsg(json.error || 'Failed to delete attendance record');
       }
     } catch (err) {
       console.error(err);
-      alert('Failed to communicate with server');
+      setStatusMsg('Failed to communicate with server');
     } finally {
       setDeleteSubmitting(false);
     }
@@ -680,11 +705,11 @@ function AttendanceContent() {
         setIsBulkDeleteModalOpen(false);
         fetchAttendance(selectedDate);
       } else {
-        alert(json.error || 'Failed to delete selected records');
+        setStatusMsg(json.error || 'Failed to delete selected records');
       }
     } catch (err) {
       console.error(err);
-      alert('Failed to communicate with server');
+      setStatusMsg('Failed to communicate with server');
     } finally {
       setBulkDeleting(false);
     }
@@ -902,6 +927,29 @@ function AttendanceContent() {
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
   };
+
+  // Monthly Aggregate Workforce Metrics (Overtime & Hours)
+  const monthlyStats = useMemo(() => {
+    const relevant = isEmployeeOnly && currentEmp
+      ? monthRecords.filter((r) => r.employeeId === currentEmp.id)
+      : monthRecords;
+
+    const daysPresent = relevant.filter((r) => r.status === 'PRESENT' || r.status === 'LATE_ENTRY').length;
+    const totalHours = relevant.reduce((sum, r) => sum + (r.workingHours || 0), 0);
+    const overtimeHours = relevant.reduce((sum, r) => {
+      const rAny = r as any;
+      const ot = Number(rAny.overtimeHours) || Math.max(0, (r.workingHours || 0) - 8.5);
+      return sum + ot;
+    }, 0);
+    const lateDays = relevant.filter((r) => r.status === 'LATE_ENTRY' || ((r as any).lateMinutes && (r as any).lateMinutes > 0)).length;
+
+    return {
+      daysPresent,
+      totalHours: Number(totalHours.toFixed(1)),
+      overtimeHours: Number(overtimeHours.toFixed(1)),
+      lateDays
+    };
+  }, [monthRecords, isEmployeeOnly, currentEmp]);
 
   const pendingRegsCount = regularizations.filter((r) => r.status === 'PENDING').length;
   const approvedRegsCount = regularizations.filter((r) => r.status === 'APPROVED').length;
@@ -1133,6 +1181,36 @@ function AttendanceContent() {
                 </div>
               </div>
             )}
+
+            {/* Monthly Cumulative Summary Strip */}
+            <div className="p-4 rounded-2xl bg-slate-900 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs shadow-md">
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                  {selectedDate.substring(0, 7)} Monthly Aggregate
+                </span>
+                <span className="text-slate-300 font-medium text-[11px]">
+                  {isEmployeeOnly ? 'Personal Month-to-Date Summary' : 'Workforce Punch & Overtime Summary'}
+                </span>
+              </div>
+              <div className="flex items-center gap-4 flex-wrap text-[11px] font-mono">
+                <div>
+                  <span className="text-slate-400">Punched Days: </span>
+                  <strong className="text-white font-bold">{monthlyStats.daysPresent}</strong>
+                </div>
+                <div>
+                  <span className="text-slate-400">Total Hours: </span>
+                  <strong className="text-emerald-400 font-bold">{monthlyStats.totalHours}h</strong>
+                </div>
+                <div>
+                  <span className="text-slate-400">Overtime: </span>
+                  <strong className="text-amber-400 font-bold">{monthlyStats.overtimeHours}h</strong>
+                </div>
+                <div>
+                  <span className="text-slate-400">Late Days: </span>
+                  <strong className="text-rose-400 font-bold">{monthlyStats.lateDays}</strong>
+                </div>
+              </div>
+            </div>
 
             {/* KPI Metric Cards - Distinct Metrics for Clarity */}
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3.5">
@@ -1776,28 +1854,39 @@ function AttendanceContent() {
                               </span>
                             </td>
                             <td className="px-6 py-4 text-right">
-                              {isAdmin && reg.status === 'PENDING' && (
-                                <div className="flex items-center justify-end gap-1.5">
+                              <div className="flex items-center justify-end gap-1.5">
+                                {isAdmin && reg.status === 'PENDING' && (
+                                  <>
+                                    <button
+                                      onClick={() => {
+                                        setReviewingReg(reg);
+                                        setReviewAction('APPROVED');
+                                      }}
+                                      className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] shadow-xs cursor-pointer"
+                                    >
+                                      Approve
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        setReviewingReg(reg);
+                                        setReviewAction('REJECTED');
+                                      }}
+                                      className="px-2.5 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold text-[11px] cursor-pointer"
+                                    >
+                                      Reject
+                                    </button>
+                                  </>
+                                )}
+                                {reg.status === 'PENDING' && (isAdmin || (currentEmp && reg.employeeId === currentEmp.id)) && (
                                   <button
-                                    onClick={() => {
-                                      setReviewingReg(reg);
-                                      setReviewAction('APPROVED');
-                                    }}
-                                    className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] shadow-xs cursor-pointer"
+                                    onClick={() => handleWithdrawRegularization(reg.id)}
+                                    className="p-1.5 rounded-lg bg-slate-100 hover:bg-rose-100 text-slate-500 hover:text-rose-700 border border-slate-200 hover:border-rose-300 transition-colors cursor-pointer"
+                                    title="Withdraw Regularization Request"
                                   >
-                                    Approve
+                                    <Trash2 className="w-3.5 h-3.5" />
                                   </button>
-                                  <button
-                                    onClick={() => {
-                                      setReviewingReg(reg);
-                                      setReviewAction('REJECTED');
-                                    }}
-                                    className="px-2.5 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold text-[11px] cursor-pointer"
-                                  >
-                                    Reject
-                                  </button>
-                                </div>
-                              )}
+                                )}
+                              </div>
                             </td>
                           </tr>
                         ))

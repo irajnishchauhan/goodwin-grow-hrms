@@ -164,6 +164,23 @@ export async function PATCH(
         finalRef
       );
       await Promise.all(updatedSlips.map((s) => SupabaseStore.saveSalarySlip(s)));
+
+      // Emit in-app persistent notifications for all employees
+      try {
+        const notifs = updatedSlips.map((s) =>
+          db.createNotification(tenant.id, {
+            title: `Salary Disbursed for ${s.month}`,
+            message: `Your net salary of ₹${s.netPay.toLocaleString('en-IN')} for ${s.month} has been marked as PAID. Official payslip PDF is ready in your portal.`,
+            type: 'SALARY_PAID',
+            employeeId: s.employeeId,
+            linkUrl: `/app/${tenantSlug}/payroll?tab=slips`
+          })
+        );
+        await Promise.all(notifs.map((n) => SupabaseStore.saveNotification(n)));
+      } catch (e) {
+        console.warn('Failed to broadcast payroll notifications:', e);
+      }
+
       return NextResponse.json({
         success: true,
         message: `Payment confirmed and marked as PAID for all ${updatedSlips.length} employees for ${targetMonth}.`,
@@ -186,6 +203,20 @@ export async function PATCH(
     }
 
     await SupabaseStore.saveSalarySlip(updatedSlip);
+
+    // Emit in-app notification for single employee
+    try {
+      const notif = db.createNotification(tenant.id, {
+        title: `Salary Disbursed for ${updatedSlip.month}`,
+        message: `Your net salary of ₹${updatedSlip.netPay.toLocaleString('en-IN')} for ${updatedSlip.month} has been marked as PAID. Official payslip PDF is ready in your portal.`,
+        type: 'SALARY_PAID',
+        employeeId: updatedSlip.employeeId,
+        linkUrl: `/app/${tenantSlug}/payroll?tab=slips`
+      });
+      await SupabaseStore.saveNotification(notif);
+    } catch (e) {
+      console.warn('Failed to send employee payroll notification:', e);
+    }
 
     return NextResponse.json({
       success: true,

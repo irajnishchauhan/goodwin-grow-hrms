@@ -200,6 +200,37 @@ function AccountActivationForm() {
                     className="w-full pl-9 pr-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-300 text-slate-900 font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
                   />
                 </div>
+                {password && (
+                  <div className="mt-2 space-y-1">
+                    <div className="flex gap-1 h-1">
+                      {[1, 2, 3, 4].map((step) => {
+                        let score = 0;
+                        if (password.length >= 8) score++;
+                        if (/[A-Z]/.test(password) && /[a-z]/.test(password)) score++;
+                        if (/\d/.test(password)) score++;
+                        if (/[^A-Za-z0-9]/.test(password)) score++;
+                        const active = score >= step;
+                        const color = score === 1 ? 'bg-rose-500' : score === 2 ? 'bg-amber-500' : score === 3 ? 'bg-blue-500' : 'bg-emerald-500';
+                        return (
+                          <div
+                            key={step}
+                            className={`flex-1 rounded-full transition-all ${active ? color : 'bg-slate-200'}`}
+                          />
+                        );
+                      })}
+                    </div>
+                    <div className="text-[10px] text-slate-500 font-medium flex justify-between">
+                      <span>Password Strength</span>
+                      <span className="font-bold">
+                        {password.length < 8 ? 'Too Short' : (
+                          (/[A-Z]/.test(password) && /\d/.test(password) && /[^A-Za-z0-9]/.test(password))
+                            ? 'Very Strong'
+                            : (/\d/.test(password) ? 'Good' : 'Fair')
+                        )}
+                      </span>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div>
@@ -212,9 +243,14 @@ function AccountActivationForm() {
                     placeholder="••••••••••••"
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
-                    className="w-full pl-9 pr-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-300 text-slate-900 font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+                    className={`w-full pl-9 pr-3.5 py-2.5 rounded-xl bg-slate-50 border text-slate-900 font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500/30 ${
+                      confirmPassword && password !== confirmPassword ? 'border-rose-400 bg-rose-50/20' : 'border-slate-300'
+                    }`}
                   />
                 </div>
+                {confirmPassword && password !== confirmPassword && (
+                  <p className="text-[10px] text-rose-600 font-semibold mt-1">Passwords do not match</p>
+                )}
               </div>
 
               <button

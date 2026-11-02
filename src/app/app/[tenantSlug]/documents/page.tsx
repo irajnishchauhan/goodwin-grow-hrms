@@ -165,10 +165,11 @@ export default function TenantDocumentsPage() {
         setTimeout(() => setAlertMessage(null), 4000);
         fetchDocs();
       } else {
-        alert(json.error || 'Failed to upload document');
+        setAlertMessage({ text: json.error || 'Failed to upload document', type: 'error' });
       }
     } catch (e) {
       console.error(e);
+      setAlertMessage({ text: 'Error uploading document', type: 'error' });
     } finally {
       setSubmittingUpload(false);
     }
@@ -205,10 +206,11 @@ export default function TenantDocumentsPage() {
         setTimeout(() => setAlertMessage(null), 4000);
         fetchDocs();
       } else {
-        alert(json.error || 'Failed to update document');
+        setAlertMessage({ text: json.error || 'Failed to update document', type: 'error' });
       }
     } catch (e) {
       console.error(e);
+      setAlertMessage({ text: 'Error updating document', type: 'error' });
     } finally {
       setSubmittingEdit(false);
     }
@@ -229,10 +231,11 @@ export default function TenantDocumentsPage() {
         setTimeout(() => setAlertMessage(null), 4000);
         fetchDocs();
       } else {
-        alert(json.error || 'Failed to delete document');
+        setAlertMessage({ text: json.error || 'Failed to delete document', type: 'error' });
       }
     } catch (e) {
       console.error(e);
+      setAlertMessage({ text: 'Error deleting document', type: 'error' });
     } finally {
       setIsDeleting(false);
     }

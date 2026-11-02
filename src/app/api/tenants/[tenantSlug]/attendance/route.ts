@@ -523,6 +523,18 @@ export async function DELETE(
     let deleteAllForDate: string | null = null;
 
     const url = new URL(req.url);
+    const regularizationId = url.searchParams.get('regularizationId');
+    if (regularizationId) {
+      db.deleteRegularization(tenant.id, regularizationId);
+      await SupabaseStore.deleteRegularization(tenant.id, regularizationId);
+      SupabaseStore.invalidate(tenant.id);
+      db.invalidateCache(tenant.id);
+      return NextResponse.json({
+        success: true,
+        message: 'Regularization request withdrawn successfully'
+      });
+    }
+
     recordId = url.searchParams.get('recordId') || url.searchParams.get('id');
     employeeId = url.searchParams.get('employeeId');
     date = url.searchParams.get('date');

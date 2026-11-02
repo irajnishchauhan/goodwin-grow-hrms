@@ -18,7 +18,15 @@ export async function GET(
     const { searchParams } = new URL(req.url);
     const employeeId = searchParams.get('employeeId') || searchParams.get('email') || undefined;
 
-    const notifications = db.getNotifications(tenant.id, employeeId);
+    let notifications = await SupabaseStore.getNotifications(tenant.id, employeeId);
+    if (!notifications || notifications.length === 0) {
+      notifications = db.getNotifications(tenant.id, employeeId);
+      if (notifications.length > 0) {
+        // Sync defaults to Supabase asynchronously
+        Promise.all(notifications.map((n) => SupabaseStore.saveNotification(n))).catch(() => {});
+      }
+    }
+
     const unreadCount = notifications.filter((n) => !n.isRead).length;
 
     return NextResponse.json(
@@ -53,6 +61,7 @@ export async function PATCH(
 
     if (markAll) {
       db.markAllNotificationsRead(tenant.id, employeeId);
+      await SupabaseStore.markAllNotificationsRead(tenant.id, employeeId);
       return NextResponse.json({ success: true, message: 'All notifications marked as read' });
     }
 
@@ -61,6 +70,7 @@ export async function PATCH(
     }
 
     const updated = db.markNotificationRead(tenant.id, id);
+    await SupabaseStore.markNotificationRead(tenant.id, id);
     return NextResponse.json({ success: updated, message: updated ? 'Notification marked as read' : 'Notification not found' });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Error updating notification';

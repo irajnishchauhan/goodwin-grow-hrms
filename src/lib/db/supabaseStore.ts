@@ -17,7 +17,8 @@ import {
   TenantMembership,
   RegularizationRequest,
   JobOpening,
-  JobApplicant
+  JobApplicant,
+  AppNotification
 } from '@/lib/types';
 
 /**
@@ -1959,6 +1960,137 @@ export class SupabaseStore {
       }));
     } catch {
       return [];
+    }
+  }
+
+  // --------------------------------------------------------------------------
+  // REGULARIZATION DELETION
+  // --------------------------------------------------------------------------
+  public static async deleteRegularization(tenantId: string, regId: string): Promise<boolean> {
+    const supabase = getSupabaseAdmin();
+    if (!supabase) return false;
+    SupabaseStore.invalidate(tenantId);
+    try {
+      const { error } = await supabase
+        .from('audit_logs')
+        .delete()
+        .eq('tenant_id', tenantId)
+        .eq('id', regId)
+        .eq('resource', 'regularization');
+      return !error;
+    } catch {
+      return false;
+    }
+  }
+
+  // --------------------------------------------------------------------------
+  // PERSISTENT NOTIFICATIONS
+  // --------------------------------------------------------------------------
+  public static async getNotifications(
+    tenantId: string,
+    employeeIdOrEmail?: string
+  ): Promise<AppNotification[] | null> {
+    const supabase = getSupabaseAdmin();
+    if (!supabase) return null;
+
+    try {
+      const { data, error } = await supabase
+        .from('audit_logs')
+        .select('*')
+        .eq('tenant_id', tenantId)
+        .eq('resource', 'notification')
+        .order('created_at', { ascending: false })
+        .limit(50);
+
+      if (error || !data) return null;
+
+      const notifs: AppNotification[] = data
+        .map((row) => row.details as AppNotification)
+        .filter((n) => Boolean(n && n.id && n.title));
+
+      if (!employeeIdOrEmail) return notifs;
+
+      const target = employeeIdOrEmail.toLowerCase();
+      return notifs.filter(
+        (n) =>
+          (!n.employeeId && !n.recipientEmail) ||
+          (n.employeeId && n.employeeId.toLowerCase() === target) ||
+          (n.recipientEmail && n.recipientEmail.toLowerCase() === target)
+      );
+    } catch {
+      return null;
+    }
+  }
+
+  public static async saveNotification(notif: AppNotification): Promise<boolean> {
+    const supabase = getSupabaseAdmin();
+    if (!supabase) return false;
+
+    try {
+      const { error } = await supabase.from('audit_logs').upsert({
+        id: notif.id,
+        tenant_id: notif.tenantId,
+        actor_email: notif.recipientEmail || 'system@goodwingrow.ai',
+        actor_role: 'SYSTEM',
+        action: notif.isRead ? 'NOTIFICATION_READ' : 'NOTIFICATION_CREATED',
+        resource: 'notification',
+        resource_id: notif.id,
+        details: notif
+      });
+      return !error;
+    } catch {
+      return false;
+    }
+  }
+
+  public static async markNotificationRead(tenantId: string, notifId: string): Promise<boolean> {
+    const supabase = getSupabaseAdmin();
+    if (!supabase) return false;
+
+    try {
+      const { data } = await supabase
+        .from('audit_logs')
+        .select('details')
+        .eq('tenant_id', tenantId)
+        .eq('id', notifId)
+        .single();
+
+      if (data && data.details) {
+        const updated = { ...data.details, isRead: true };
+        await supabase
+          .from('audit_logs')
+          .update({
+            action: 'NOTIFICATION_READ',
+            details: updated
+          })
+          .eq('tenant_id', tenantId)
+          .eq('id', notifId);
+      }
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  public static async markAllNotificationsRead(
+    tenantId: string,
+    employeeIdOrEmail?: string
+  ): Promise<boolean> {
+    const supabase = getSupabaseAdmin();
+    if (!supabase) return false;
+
+    try {
+      const notifs = await SupabaseStore.getNotifications(tenantId, employeeIdOrEmail);
+      if (notifs && notifs.length > 0) {
+        await Promise.all(
+          notifs.map((n) =>
+            SupabaseStore.saveNotification({ ...n, isRead: true })
+          )
+        );
+      }
+      return true;
+    } catch {
+      return false;
     }
   }
 }

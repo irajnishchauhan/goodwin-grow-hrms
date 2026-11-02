@@ -216,13 +216,20 @@ export async function POST(
       const newEmp = db.hireApplicantAsEmployee(tenant.id, applicantId, Number(monthlySalary) || 35000);
       await SupabaseStore.saveEmployee(newEmp);
 
+      // Automatically generate real invitation token for new employee
+      const invitation = db.sendInvitation(tenant.id, newEmp.id, 'EMPLOYEE');
+      await SupabaseStore.saveInvitation(invitation);
+
       const allOpenings = db.getJobOpenings(tenant.id);
       const allApplicants = db.getJobApplicants(tenant.id);
       await SupabaseStore.saveRecruitment(tenant.id, allOpenings, allApplicants);
 
       return NextResponse.json({
         success: true,
-        data: { employee: newEmp },
+        data: {
+          employee: newEmp,
+          invitation
+        },
         message: `Candidate successfully hired and onboarded as Employee ${newEmp.employeeCode}!`
       });
     }

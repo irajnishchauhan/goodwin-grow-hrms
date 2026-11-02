@@ -31,7 +31,8 @@ import {
   Check,
   Ban,
   Layers,
-  Sparkles
+  Sparkles,
+  Copy
 } from 'lucide-react';
 import { JobOpening, JobApplicant, CandidateStage, Tenant } from '@/lib/types';
 import { useCurrentUser } from '@/lib/auth/useCurrentUser';
@@ -98,6 +99,13 @@ export default function TenantRecruitmentPage() {
 
   // Onboard Form State
   const [onboardSalary, setOnboardSalary] = useState(35000);
+  const [hiredInviteModal, setHiredInviteModal] = useState<{
+    employeeName: string;
+    email: string;
+    token: string;
+    employeeCode: string;
+  } | null>(null);
+  const [copiedLink, setCopiedLink] = useState(false);
 
   // Submitting States
   const [submitting, setSubmitting] = useState(false);
@@ -377,6 +385,14 @@ export default function TenantRecruitmentPage() {
       const json = await res.json();
       if (json.success) {
         setOnboardModal(null);
+        if (json.data?.invitation?.token && json.data?.employee) {
+          setHiredInviteModal({
+            employeeName: `${json.data.employee.firstName} ${json.data.employee.lastName}`,
+            email: json.data.employee.workEmail,
+            token: json.data.invitation.token,
+            employeeCode: json.data.employee.employeeCode
+          });
+        }
         showAlert(json.message || 'Candidate hired and onboarded successfully into employee roster!');
         fetchRecruitment();
       } else {
@@ -1526,6 +1542,59 @@ export default function TenantRecruitmentPage() {
                   className="px-5 py-2 rounded-xl text-xs font-semibold bg-rose-600 hover:bg-rose-700 text-white shadow-xs cursor-pointer disabled:opacity-50"
                 >
                   {submitting ? 'Deleting...' : 'Confirm Delete'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+        {/* ONBOARD SUCCESS & INVITATION MODAL */}
+        {hiredInviteModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-fade-in">
+            <div className="w-full max-w-md rounded-3xl bg-white border border-slate-200 shadow-2xl p-6 space-y-4 text-slate-900">
+              <div className="w-12 h-12 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-600 mx-auto">
+                <CheckCircle2 className="w-6 h-6" />
+              </div>
+
+              <div className="text-center space-y-1">
+                <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
+                  Candidate Hired &amp; Onboarded
+                </span>
+                <h3 className="font-extrabold text-lg text-slate-900 mt-1">
+                  {hiredInviteModal.employeeName}
+                </h3>
+                <p className="text-xs text-slate-500 font-medium">
+                  Assigned Employee Code <strong className="text-slate-800 font-mono">{hiredInviteModal.employeeCode}</strong>. An account invitation has been provisioned.
+                </p>
+              </div>
+
+              <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
+                <div className="text-[11px] font-bold text-slate-700">Account Activation Link</div>
+                <div className="p-2 rounded-xl bg-white border border-slate-200 font-mono text-[11px] text-slate-800 break-all select-all">
+                  {typeof window !== 'undefined' ? window.location.origin : 'https://goodwin-grow-hrms.vercel.app'}/activate?token={hiredInviteModal.token}
+                </div>
+              </div>
+
+              <div className="flex items-center justify-center gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://goodwin-grow-hrms.vercel.app';
+                    const link = `${origin}/activate?token=${hiredInviteModal.token}`;
+                    navigator.clipboard.writeText(link);
+                    setCopiedLink(true);
+                    setTimeout(() => setCopiedLink(false), 3000);
+                  }}
+                  className="w-full py-2.5 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm flex items-center justify-center gap-2 cursor-pointer transition-all"
+                >
+                  <Copy className="w-4 h-4" />
+                  <span>{copiedLink ? '✓ Copied to Clipboard!' : 'Copy Activation Link'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setHiredInviteModal(null)}
+                  className="px-4 py-2.5 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 cursor-pointer"
+                >
+                  Close
                 </button>
               </div>
             </div>
