@@ -2304,13 +2304,33 @@ class HRMSDataStore {
         hra = Math.round(grossSalary * 0.25);
         specialAllowance = grossSalary - (basicPay + hra);
 
-        // Keka standard statutory deductions:
+        // Keka standard statutory deductions (Indian Statutory Compliance):
         // Professional Tax (PT): ₹200 if gross >= 15,000 in India
         pt = grossSalary >= 15000 ? 200 : 0;
         // ESI: 0.75% of Gross if gross <= 21,000
         esi = (grossSalary <= 21000 && grossSalary > 0) ? Math.round(grossSalary * 0.0075) : 0;
-        pf = 0;
-        tax = 0;
+        // Employee Provident Fund (PF): 12% of basic, capped at standard statutory ₹1,800/mo
+        pf = (basicPay > 0 && grossSalary >= 15000) ? Math.min(1800, Math.round(basicPay * 0.12)) : 0;
+
+        // Income Tax (TDS) under Indian New Tax Regime (Section 87A rebate up to ₹7 LPA):
+        const annualGross = grossSalary * 12;
+        if (annualGross > 700000) {
+          let annualTax = 0;
+          if (annualGross > 1500000) {
+            annualTax = 15000 + 30000 + 45000 + 60000 + (annualGross - 1500000) * 0.30;
+          } else if (annualGross > 1200000) {
+            annualTax = 15000 + 30000 + 45000 + (annualGross - 1200000) * 0.20;
+          } else if (annualGross > 900000) {
+            annualTax = 15000 + 30000 + (annualGross - 900000) * 0.15;
+          } else {
+            annualTax = 15000 + (annualGross - 600000) * 0.10;
+          }
+          // 4% Health & Education cess
+          annualTax = Math.round(annualTax * 1.04);
+          tax = Math.round(annualTax / 12);
+        } else {
+          tax = 0;
+        }
 
         totalDeductions = pt + pf + esi + tax;
         netPay = Math.max(0, grossSalary - totalDeductions);

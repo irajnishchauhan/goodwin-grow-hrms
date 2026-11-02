@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { useParams, useSearchParams } from 'next/navigation';
+import React, { useState, useEffect, Suspense } from 'react';
+import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import {
   Clock,
   Calendar,
@@ -42,7 +42,7 @@ import RoleGuard from '@/components/RoleGuard';
 import HolidayCalendarManager from '@/components/HolidayCalendarManager';
 import MonthlyAttendanceCalendar from '@/components/MonthlyAttendanceCalendar';
 
-export default function TenantAttendancePage() {
+function AttendanceContent() {
   const params = useParams();
   const searchParams = useSearchParams();
   const tenantSlug = params.tenantSlug as string;
@@ -98,10 +98,32 @@ export default function TenantAttendancePage() {
   const [punchLoading, setPunchLoading] = useState(false);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
 
-  // Tab View: Daily Roster | Monthly Calendar | Regularizations | Shift Schedules | Holiday Calendar
-  const [activeTab, setActiveTab] = useState<'attendance' | 'calendar' | 'regularizations' | 'shifts' | 'holidays'>('attendance');
+  const router = useRouter();
+  const searchTab = searchParams.get('tab') as 'attendance' | 'calendar' | 'regularizations' | 'shifts' | 'holidays' | null;
 
-  // Super Admin & Company Admin Detection (admin@goodwingrow.ai or rajnish or super_admin / company_admin)
+  // Tab View: Daily Roster | Monthly Calendar | Regularizations | Shift Schedules | Holiday Calendar
+  const [activeTab, setActiveTab] = useState<'attendance' | 'calendar' | 'regularizations' | 'shifts' | 'holidays'>(
+    searchTab && ['attendance', 'calendar', 'regularizations', 'shifts', 'holidays'].includes(searchTab)
+      ? searchTab
+      : 'attendance'
+  );
+
+  useEffect(() => {
+    const t = searchParams.get('tab') as any;
+    if (t && ['attendance', 'calendar', 'regularizations', 'shifts', 'holidays'].includes(t)) {
+      setActiveTab(t);
+    } else if (!t) {
+      setActiveTab('attendance');
+    }
+  }, [searchParams]);
+
+  const handleTabChange = (t: 'attendance' | 'calendar' | 'regularizations' | 'shifts' | 'holidays') => {
+    setActiveTab(t);
+    const url = `/app/${tenantSlug}/attendance${t !== 'attendance' ? `?tab=${t}` : ''}`;
+    router.replace(url, { scroll: false });
+  };
+
+  // Super Admin & Company Admin Detection
   const canManageAttendance = Boolean(
     isSuperAdmin ||
     isCompanyAdmin ||
@@ -109,7 +131,6 @@ export default function TenantAttendancePage() {
     user?.email === 'admin@goodwingrow.ai' ||
     user?.email === 'rajnish.chauhan@goodwinbatteries.com' ||
     user?.email === 'rajnish.goodwinbatteries@gmail.com' ||
-    user?.email?.toLowerCase().includes('rajnish') ||
     user?.memberships?.some(
       (m) => m.tenantSlug === tenantSlug && (m.role === 'SUPER_ADMIN' || m.role === 'COMPANY_ADMIN')
     )
@@ -913,7 +934,7 @@ export default function TenantAttendancePage() {
         {/* Primary Navigation Tabs */}
         <div className="flex items-center gap-2 border-b border-slate-200">
           <button
-            onClick={() => setActiveTab('attendance')}
+            onClick={() => handleTabChange('attendance')}
             className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold transition-all border-b-2 cursor-pointer ${
               activeTab === 'attendance'
                 ? 'border-emerald-600 text-emerald-700 bg-emerald-50/50'
@@ -928,7 +949,7 @@ export default function TenantAttendancePage() {
           </button>
 
           <button
-            onClick={() => setActiveTab('calendar')}
+            onClick={() => handleTabChange('calendar')}
             className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold transition-all border-b-2 cursor-pointer ${
               activeTab === 'calendar'
                 ? 'border-emerald-600 text-emerald-700 bg-emerald-50/50'
@@ -943,7 +964,7 @@ export default function TenantAttendancePage() {
           </button>
 
           <button
-            onClick={() => setActiveTab('regularizations')}
+            onClick={() => handleTabChange('regularizations')}
             className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold transition-all border-b-2 cursor-pointer ${
               activeTab === 'regularizations'
                 ? 'border-emerald-600 text-emerald-700 bg-emerald-50/50'
@@ -964,7 +985,7 @@ export default function TenantAttendancePage() {
           </button>
 
           <button
-            onClick={() => setActiveTab('shifts')}
+            onClick={() => handleTabChange('shifts')}
             className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold transition-all border-b-2 cursor-pointer ${
               activeTab === 'shifts'
                 ? 'border-emerald-600 text-emerald-700 bg-emerald-50/50'
@@ -972,14 +993,14 @@ export default function TenantAttendancePage() {
             }`}
           >
             <Settings className="w-4 h-4" />
-            <span>Shift Schedules & Grace Policies</span>
+            <span>Shift Schedules &amp; Grace Policies</span>
             <span className="px-2 py-0.5 rounded-full text-[10px] bg-blue-100 text-blue-800 font-bold">
               {shifts.length} Configured
             </span>
           </button>
 
           <button
-            onClick={() => setActiveTab('holidays')}
+            onClick={() => handleTabChange('holidays')}
             className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold transition-all border-b-2 cursor-pointer ${
               activeTab === 'holidays'
                 ? 'border-emerald-600 text-emerald-700 bg-emerald-50/50'
@@ -2525,5 +2546,13 @@ export default function TenantAttendancePage() {
         )}
       </div>
     </RoleGuard>
+  );
+}
+
+export default function TenantAttendancePage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-center text-xs text-slate-500 font-mono">Loading Attendance Engine...</div>}>
+      <AttendanceContent />
+    </Suspense>
   );
 }

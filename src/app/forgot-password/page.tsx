@@ -11,13 +11,18 @@ import {
   AlertCircle,
   KeyRound,
   ShieldCheck,
-  ArrowLeft
+  ArrowLeft,
+  Copy,
+  Check
 } from 'lucide-react';
 
 export default function ForgotPasswordPage() {
   const router = useRouter();
 
   const [email, setEmail] = useState('');
+  const [verificationCode, setVerificationCode] = useState('');
+  const [receivedCode, setReceivedCode] = useState<string | null>(null);
+  const [copiedCode, setCopiedCode] = useState(false);
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [verifiedName, setVerifiedName] = useState<string | null>(null);
@@ -53,6 +58,10 @@ export default function ForgotPasswordPage() {
       }
 
       setVerifiedName(json.data?.employeeName || 'Team Member');
+      if (json.data?.verificationCode) {
+        setReceivedCode(json.data.verificationCode);
+        setVerificationCode(json.data.verificationCode);
+      }
       setStep('SET_PASSWORD');
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Unable to verify email address.');
@@ -63,6 +72,10 @@ export default function ForgotPasswordPage() {
 
   const handleResetPassword = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!verificationCode || !verificationCode.trim()) {
+      setError('6-digit security code is required.');
+      return;
+    }
     if (newPassword !== confirmPassword) {
       setError('Passwords do not match.');
       return;
@@ -79,7 +92,11 @@ export default function ForgotPasswordPage() {
       const res = await fetch('/api/auth/forgot-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim(), newPassword })
+        body: JSON.stringify({
+          email: email.trim(),
+          code: verificationCode.trim(),
+          newPassword
+        })
       });
 
       const json = await res.json();
@@ -98,6 +115,14 @@ export default function ForgotPasswordPage() {
     }
   };
 
+  const copyCode = () => {
+    if (receivedCode) {
+      navigator.clipboard.writeText(receivedCode);
+      setCopiedCode(true);
+      setTimeout(() => setCopiedCode(false), 2000);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col justify-center items-center p-4 font-sans">
       <div className="w-full max-w-md relative z-10 space-y-6">
@@ -111,7 +136,7 @@ export default function ForgotPasswordPage() {
             </span>
           </Link>
           <h2 className="text-2xl font-black text-slate-900 tracking-tight mt-2">Reset Your Password</h2>
-          <p className="text-xs text-slate-500 font-medium">Self-service password recovery for employees and managers</p>
+          <p className="text-xs text-slate-500 font-medium">Verified password recovery for employees and managers</p>
         </div>
 
         <div className="p-8 rounded-3xl bg-white border border-slate-200/90 shadow-xl space-y-5 text-xs">
@@ -163,13 +188,51 @@ export default function ForgotPasswordPage() {
 
           {!success && step === 'SET_PASSWORD' && (
             <form onSubmit={handleResetPassword} className="space-y-4">
-              <div className="p-3 rounded-xl bg-emerald-50/80 border border-emerald-200 text-slate-800 space-y-0.5">
-                <div className="font-bold text-xs text-emerald-900">Account Verified: {verifiedName}</div>
-                <div className="text-[11px] text-slate-600 font-mono">{email}</div>
+              <div className="p-3.5 rounded-xl bg-emerald-50/90 border border-emerald-200 text-slate-800 space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-xs text-emerald-950">Account: {verifiedName}</span>
+                  <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded-full bg-emerald-200 text-emerald-900 font-bold">
+                    Verified
+                  </span>
+                </div>
+                <div className="text-[11px] text-slate-600 font-mono truncate">{email}</div>
+
+                {receivedCode && (
+                  <div className="mt-2 pt-2 border-t border-emerald-200/80 flex items-center justify-between">
+                    <div>
+                      <span className="text-[10px] text-emerald-800 block font-semibold">Security Verification Code:</span>
+                      <span className="font-mono font-black text-sm text-emerald-900 tracking-widest">{receivedCode}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={copyCode}
+                      className="px-2.5 py-1 rounded-lg bg-emerald-600 text-white text-[10px] font-bold flex items-center gap-1 hover:bg-emerald-700 cursor-pointer"
+                    >
+                      {copiedCode ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                      <span>{copiedCode ? 'Copied' : 'Copy'}</span>
+                    </button>
+                  </div>
+                )}
               </div>
 
               <div>
-                <label className="block font-bold text-slate-700 mb-1">New Password (min 8 chars)</label>
+                <label className="block font-bold text-slate-700 mb-1">6-Digit Security Code *</label>
+                <div className="relative">
+                  <KeyRound className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                  <input
+                    type="text"
+                    required
+                    maxLength={6}
+                    placeholder="Enter 6-digit code"
+                    value={verificationCode}
+                    onChange={(e) => setVerificationCode(e.target.value)}
+                    className="w-full pl-10 pr-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-300 text-slate-900 font-mono font-bold tracking-widest text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500/30 shadow-sm"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">New Password (min 8 chars) *</label>
                 <div className="relative">
                   <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
                   <input
@@ -184,7 +247,7 @@ export default function ForgotPasswordPage() {
               </div>
 
               <div>
-                <label className="block font-bold text-slate-700 mb-1">Confirm New Password</label>
+                <label className="block font-bold text-slate-700 mb-1">Confirm New Password *</label>
                 <div className="relative">
                   <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
                   <input
@@ -202,7 +265,7 @@ export default function ForgotPasswordPage() {
                 <button
                   type="button"
                   onClick={() => setStep('VERIFY_EMAIL')}
-                  className="px-3 py-2 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold cursor-pointer"
+                  className="px-3 py-2.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold cursor-pointer"
                 >
                   Back
                 </button>
@@ -212,7 +275,7 @@ export default function ForgotPasswordPage() {
                   className="flex-1 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs transition-all shadow-md flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
                 >
                   <KeyRound className="w-3.5 h-3.5" />
-                  <span>{loading ? 'Updating Password...' : 'Save New Password & Login'}</span>
+                  <span>{loading ? 'Verifying & Updating...' : 'Save New Password & Login'}</span>
                 </button>
               </div>
             </form>

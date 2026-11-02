@@ -27,6 +27,7 @@ import { Employee, Shift, LeaveType, LeaveApplication, SalarySlip, Holiday, Empl
 import { useCurrentUser } from '@/lib/auth/useCurrentUser';
 import MonthlyAttendanceCalendar from '@/components/MonthlyAttendanceCalendar';
 import { downloadPayslipPDF } from '@/lib/pdf/generatePayslipPDF';
+import { downloadDocumentPDF } from '@/lib/pdf/generateDocumentPDF';
 
 export default function EmployeeSelfServiceDashboard() {
   const params = useParams();
@@ -891,8 +892,9 @@ export default function EmployeeSelfServiceDashboard() {
                     <div className="text-[10px] text-slate-500 font-medium">{doc.fileName} &bull; {doc.fileSize}</div>
                   </div>
                   <button
-                    onClick={() => alert(`Downloading ${doc.fileName}`)}
+                    onClick={() => downloadDocumentPDF(doc, tenant)}
                     className="p-1.5 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-700 hover:text-slate-900 transition-colors cursor-pointer"
+                    title="Download Verified Document"
                   >
                     <Download className="w-3.5 h-3.5" />
                   </button>

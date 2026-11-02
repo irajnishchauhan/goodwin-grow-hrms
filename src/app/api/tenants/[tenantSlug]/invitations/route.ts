@@ -46,7 +46,8 @@ export async function GET(
         emp.loginStatus = 'REVOKED';
       } else if (
         emailLower === (tenant.businessEmail?.toLowerCase().trim() || '') ||
-        emailLower.includes('rajnish') ||
+        emailLower === 'rajnish.chauhan@goodwinbatteries.com' ||
+        emailLower === 'rajnish.goodwinbatteries@gmail.com' ||
         activeMemberEmails.has(emailLower)
       ) {
         emp.loginStatus = 'ACCEPTED';
@@ -94,7 +95,10 @@ export async function GET(
             employeeName: `${emp.firstName} ${emp.lastName}`,
             email: emp.workEmail,
             role:
-              emp.workEmail.includes('admin') || emp.workEmail.includes('rajnish')
+              emp.workEmail === 'rajnish.chauhan@goodwinbatteries.com' ||
+              emp.workEmail === tenant.businessEmail ||
+              emp.designationTitle?.toLowerCase().includes('director') ||
+              emp.designationTitle?.toLowerCase().includes('founder')
                 ? 'COMPANY_ADMIN'
                 : 'EMPLOYEE',
             token: `revoked-${emp.id}`,
@@ -118,7 +122,10 @@ export async function GET(
             employeeName: `${emp.firstName} ${emp.lastName}`,
             email: emp.workEmail,
             role:
-              emp.workEmail.includes('admin') || emp.workEmail.includes('rajnish')
+              emp.workEmail === 'rajnish.chauhan@goodwinbatteries.com' ||
+              emp.workEmail === tenant.businessEmail ||
+              emp.designationTitle?.toLowerCase().includes('director') ||
+              emp.designationTitle?.toLowerCase().includes('founder')
                 ? 'COMPANY_ADMIN'
                 : 'EMPLOYEE',
             token: `active-${emp.id}`,

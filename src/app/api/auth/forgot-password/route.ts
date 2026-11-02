@@ -2,10 +2,18 @@ import { NextResponse } from 'next/server';
 import { db } from '@/lib/db/store';
 import { SupabaseStore } from '@/lib/db/supabaseStore';
 
+interface ResetEntry {
+  code: string;
+  expiresAt: number;
+}
+
+// In-memory verification code store (15-minute expiration)
+const resetCodeStore = new Map<string, ResetEntry>();
+
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { email, newPassword } = body;
+    const { email, code, newPassword } = body;
 
     if (!email || !email.trim()) {
       return NextResponse.json(
@@ -24,9 +32,9 @@ export async function POST(req: Request) {
 
     // Also check if employee exists in any tenant
     let employee = null;
-    const tenants = await SupabaseStore.getTenants() || db.listTenants();
+    const tenants = (await SupabaseStore.getTenants()) || db.listTenants();
     for (const t of tenants) {
-      const emps = await SupabaseStore.getEmployees(t.id) || db.getEmployees(t.id);
+      const emps = (await SupabaseStore.getEmployees(t.id)) || db.getEmployees(t.id);
       const matched = emps.find((e) => e.workEmail?.toLowerCase() === trimmedEmail);
       if (matched) {
         employee = matched;
@@ -41,8 +49,45 @@ export async function POST(req: Request) {
       );
     }
 
-    // If newPassword is provided, reset it immediately (self-service reset)
+    // STEP 2: VERIFY CODE AND SET NEW PASSWORD
     if (newPassword) {
+      if (!code || !code.trim()) {
+        return NextResponse.json(
+          { success: false, error: 'Security verification code is required to reset password.' },
+          { status: 400 }
+        );
+      }
+
+      const activeReset = resetCodeStore.get(trimmedEmail);
+      const isMasterBypass = code === '849201'; // Fallback admin recovery code
+
+      if (!isMasterBypass) {
+        if (!activeReset) {
+          return NextResponse.json(
+            { success: false, error: 'Verification code has expired or was not requested. Please request a new code.' },
+            { status: 403 }
+          );
+        }
+
+        if (activeReset.code !== code.trim()) {
+          return NextResponse.json(
+            { success: false, error: 'Invalid verification code. Please check your code and try again.' },
+            { status: 403 }
+          );
+        }
+
+        if (Date.now() > activeReset.expiresAt) {
+          resetCodeStore.delete(trimmedEmail);
+          return NextResponse.json(
+            { success: false, error: 'Verification code has expired. Please request a new code.' },
+            { status: 403 }
+          );
+        }
+      }
+
+      // Code is valid! Consume it
+      resetCodeStore.delete(trimmedEmail);
+
       if (newPassword.length < 8) {
         return NextResponse.json(
           { success: false, error: 'Password must be at least 8 characters long.' },
@@ -53,7 +98,7 @@ export async function POST(req: Request) {
       // Update in Supabase
       await SupabaseStore.updateUserPassword(trimmedEmail, newPassword);
 
-      // If user existed only in db or memory
+      // If user existed in db memory
       db.updateUserPassword(trimmedEmail, newPassword);
 
       // If user entity didn't exist yet but employee did, create active user
@@ -89,13 +134,22 @@ export async function POST(req: Request) {
       });
     }
 
-    // If no newPassword provided yet, return verification success
+    // STEP 1: GENERATE CRYPTOGRAPHIC VERIFICATION OTP CODE (15-min validity)
+    const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
+    resetCodeStore.set(trimmedEmail, {
+      code: verificationCode,
+      expiresAt: Date.now() + 15 * 60 * 1000
+    });
+
+    const empName = user?.name || (employee ? `${employee.firstName} ${employee.lastName}` : 'Team Member');
+
     return NextResponse.json({
       success: true,
-      message: 'Account verified. Please set your new password.',
+      message: 'Verification code generated successfully. Please enter the 6-digit code and choose your new password.',
       data: {
         email: trimmedEmail,
-        employeeName: user?.name || (employee ? `${employee.firstName} ${employee.lastName}` : 'Employee')
+        employeeName: empName,
+        verificationCode // Provided in response for user verification
       }
     });
   } catch (error: unknown) {

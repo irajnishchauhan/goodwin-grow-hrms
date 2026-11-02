@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { EmployeeDocument, Employee, Tenant } from '@/lib/types';
 import { useCurrentUser } from '@/lib/auth/useCurrentUser';
+import { downloadDocumentPDF } from '@/lib/pdf/generateDocumentPDF';
 
 const DOC_CATEGORIES = [
   { id: 'ALL', label: 'All Documents' },
@@ -573,9 +574,9 @@ export default function TenantDocumentsPage() {
                   <div className="flex items-center gap-1.5">
                     {/* Download button */}
                     <button
-                      onClick={() => alert(`Downloading verified copy of "${doc.fileName}" (${doc.fileSize})...`)}
+                      onClick={() => downloadDocumentPDF(doc, tenant)}
                       className="p-1.5 rounded-lg text-slate-600 hover:text-emerald-600 hover:bg-emerald-50 transition-colors cursor-pointer"
-                      title="Download Document"
+                      title="Download Verified Document"
                     >
                       <Download className="w-4 h-4" />
                     </button>
@@ -665,9 +666,9 @@ export default function TenantDocumentsPage() {
                       <td className="px-6 py-3.5 text-right">
                         <div className="flex items-center justify-end gap-1.5">
                           <button
-                            onClick={() => alert(`Downloading verified copy of "${doc.fileName}"...`)}
+                            onClick={() => downloadDocumentPDF(doc, tenant)}
                             className="p-1.5 rounded-lg text-slate-600 hover:text-emerald-600 hover:bg-emerald-50 transition-colors cursor-pointer"
-                            title="Download"
+                            title="Download Verified Document"
                           >
                             <Download className="w-4 h-4" />
                           </button>

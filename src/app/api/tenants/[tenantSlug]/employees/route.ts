@@ -43,7 +43,8 @@ export async function GET(
       const emailLower = (emp.workEmail || '').toLowerCase();
       const isOwnerOrActive =
         emailLower === (tenant.businessEmail?.toLowerCase() || '') ||
-        emailLower.includes('rajnish') ||
+        emailLower === 'rajnish.chauhan@goodwinbatteries.com' ||
+        emailLower === 'rajnish.goodwinbatteries@gmail.com' ||
         activeMemberEmails.has(emailLower) ||
         acceptedInvEmpIds.has(emp.id) ||
         emp.loginStatus === 'ACCEPTED';

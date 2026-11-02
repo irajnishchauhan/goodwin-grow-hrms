@@ -29,8 +29,10 @@ export async function POST(req: Request) {
         const emp = emps.find((e) => e.workEmail?.toLowerCase() === trimmedEmail.toLowerCase());
         if (emp) {
           const isOwner =
-            trimmedEmail.toLowerCase().includes('rajnish') ||
+            trimmedEmail === 'rajnish.chauhan@goodwinbatteries.com' ||
+            trimmedEmail === (t.businessEmail || '').toLowerCase() ||
             emp.designationTitle?.toLowerCase().includes('director') ||
+            emp.designationTitle?.toLowerCase().includes('founder') ||
             emp.designationTitle?.toLowerCase().includes('owner');
           const role = isOwner ? 'COMPANY_ADMIN' : 'EMPLOYEE';
           const newUser = {

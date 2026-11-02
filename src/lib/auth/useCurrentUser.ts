@@ -185,14 +185,14 @@ export function useCurrentUser(tenantSlug?: string) {
         role = membership.role;
       } else if (user.memberships?.[0]) {
         role = user.memberships[0].role;
-      } else if (user.email?.toLowerCase().includes('rajnish') || user.id === 'user-bat-owner') {
+      } else if (user.email === 'rajnish.chauhan@goodwinbatteries.com' || user.email === 'rajnish.goodwinbatteries@gmail.com' || user.id === 'user-bat-owner') {
         role = 'COMPANY_ADMIN';
       } else {
         role = 'EMPLOYEE';
       }
     } else if (user.memberships?.[0]) {
       role = user.memberships[0].role;
-    } else if (user.email?.toLowerCase().includes('rajnish') || user.id === 'user-bat-owner') {
+    } else if (user.email === 'rajnish.chauhan@goodwinbatteries.com' || user.email === 'rajnish.goodwinbatteries@gmail.com' || user.id === 'user-bat-owner') {
       role = 'COMPANY_ADMIN';
     } else {
       role = 'EMPLOYEE';
