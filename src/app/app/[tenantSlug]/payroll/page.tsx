@@ -370,6 +370,65 @@ function PayrollContent() {
     URL.revokeObjectURL(url);
   };
 
+  // Standard Indian Corporate Net Banking NEFT/RTGS Batch Upload File (HDFC, ICICI, Axis, SBI)
+  const handleExportBankBatchCSV = () => {
+    if (filteredSlips.length === 0) return;
+
+    const headers = [
+      'Payment Type',
+      'Beneficiary Account Number',
+      'Beneficiary Name',
+      'IFSC Code',
+      'Amount (INR)',
+      'Payment Description',
+      'Employee Code',
+      'Beneficiary Email',
+      'Bank Name'
+    ];
+
+    const rows = filteredSlips.map((slip) => {
+      const emp = employees.find((e) => e.id === slip.employeeId);
+      const acc = slip.bankAccountNumber || emp?.bankAccountNumber || 'NOT_CONFIGURED';
+      const ifsc = slip.ifscCode || emp?.ifscCode || 'UTIB0000001';
+      return [
+        'NEFT',
+        `="${acc}"`,
+        slip.employeeName,
+        ifsc,
+        slip.netPay,
+        `SALARY ${slip.month}`,
+        slip.employeeCode,
+        emp?.workEmail || '',
+        slip.bankName || emp?.bankName || 'Axis Bank'
+      ];
+    });
+
+    const csvContent = [
+      headers.join(','),
+      ...rows.map((row) =>
+        row
+          .map((cell) => {
+            const str = String(cell ?? '');
+            if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+              return `"${str.replace(/"/g, '""')}"`;
+            }
+            return str;
+          })
+          .join(',')
+      )
+    ].join('\r\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `Bank_Disbursement_Batch_${tenant?.slug || 'company'}_${selectedMonth}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="space-y-6 max-w-6xl pb-12">
       {/* Top Header */}
@@ -428,6 +487,17 @@ function PayrollContent() {
             <Download className="w-3.5 h-3.5 text-slate-500" />
             <span>Export CSV</span>
           </button>
+
+          {!isEmployeeOnly && (
+            <button
+              onClick={handleExportBankBatchCSV}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-semibold text-xs border border-emerald-300 shadow-2xs transition-all cursor-pointer"
+              title="Download Corporate Net Banking NEFT/RTGS Batch Upload File"
+            >
+              <Building2 className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Bank Batch (NEFT)</span>
+            </button>
+          )}
 
           {!isEmployeeOnly && (
             <button

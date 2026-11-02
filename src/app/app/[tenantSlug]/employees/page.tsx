@@ -83,7 +83,11 @@ export default function TenantEmployeesPage() {
   const [monthlySalary, setMonthlySalary] = useState('');
   const [bankAccountNumber, setBankAccountNumber] = useState('');
   const [bankName, setBankName] = useState('');
+  const [ifscCode, setIfscCode] = useState('');
   const [panOrTaxId, setPanOrTaxId] = useState('');
+  const [uan, setUan] = useState('');
+  const [aadhaarNumber, setAadhaarNumber] = useState('');
+  const [taxRegime, setTaxRegime] = useState<'NEW' | 'OLD'>('NEW');
 
   // Edit Employee Modal State (Super Admin & HR)
   const [editingEmp, setEditingEmp] = useState<Employee | null>(null);
@@ -103,6 +107,10 @@ export default function TenantEmployeesPage() {
   const [editPanOrTaxId, setEditPanOrTaxId] = useState('');
   const [editBankName, setEditBankName] = useState('');
   const [editBankAccountNumber, setEditBankAccountNumber] = useState('');
+  const [editIfscCode, setEditIfscCode] = useState('');
+  const [editUan, setEditUan] = useState('');
+  const [editAadhaarNumber, setEditAadhaarNumber] = useState('');
+  const [editTaxRegime, setEditTaxRegime] = useState<'NEW' | 'OLD'>('NEW');
   const [editStatus, setEditStatus] = useState<EmployeeStatus>('ACTIVE');
   const [editLoginStatus, setEditLoginStatus] = useState<LoginActivationStatus>('NOT_INVITED');
   const [editLoading, setEditLoading] = useState(false);
@@ -172,7 +180,11 @@ export default function TenantEmployeesPage() {
           monthlySalary: Number(monthlySalary),
           bankAccountNumber,
           bankName,
+          ifscCode,
           panOrTaxId,
+          uan,
+          aadhaarNumber,
+          taxRegime,
           workLocation,
           shiftName,
           joiningDate
@@ -212,6 +224,10 @@ export default function TenantEmployeesPage() {
     setEditPanOrTaxId(emp.panOrTaxId || '');
     setEditBankName(emp.bankName || '');
     setEditBankAccountNumber(emp.bankAccountNumber || '');
+    setEditIfscCode(emp.ifscCode || '');
+    setEditUan(emp.uan || '');
+    setEditAadhaarNumber(emp.aadhaarNumber || '');
+    setEditTaxRegime(emp.taxRegime || 'NEW');
     setEditStatus(emp.status || 'ACTIVE');
     setEditLoginStatus(emp.loginStatus || 'NOT_INVITED');
     setEditError(null);
@@ -250,6 +266,10 @@ export default function TenantEmployeesPage() {
         payload.panOrTaxId = editPanOrTaxId.trim();
         payload.bankName = editBankName.trim();
         payload.bankAccountNumber = editBankAccountNumber.trim();
+        payload.ifscCode = editIfscCode.trim();
+        payload.uan = editUan.trim();
+        payload.aadhaarNumber = editAadhaarNumber.trim();
+        payload.taxRegime = editTaxRegime;
         payload.status = editStatus;
         payload.loginStatus = editLoginStatus;
       }
@@ -319,7 +339,11 @@ export default function TenantEmployeesPage() {
     setMonthlySalary('');
     setBankAccountNumber('');
     setBankName('');
+    setIfscCode('');
     setPanOrTaxId('');
+    setUan('');
+    setAadhaarNumber('');
+    setTaxRegime('NEW');
   };
 
   // Sample CSV template generator
@@ -1100,6 +1124,52 @@ Ritu,Chopra,ritu.chopra@goodwinbatteries.com,+91 98444 55667,Research & Battery 
                 </div>
               </div>
 
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">IFSC Code</label>
+                  <input
+                    type="text"
+                    value={ifscCode}
+                    onChange={(e) => setIfscCode(e.target.value.toUpperCase())}
+                    placeholder="e.g. UTIB0000123"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/40 uppercase font-mono text-xs"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">EPFO UAN</label>
+                  <input
+                    type="text"
+                    value={uan}
+                    onChange={(e) => setUan(e.target.value)}
+                    placeholder="12-digit UAN"
+                    maxLength={12}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/40 font-mono text-xs"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Aadhaar (KYC)</label>
+                  <input
+                    type="text"
+                    value={aadhaarNumber}
+                    onChange={(e) => setAadhaarNumber(e.target.value)}
+                    placeholder="12-digit Aadhaar"
+                    maxLength={14}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/40 font-mono text-xs"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Tax Regime</label>
+                  <select
+                    value={taxRegime}
+                    onChange={(e) => setTaxRegime(e.target.value as 'NEW' | 'OLD')}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/40 text-xs font-semibold cursor-pointer"
+                  >
+                    <option value="NEW">New (115BAC)</option>
+                    <option value="OLD">Old Regime</option>
+                  </select>
+                </div>
+              </div>
+
               <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-200">
                 <button
                   type="button"
@@ -1473,6 +1543,84 @@ Ritu,Chopra,ritu.chopra@goodwinbatteries.com,+91 98444 55667,Research & Battery 
                   </div>
                 </div>
 
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1 flex items-center justify-between">
+                      <span>IFSC Code</span>
+                      {!canManagePayrollFields && <Lock className="w-3 h-3 text-slate-400" />}
+                    </label>
+                    <input
+                      type="text"
+                      disabled={!canManagePayrollFields}
+                      value={editIfscCode}
+                      onChange={(e) => setEditIfscCode(e.target.value.toUpperCase())}
+                      placeholder="e.g. UTIB0000123"
+                      className={`w-full px-3 py-2 rounded-xl border uppercase font-mono text-xs ${
+                        !canManagePayrollFields
+                          ? 'bg-slate-100 text-slate-500 border-slate-200 cursor-not-allowed'
+                          : 'border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30'
+                      }`}
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1 flex items-center justify-between">
+                      <span>EPFO UAN</span>
+                      {!canManagePayrollFields && <Lock className="w-3 h-3 text-slate-400" />}
+                    </label>
+                    <input
+                      type="text"
+                      disabled={!canManagePayrollFields}
+                      value={editUan}
+                      onChange={(e) => setEditUan(e.target.value)}
+                      placeholder="12-digit UAN"
+                      maxLength={12}
+                      className={`w-full px-3 py-2 rounded-xl border font-mono text-xs ${
+                        !canManagePayrollFields
+                          ? 'bg-slate-100 text-slate-500 border-slate-200 cursor-not-allowed'
+                          : 'border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30'
+                      }`}
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1 flex items-center justify-between">
+                      <span>Aadhaar Number</span>
+                      {!canManagePayrollFields && <Lock className="w-3 h-3 text-slate-400" />}
+                    </label>
+                    <input
+                      type="text"
+                      disabled={!canManagePayrollFields}
+                      value={editAadhaarNumber}
+                      onChange={(e) => setEditAadhaarNumber(e.target.value)}
+                      placeholder="12-digit Aadhaar"
+                      maxLength={14}
+                      className={`w-full px-3 py-2 rounded-xl border font-mono text-xs ${
+                        !canManagePayrollFields
+                          ? 'bg-slate-100 text-slate-500 border-slate-200 cursor-not-allowed'
+                          : 'border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30'
+                      }`}
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1 flex items-center justify-between">
+                      <span>Tax Regime</span>
+                      {!canManagePayrollFields && <Lock className="w-3 h-3 text-slate-400" />}
+                    </label>
+                    <select
+                      disabled={!canManagePayrollFields}
+                      value={editTaxRegime}
+                      onChange={(e) => setEditTaxRegime(e.target.value as 'NEW' | 'OLD')}
+                      className={`w-full px-3 py-2 rounded-xl border text-xs font-semibold cursor-pointer ${
+                        !canManagePayrollFields
+                          ? 'bg-slate-100 text-slate-500 border-slate-200 cursor-not-allowed'
+                          : 'border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30'
+                      }`}
+                    >
+                      <option value="NEW">New (115BAC)</option>
+                      <option value="OLD">Old Regime</option>
+                    </select>
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block font-semibold text-slate-700 mb-1 flex items-center justify-between">
@@ -1755,9 +1903,25 @@ Ritu,Chopra,ritu.chopra@goodwinbatteries.com,+91 98444 55667,Research & Battery 
                   <span className="text-slate-500">Bank Name</span>
                   <span className="text-slate-800">{selectedEmp.bankName || 'N/A'}</span>
                 </div>
-                <div className="flex justify-between py-1">
+                <div className="flex justify-between py-1 border-b border-slate-200/60">
                   <span className="text-slate-500">Account No.</span>
                   <span className="font-mono text-slate-800">{selectedEmp.bankAccountNumber || 'N/A'}</span>
+                </div>
+                <div className="flex justify-between py-1 border-b border-slate-200/60">
+                  <span className="text-slate-500">IFSC Code</span>
+                  <span className="font-mono text-slate-800">{selectedEmp.ifscCode || 'N/A'}</span>
+                </div>
+                <div className="flex justify-between py-1 border-b border-slate-200/60">
+                  <span className="text-slate-500">EPFO UAN</span>
+                  <span className="font-mono text-slate-800">{selectedEmp.uan || 'N/A'}</span>
+                </div>
+                <div className="flex justify-between py-1 border-b border-slate-200/60">
+                  <span className="text-slate-500">Aadhaar (KYC)</span>
+                  <span className="font-mono text-slate-800">{selectedEmp.aadhaarNumber || 'N/A'}</span>
+                </div>
+                <div className="flex justify-between py-1">
+                  <span className="text-slate-500">Tax Regime</span>
+                  <span className="font-bold text-slate-800">{selectedEmp.taxRegime === 'OLD' ? 'Old Regime' : 'New Regime (115BAC)'}</span>
                 </div>
               </div>
             )}

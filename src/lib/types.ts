@@ -58,6 +58,8 @@ export interface Tenant {
   orgTreeRootId?: string;
   workingDays?: string[]; // e.g. ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY']
   weeklyOffDays?: string[]; // e.g. [] for 7-day operation with no weekly off, or ['SUNDAY']
+  lockedAttendanceMonths?: string[]; // e.g. ['2026-10'] when payroll cycle is closed
+  sandwichLeavePolicy?: boolean; // Indian Labor Standard: weekend sandwiched between leaves counts as leave
   createdAt: string;
   updatedAt: string;
 }
@@ -130,6 +132,10 @@ export interface Employee {
   panOrTaxId?: string;
   bankAccountNumber?: string;
   bankName?: string;
+  ifscCode?: string;
+  uan?: string;
+  aadhaarNumber?: string;
+  taxRegime?: 'NEW' | 'OLD';
   workLocation?: string;
   shiftName?: string;
   avatarUrl?: string;
@@ -340,8 +346,10 @@ export interface SalarySlip {
   designationTitle?: string;
   bankName?: string;
   bankAccountNumber?: string;
+  ifscCode?: string;
   panOrTaxId?: string;
   uan?: string;
+  taxRegime?: 'NEW' | 'OLD';
   workLocation?: string;
   joiningDate?: string;
   paymentMode?: string;

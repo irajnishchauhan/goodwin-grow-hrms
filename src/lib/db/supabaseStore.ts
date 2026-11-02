@@ -167,6 +167,8 @@ export class SupabaseStore {
       weeklyOffDays: (t.onboarding_checklist || []).find((s: any) => s.id === '__weekly_off_days__')?.description !== undefined
         ? ((t.onboarding_checklist || []).find((s: any) => s.id === '__weekly_off_days__')?.description?.split(',').filter(Boolean) || [])
         : [],
+      lockedAttendanceMonths: (t.onboarding_checklist || []).find((s: any) => s.id === '__locked_attendance_months__')?.description?.split(',').filter(Boolean) || [],
+      sandwichLeavePolicy: (t.onboarding_checklist || []).find((s: any) => s.id === '__sandwich_leave_policy__')?.description === 'true',
       createdAt: t.created_at,
       updatedAt: t.updated_at
     };
@@ -228,6 +230,8 @@ export class SupabaseStore {
       weeklyOffDays: (t.onboarding_checklist || []).find((s: any) => s.id === '__weekly_off_days__')?.description !== undefined
         ? ((t.onboarding_checklist || []).find((s: any) => s.id === '__weekly_off_days__')?.description?.split(',').filter(Boolean) || [])
         : [],
+      lockedAttendanceMonths: (t.onboarding_checklist || []).find((s: any) => s.id === '__locked_attendance_months__')?.description?.split(',').filter(Boolean) || [],
+      sandwichLeavePolicy: (t.onboarding_checklist || []).find((s: any) => s.id === '__sandwich_leave_policy__')?.description === 'true',
       createdAt: t.created_at,
       updatedAt: t.updated_at
     };
@@ -269,6 +273,24 @@ export class SupabaseStore {
         id: '__weekly_off_days__',
         title: 'Weekly Off Days Policy',
         description: tenant.weeklyOffDays.join(','),
+        completed: true,
+        route: ''
+      });
+    }
+    if (tenant.lockedAttendanceMonths) {
+      checklistWithMeta.push({
+        id: '__locked_attendance_months__',
+        title: 'Locked Attendance Months',
+        description: tenant.lockedAttendanceMonths.join(','),
+        completed: true,
+        route: ''
+      });
+    }
+    if (tenant.sandwichLeavePolicy !== undefined) {
+      checklistWithMeta.push({
+        id: '__sandwich_leave_policy__',
+        title: 'Sandwich Leave Policy',
+        description: tenant.sandwichLeavePolicy ? 'true' : 'false',
         completed: true,
         route: ''
       });
@@ -424,6 +446,10 @@ export class SupabaseStore {
       panOrTaxId: e.pan_or_tax_id,
       bankAccountNumber: e.bank_account_number,
       bankName: e.bank_name,
+      ifscCode: e.ifsc_code || undefined,
+      uan: e.uan || undefined,
+      aadhaarNumber: e.aadhaar_number || undefined,
+      taxRegime: e.tax_regime || 'NEW',
       workLocation: e.work_location,
       shiftName: e.shift_name,
       loginStatus: e.login_status,
@@ -466,6 +492,10 @@ export class SupabaseStore {
       pan_or_tax_id: emp.panOrTaxId,
       bank_account_number: emp.bankAccountNumber,
       bank_name: emp.bankName,
+      ifsc_code: emp.ifscCode,
+      uan: emp.uan,
+      aadhaar_number: emp.aadhaarNumber,
+      tax_regime: emp.taxRegime || 'NEW',
       work_location: emp.workLocation,
       shift_name: emp.shiftName,
       login_status: emp.loginStatus,
@@ -538,6 +568,10 @@ export class SupabaseStore {
     if (updates.panOrTaxId !== undefined) payload.pan_or_tax_id = updates.panOrTaxId;
     if (updates.bankAccountNumber !== undefined) payload.bank_account_number = updates.bankAccountNumber;
     if (updates.bankName !== undefined) payload.bank_name = updates.bankName;
+    if (updates.ifscCode !== undefined) payload.ifsc_code = updates.ifscCode;
+    if (updates.uan !== undefined) payload.uan = updates.uan;
+    if (updates.aadhaarNumber !== undefined) payload.aadhaar_number = updates.aadhaarNumber;
+    if (updates.taxRegime !== undefined) payload.tax_regime = updates.taxRegime;
     if (updates.workLocation !== undefined) payload.work_location = updates.workLocation;
     if (updates.shiftName !== undefined) payload.shift_name = updates.shiftName;
     if (updates.reportingManagerId !== undefined) {

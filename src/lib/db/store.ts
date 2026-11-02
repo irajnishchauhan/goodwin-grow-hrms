@@ -1176,6 +1176,10 @@ class HRMSDataStore {
       panOrTaxId?: string;
       bankAccountNumber?: string;
       bankName?: string;
+      ifscCode?: string;
+      uan?: string;
+      aadhaarNumber?: string;
+      taxRegime?: 'NEW' | 'OLD';
       workLocation?: string;
       shiftName?: string;
       joiningDate?: string;
@@ -1219,6 +1223,10 @@ class HRMSDataStore {
       panOrTaxId: data.panOrTaxId || 'PENDING',
       bankAccountNumber: data.bankAccountNumber,
       bankName: data.bankName,
+      ifscCode: data.ifscCode,
+      uan: data.uan,
+      aadhaarNumber: data.aadhaarNumber,
+      taxRegime: data.taxRegime || 'NEW',
       workLocation: data.workLocation || `${tenant.city} Facility`,
       shiftName: data.shiftName || 'General Day Shift',
       loginStatus: 'NOT_INVITED',

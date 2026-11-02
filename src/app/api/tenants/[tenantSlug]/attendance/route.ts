@@ -128,6 +128,7 @@ export async function GET(
       stats,
       workingDays: tenant.workingDays || ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'],
       weeklyOffDays: tenant.weeklyOffDays || [],
+      lockedAttendanceMonths: tenant.lockedAttendanceMonths || [],
       date: targetDate,
       month: targetMonth,
       pendingRegularizationsCount: regularizations.filter((r) => r.status === 'PENDING').length
@@ -182,6 +183,18 @@ export async function POST(
         return NextResponse.json(
           { success: false, error: 'Employee ID and attendance date required' },
           { status: 400 }
+        );
+      }
+
+      // Check if attendance cycle is locked for this month
+      const regMonth = attendanceDate.substring(0, 7);
+      if (tenant.lockedAttendanceMonths?.includes(regMonth)) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: `Attendance cycle for ${regMonth} is finalized and locked. Regularizations cannot be submitted.`
+          },
+          { status: 403 }
         );
       }
 
@@ -292,6 +305,19 @@ export async function POST(
 
     const effectiveEmpId = emp.id;
     const today = clientDate || formatDateInTimezone(new Date(), timezone);
+    const punchMonth = today.substring(0, 7);
+
+    // Verify if cycle is locked
+    if (tenant.lockedAttendanceMonths?.includes(punchMonth)) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Attendance cycle for ${punchMonth} is locked for payroll processing. Punches cannot be registered.`
+        },
+        { status: 403 }
+      );
+    }
+
     db.clearExcludedAttendanceKey(tenant.id, effectiveEmpId, today);
 
     const record = db.recordPunch(
@@ -338,9 +364,42 @@ export async function PATCH(
     }
 
     const body = await req.json();
-    const { regularizationId, status, reviewedBy, comment } = body;
     db.invalidateCache(tenant.id);
     db.invalidateCache(tenantSlug);
+
+    // Handle Cycle Lock / Unlock
+    if (body.action === 'TOGGLE_CYCLE_LOCK') {
+      const monthToToggle = body.month; // e.g. '2026-11'
+      if (!monthToToggle) {
+        return NextResponse.json(
+          { success: false, error: 'Month (YYYY-MM) is required to lock/unlock cycle' },
+          { status: 400 }
+        );
+      }
+
+      const currentLocked = new Set(tenant.lockedAttendanceMonths || []);
+      let isNowLocked = false;
+      if (currentLocked.has(monthToToggle)) {
+        currentLocked.delete(monthToToggle);
+        isNowLocked = false;
+      } else {
+        currentLocked.add(monthToToggle);
+        isNowLocked = true;
+      }
+
+      const updatedMonths = Array.from(currentLocked);
+      tenant.lockedAttendanceMonths = updatedMonths;
+      db.upsertTenant(tenant);
+      await SupabaseStore.saveTenant(tenant);
+
+      return NextResponse.json({
+        success: true,
+        message: `Attendance cycle for ${monthToToggle} is now ${isNowLocked ? 'locked 🔒' : 'unlocked 🔓'}`,
+        lockedAttendanceMonths: updatedMonths
+      });
+    }
+
+    const { regularizationId, status, reviewedBy, comment } = body;
 
     if (!regularizationId || !status) {
       return NextResponse.json(
@@ -352,6 +411,20 @@ export async function PATCH(
     const supaRegs = await SupabaseStore.getRegularizations(tenant.id);
     if (supaRegs && supaRegs.length > 0) {
       db.syncRegularizations(supaRegs);
+    }
+
+    const existingReg = db.getRegularizations(tenant.id).find((r) => r.id === regularizationId);
+    if (existingReg) {
+      const regMonth = existingReg.attendanceDate.substring(0, 7);
+      if (tenant.lockedAttendanceMonths?.includes(regMonth)) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: `Attendance cycle for ${regMonth} is locked. Regularization approvals are frozen.`
+          },
+          { status: 403 }
+        );
+      }
     }
 
     const updated = db.updateRegularizationStatus(
@@ -417,6 +490,17 @@ export async function PUT(
       return NextResponse.json(
         { success: false, error: 'Employee ID and date are required' },
         { status: 400 }
+      );
+    }
+
+    const recMonth = date.substring(0, 7);
+    if (tenant.lockedAttendanceMonths?.includes(recMonth)) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Attendance cycle for ${recMonth} is locked. Modifications are disabled.`
+        },
+        { status: 403 }
       );
     }
 
@@ -554,6 +638,17 @@ export async function DELETE(
       } else if (Array.isArray(body.recordIds)) {
         items = body.recordIds.map((id: string) => ({ recordId: id, date: date || undefined }));
       }
+    }
+
+    const targetDeleteMonth = (date || deleteAllForDate || '').substring(0, 7);
+    if (targetDeleteMonth && tenant.lockedAttendanceMonths?.includes(targetDeleteMonth)) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Attendance cycle for ${targetDeleteMonth} is locked. Records cannot be deleted.`
+        },
+        { status: 403 }
+      );
     }
 
     // Handle Bulk Deletion

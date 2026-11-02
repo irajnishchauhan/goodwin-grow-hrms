@@ -107,6 +107,10 @@ export async function POST(
       panOrTaxId,
       bankAccountNumber,
       bankName,
+      ifscCode,
+      uan,
+      aadhaarNumber,
+      taxRegime,
       workLocation,
       shiftName,
       joiningDate
@@ -136,6 +140,10 @@ export async function POST(
       panOrTaxId,
       bankAccountNumber,
       bankName,
+      ifscCode,
+      uan,
+      aadhaarNumber,
+      taxRegime: taxRegime || 'NEW',
       workLocation: workLocation || `${tenant.city} Facility`,
       shiftName: shiftName || 'General Day Shift',
       joiningDate: joiningDate || new Date().toISOString().split('T')[0]

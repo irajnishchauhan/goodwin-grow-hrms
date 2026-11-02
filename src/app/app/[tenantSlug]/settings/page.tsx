@@ -93,6 +93,7 @@ export default function TenantSettingsPage() {
   const [primaryColor, setPrimaryColor] = useState('#059669');
   const [logoUrl, setLogoUrl] = useState('');
   const [weeklyOffDays, setWeeklyOffDays] = useState<string[]>([]);
+  const [sandwichLeavePolicy, setSandwichLeavePolicy] = useState(true);
 
   const [savedMsg, setSavedMsg] = useState(false);
   const [copiedId, setCopiedId] = useState(false);
@@ -123,6 +124,7 @@ export default function TenantSettingsPage() {
           setPrimaryColor(t.primaryColor || '#059669');
           setLogoUrl(t.logoUrl || '');
           setWeeklyOffDays(t.weeklyOffDays || []);
+          setSandwichLeavePolicy(t.sandwichLeavePolicy !== undefined ? t.sandwichLeavePolicy : true);
         }
       } catch (e) {
         console.error('Failed to load tenant settings:', e);
@@ -170,7 +172,8 @@ export default function TenantSettingsPage() {
         financialYear,
         primaryColor,
         logoUrl,
-        weeklyOffDays
+        weeklyOffDays,
+        sandwichLeavePolicy
       };
 
       const res = await fetch(`/api/tenants/${tenantSlug}`, {
@@ -461,6 +464,31 @@ export default function TenantSettingsPage() {
                 <p className="text-[11px] text-slate-500 pt-1">
                   Prorated attendance and payroll calculations automatically count weekly off days as paid rest days for all workforce members.
                 </p>
+
+                {/* Keka-Grade Sandwich Leave Policy Toggle */}
+                <div className="pt-4 border-t border-slate-100 flex items-center justify-between gap-4">
+                  <div className="space-y-0.5">
+                    <span className="font-bold text-slate-800 text-xs flex items-center gap-1.5">
+                      Sandwich Leave Policy (Standard Keka / Enterprise Rule)
+                    </span>
+                    <p className="text-[11px] text-slate-500 max-w-xl">
+                      When enabled, if an employee takes leaves on both the day immediately before and after a weekly off or public holiday, the intervening off day is treated and deducted as leave.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setSandwichLeavePolicy(!sandwichLeavePolicy)}
+                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                      sandwichLeavePolicy ? 'bg-emerald-600' : 'bg-slate-300'
+                    }`}
+                  >
+                    <span
+                      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
+                        sandwichLeavePolicy ? 'translate-x-5' : 'translate-x-0'
+                      }`}
+                    />
+                  </button>
+                </div>
               </div>
             </div>
 

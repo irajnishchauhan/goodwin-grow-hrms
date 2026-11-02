@@ -27,7 +27,9 @@ import {
   Settings,
   Plus,
   CheckSquare,
-  Download
+  Download,
+  Lock,
+  Unlock
 } from 'lucide-react';
 import {
   AttendanceRecord,
@@ -137,6 +139,44 @@ function AttendanceContent() {
       (m) => m.tenantSlug === tenantSlug && (m.role === 'SUPER_ADMIN' || m.role === 'COMPANY_ADMIN')
     )
   );
+
+  // Attendance Cycle Lock State
+  const selectedMonth = selectedDate.substring(0, 7);
+  const isCycleLocked = Boolean(tenant?.lockedAttendanceMonths?.includes(selectedMonth));
+  const [lockingCycle, setLockingCycle] = useState(false);
+
+  const handleToggleCycleLock = async () => {
+    if (!canManageAttendance) return;
+    setLockingCycle(true);
+    setStatusMsg(null);
+    try {
+      const res = await fetch(`/api/tenants/${tenantSlug}/attendance`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'TOGGLE_CYCLE_LOCK',
+          month: selectedMonth
+        })
+      });
+      const json = await res.json();
+      if (json.success) {
+        setStatusMsg(json.message);
+        setTenant((prev) =>
+          prev
+            ? { ...prev, lockedAttendanceMonths: json.lockedAttendanceMonths }
+            : prev
+        );
+        fetchAttendance(selectedDate);
+      } else {
+        setStatusMsg(json.error || 'Failed to toggle cycle lock');
+      }
+    } catch (err) {
+      console.error(err);
+      setStatusMsg('Failed to update cycle lock status');
+    } finally {
+      setLockingCycle(false);
+    }
+  };
 
   // Multi-Record Selection & Bulk Actions State
   const [selectedRecordIds, setSelectedRecordIds] = useState<string[]>([]);
@@ -279,6 +319,11 @@ function AttendanceContent() {
         }
         if (json.data.stats) {
           setStats(json.data.stats);
+        }
+        if (json.data.lockedAttendanceMonths) {
+          setTenant((prev) =>
+            prev ? { ...prev, lockedAttendanceMonths: json.data.lockedAttendanceMonths } : prev
+          );
         }
       }
 
@@ -1020,6 +1065,29 @@ function AttendanceContent() {
               </span>
             </div>
 
+            {/* Cycle Lock Status / Toggle (Admin Only) */}
+            {canManageAttendance && (
+              <button
+                onClick={handleToggleCycleLock}
+                disabled={lockingCycle}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold text-xs shadow-xs transition-all cursor-pointer ${
+                  isCycleLocked
+                    ? 'bg-rose-100 hover:bg-rose-200 text-rose-800 border border-rose-300'
+                    : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300'
+                }`}
+                title={
+                  isCycleLocked
+                    ? `Unlock attendance cycle for ${selectedMonth}`
+                    : `Lock attendance cycle for ${selectedMonth} (prevents retroactive changes)`
+                }
+              >
+                {isCycleLocked ? <Lock className="w-3.5 h-3.5 text-rose-600" /> : <Unlock className="w-3.5 h-3.5 text-slate-600" />}
+                <span>
+                  {lockingCycle ? 'Updating...' : isCycleLocked ? `Cycle Locked (${selectedMonth})` : `Lock Cycle (${selectedMonth})`}
+                </span>
+              </button>
+            )}
+
             {/* Request Regularization Action Button */}
             <button
               onClick={() => {
@@ -1043,6 +1111,30 @@ function AttendanceContent() {
             >
               Dismiss
             </button>
+          </div>
+        )}
+
+        {/* Locked Cycle Warning Banner */}
+        {isCycleLocked && (
+          <div className="p-4 rounded-2xl bg-amber-50 border border-amber-300 text-amber-900 text-xs flex items-center justify-between gap-3 shadow-xs">
+            <div className="flex items-center gap-2.5">
+              <Lock className="w-4 h-4 text-amber-700 shrink-0" />
+              <div>
+                <strong className="font-extrabold text-amber-950">Attendance Month Locked ({selectedMonth}):</strong>{' '}
+                <span>
+                  This payroll cycle is locked for statutory compliance. Attendance punches, edits, and regularizations are frozen.
+                </span>
+              </div>
+            </div>
+            {canManageAttendance && (
+              <button
+                onClick={handleToggleCycleLock}
+                disabled={lockingCycle}
+                className="px-3 py-1 bg-amber-200 hover:bg-amber-300 text-amber-900 font-bold rounded-lg text-xs cursor-pointer shrink-0 transition-colors"
+              >
+                {lockingCycle ? 'Unlocking...' : 'Unlock Month'}
+              </button>
+            )}
           </div>
         )}
 
@@ -1153,20 +1245,20 @@ function AttendanceContent() {
                 <div className="flex items-center gap-3">
                   <button
                     onClick={() => handlePunch('IN')}
-                    disabled={punchLoading || Boolean(myTodayRecord?.clockInTime && !myTodayRecord?.clockOutTime)}
+                    disabled={punchLoading || isCycleLocked || Boolean(myTodayRecord?.clockInTime && !myTodayRecord?.clockOutTime)}
                     className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md shadow-emerald-700/20 transition-all hover:scale-102 disabled:opacity-40 disabled:hover:scale-100 cursor-pointer"
                   >
                     <Play className="w-3.5 h-3.5 fill-white" />
-                    <span>{myTodayRecord?.clockInTime && !myTodayRecord?.clockOutTime ? 'Already Clocked In' : myTodayRecord?.clockOutTime ? 'Punch In Again' : 'Clock In Now'}</span>
+                    <span>{isCycleLocked ? 'Cycle Locked' : myTodayRecord?.clockInTime && !myTodayRecord?.clockOutTime ? 'Already Clocked In' : myTodayRecord?.clockOutTime ? 'Punch In Again' : 'Clock In Now'}</span>
                   </button>
 
                   <button
                     onClick={() => handlePunch('OUT')}
-                    disabled={punchLoading || !myTodayRecord?.clockInTime || Boolean(myTodayRecord?.clockOutTime)}
+                    disabled={punchLoading || isCycleLocked || !myTodayRecord?.clockInTime || Boolean(myTodayRecord?.clockOutTime)}
                     className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shadow-md shadow-rose-700/20 transition-all hover:scale-102 disabled:opacity-40 disabled:hover:scale-100 cursor-pointer"
                   >
                     <Square className="w-3.5 h-3.5 fill-white" />
-                    <span>{myTodayRecord?.clockOutTime ? 'Shift Completed' : 'Clock Out'}</span>
+                    <span>{isCycleLocked ? 'Cycle Locked' : myTodayRecord?.clockOutTime ? 'Shift Completed' : 'Clock Out'}</span>
                   </button>
                 </div>
               </div>
@@ -1620,8 +1712,9 @@ function AttendanceContent() {
                                     return (
                                       <button
                                         onClick={() => handleQuickRegularize(r.employeeId, r.date)}
-                                        className="px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold text-[11px] transition-colors cursor-pointer"
-                                        title="Submit regularization request for this date"
+                                        disabled={isCycleLocked}
+                                        className="px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 disabled:opacity-40 disabled:cursor-not-allowed text-emerald-800 border border-emerald-200 font-bold text-[11px] transition-colors cursor-pointer"
+                                        title={isCycleLocked ? 'Attendance cycle is locked' : 'Submit regularization request for this date'}
                                       >
                                         Regularize
                                       </button>
@@ -1636,16 +1729,18 @@ function AttendanceContent() {
                                     <button
                                       type="button"
                                       onClick={() => handleOpenEditRecord(r)}
-                                      className="p-1.5 rounded-lg bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-700 border border-slate-200 hover:border-blue-300 font-semibold text-[11px] transition-colors cursor-pointer"
-                                      title="Edit attendance record"
+                                      disabled={isCycleLocked}
+                                      className="p-1.5 rounded-lg bg-slate-100 hover:bg-blue-50 disabled:opacity-40 disabled:cursor-not-allowed text-slate-600 hover:text-blue-700 border border-slate-200 hover:border-blue-300 font-semibold text-[11px] transition-colors cursor-pointer"
+                                      title={isCycleLocked ? 'Cycle locked - editing disabled' : 'Edit attendance record'}
                                     >
                                       <Edit2 className="w-3.5 h-3.5" />
                                     </button>
                                     <button
                                       type="button"
                                       onClick={() => setDeletingRecord(r)}
-                                      className="p-1.5 rounded-lg bg-slate-100 hover:bg-rose-50 text-slate-600 hover:text-rose-700 border border-slate-200 hover:border-rose-300 font-semibold text-[11px] transition-colors cursor-pointer"
-                                      title="Delete attendance record"
+                                      disabled={isCycleLocked}
+                                      className="p-1.5 rounded-lg bg-slate-100 hover:bg-rose-50 disabled:opacity-40 disabled:cursor-not-allowed text-slate-600 hover:text-rose-700 border border-slate-200 hover:border-rose-300 font-semibold text-[11px] transition-colors cursor-pointer"
+                                      title={isCycleLocked ? 'Cycle locked - deletion disabled' : 'Delete attendance record'}
                                     >
                                       <Trash2 className="w-3.5 h-3.5" />
                                     </button>
