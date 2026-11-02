@@ -633,9 +633,11 @@ export default function CompanySetupWizardPage() {
   const handleCopyActivationLink = async (emp: Employee) => {
     const origin = typeof window !== 'undefined' ? window.location.origin : 'https://goodwin-grow-hrms.vercel.app';
     const emailLower = (emp.workEmail || '').toLowerCase();
+    const founderEmails = ['rajnish.chauhan@goodwinbatteries.com', 'rajnish.goodwinbatteries@gmail.com'];
     const isOwnerOrActive =
-      emailLower.includes('rajnish') ||
+      founderEmails.includes(emailLower) ||
       emailLower === (tenant?.businessEmail?.toLowerCase() || '') ||
+      ['director', 'founder', 'owner'].includes((emp.designationTitle || '').toLowerCase()) ||
       emp.loginStatus === 'ACCEPTED';
 
     if (isOwnerOrActive) {
@@ -1806,9 +1808,11 @@ export default function CompanySetupWizardPage() {
                     (i) => i.employeeId === emp.id || i.email.toLowerCase() === (emp.workEmail || '').toLowerCase()
                   );
                   const emailLower = (emp.workEmail || '').toLowerCase();
+                  const founderEmails = ['rajnish.chauhan@goodwinbatteries.com', 'rajnish.goodwinbatteries@gmail.com'];
                   const isOwnerOrActive =
-                    emailLower.includes('rajnish') ||
+                    founderEmails.includes(emailLower) ||
                     emailLower === (tenant?.businessEmail?.toLowerCase() || '') ||
+                    ['director', 'founder', 'owner'].includes((emp.designationTitle || '').toLowerCase()) ||
                     emp.loginStatus === 'ACCEPTED' ||
                     inv?.status === 'ACCEPTED';
                   const effectiveStatus = isOwnerOrActive ? 'ACCEPTED' : (inv?.status || emp.loginStatus || 'NOT_INVITED');

@@ -144,13 +144,15 @@ export default function EmployeeSelfServiceDashboard() {
         let matchedEmp: Employee | undefined;
         if (user) {
           const userFirst = user.name?.toLowerCase().split(' ')[0] || '';
+          const founderEmails = ['rajnish.chauhan@goodwinbatteries.com', 'rajnish.goodwinbatteries@gmail.com'];
+          const isFounderUser = Boolean(user.email && founderEmails.includes(user.email.toLowerCase()));
           matchedEmp = emps.find(
             (e) =>
               (user.email && e.workEmail?.toLowerCase() === user.email.toLowerCase()) ||
               (user.id && (e.userId === user.id || e.id === user.id)) ||
               (user.name && `${e.firstName} ${e.lastName}`.toLowerCase() === user.name.toLowerCase()) ||
               (userFirst && e.firstName.toLowerCase() === userFirst) ||
-              (user.email && user.email.toLowerCase().includes('rajnish') && e.firstName.toLowerCase().includes('rajnish'))
+              (isFounderUser && (founderEmails.includes(e.workEmail?.toLowerCase() || '') || ['director', 'founder', 'owner'].includes((e.designationTitle || '').toLowerCase())))
           );
         }
 
@@ -159,10 +161,11 @@ export default function EmployeeSelfServiceDashboard() {
           const nameTokens = (user.name || 'Owner').trim().split(' ');
           const fName = nameTokens[0];
           const lName = nameTokens.slice(1).join(' ') || '';
+          const founderEmails = ['rajnish.chauhan@goodwinbatteries.com', 'rajnish.goodwinbatteries@gmail.com'];
           const isOwnerUser = Boolean(
             user.isSuperAdmin ||
             !isEmployeeOnly ||
-            user.email?.toLowerCase().includes('rajnish') ||
+            (user.email && founderEmails.includes(user.email.toLowerCase())) ||
             user.email?.toLowerCase().includes('admin')
           );
 

@@ -64,6 +64,8 @@ export default function KekaTopClockWidget({ tenantSlug, user }: KekaTopClockWid
       if (empJson.success && Array.isArray(empJson.data?.employees)) {
         const emps: Employee[] = empJson.data.employees;
         const userFirst = user.name?.toLowerCase().split(' ')[0] || '';
+        const founderEmails = ['rajnish.chauhan@goodwinbatteries.com', 'rajnish.goodwinbatteries@gmail.com'];
+        const isFounderUser = Boolean(user.email && founderEmails.includes(user.email.toLowerCase()));
         matchedEmp =
           emps.find(
             (e) =>
@@ -71,7 +73,7 @@ export default function KekaTopClockWidget({ tenantSlug, user }: KekaTopClockWid
               (user.id && (e.userId === user.id || e.id === user.id)) ||
               (user.name && `${e.firstName} ${e.lastName}`.toLowerCase() === user.name.toLowerCase()) ||
               (userFirst && e.firstName.toLowerCase() === userFirst) ||
-              (user.email && user.email.toLowerCase().includes('rajnish') && e.firstName.toLowerCase().includes('rajnish'))
+              (isFounderUser && (founderEmails.includes(e.workEmail?.toLowerCase() || '') || ['director', 'founder', 'owner'].includes((e.designationTitle || '').toLowerCase())))
           ) || null;
         setEmployee(matchedEmp);
       }

@@ -266,6 +266,23 @@ export async function PATCH(
       return NextResponse.json({ success: false, error: 'Employee ID is required' }, { status: 400 });
     }
 
+    // Auto-revoke login and security credentials upon offboarding
+    if (updates.status === 'EXITED' || updates.status === 'ARCHIVED') {
+      updates.loginStatus = 'REVOKED';
+      try {
+        const invitations = (await SupabaseStore.getInvitations(tenant.id)) || db.getInvitations(tenant.id);
+        const empInv = invitations.find(
+          (i) => i.employeeId === employeeId || (updates.workEmail && i.email.toLowerCase() === updates.workEmail.toLowerCase())
+        );
+        if (empInv && empInv.status !== 'REVOKED') {
+          db.revokeInvitation(tenant.id, empInv.id);
+          await SupabaseStore.saveInvitation({ ...empInv, status: 'REVOKED' });
+        }
+      } catch (e) {
+        console.warn('Could not revoke active invitations for offboarded employee:', e);
+      }
+    }
+
     // If departmentId is provided and departmentName not given, resolve it
     if (updates.departmentId && !updates.departmentName) {
       const depts = (await SupabaseStore.getDepartments(tenant.id)) || db.getDepartments(tenant.id);

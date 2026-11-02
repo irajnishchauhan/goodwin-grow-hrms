@@ -203,3 +203,4 @@ export function downloadDocumentPDF(doc: VaultDocument, tenant?: Tenant | null):
   const safeFilename = (doc.fileName || `${doc.title.replace(/\s+/g, '_')}.pdf`).replace(/[^a-zA-Z0-9_.-]/g, '_');
   pdf.save(safeFilename);
 }
+

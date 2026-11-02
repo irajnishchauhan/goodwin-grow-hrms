@@ -1329,6 +1329,18 @@ export class SupabaseStore {
     return true;
   }
 
+  public static async deleteLeaveApplication(tenantId: string, leaveId: string): Promise<boolean> {
+    const supabase = getSupabaseAdmin();
+    if (!supabase) return false;
+    SupabaseStore.invalidate(tenantId);
+    const { error } = await supabase
+      .from('leave_applications')
+      .delete()
+      .eq('id', leaveId)
+      .eq('tenant_id', tenantId);
+    return !error;
+  }
+
   // --------------------------------------------------------------------------
   // PAYROLL & SALARY SLIPS
   // --------------------------------------------------------------------------

@@ -40,6 +40,7 @@ export default function TenantEmployeesPage() {
   const params = useParams();
   const tenantSlug = params.tenantSlug as string;
   const { user, isSuperAdmin, isCompanyAdmin, isHRAdmin, isEmployeeOnly } = useCurrentUser(tenantSlug);
+  const canManagePayrollFields = Boolean(isSuperAdmin || isCompanyAdmin);
 
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
@@ -243,8 +244,8 @@ export default function TenantEmployeesPage() {
         joiningDate: editJoiningDate
       };
 
-      // Super Admin Exclusive Privileges
-      if (isSuperAdmin) {
+      // Super Admin & Company Admin Privileges
+      if (canManagePayrollFields) {
         payload.monthlySalary = Number(editMonthlySalary) || 0;
         payload.panOrTaxId = editPanOrTaxId.trim();
         payload.bankName = editBankName.trim();
@@ -1152,22 +1153,22 @@ Ritu,Chopra,ritu.chopra@goodwinbatteries.com,+91 98444 55667,Research & Battery 
 
             {/* Modal Form */}
             <form onSubmit={handleSaveEmployeeEdit} className="p-6 space-y-5 text-xs overflow-y-auto flex-1">
-              {/* Super Admin Privileges Banner */}
-              {isSuperAdmin ? (
-                <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-900 text-xs flex items-center justify-between shadow-xs">
+              {/* Super Admin & Company Admin Privileges Banner */}
+              {canManagePayrollFields ? (
+                <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-900 text-xs flex items-center justify-between shadow-xs">
                   <div className="flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-700 flex items-center justify-center shrink-0">
-                      <ShieldAlert className="w-4 h-4 text-amber-600" />
+                    <div className="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-700 flex items-center justify-center shrink-0">
+                      <ShieldCheck className="w-4 h-4 text-emerald-600" />
                     </div>
                     <div>
-                      <div className="font-extrabold text-amber-950 flex items-center gap-1.5">
-                        <span>Super Admin Privileges Active</span>
-                        <span className="px-1.5 py-0.5 rounded bg-amber-200/80 text-[9px] font-mono font-bold text-amber-900">
-                          SUPER_ADMIN
+                      <div className="font-extrabold text-emerald-950 flex items-center gap-1.5">
+                        <span>{isSuperAdmin ? 'Super Admin Privileges Active' : 'Company Admin Privileges Active'}</span>
+                        <span className="px-1.5 py-0.5 rounded bg-emerald-200/80 text-[9px] font-mono font-bold text-emerald-900">
+                          {isSuperAdmin ? 'SUPER_ADMIN' : 'COMPANY_ADMIN'}
                         </span>
                       </div>
-                      <p className="text-[11px] text-amber-800">
-                        Direct editing unlocked for Base Compensation, Banking details, Statutory Tax IDs, and Lifecycle termination.
+                      <p className="text-[11px] text-emerald-800">
+                        Direct editing unlocked for Base Compensation, Banking routing, Statutory Tax IDs, and Lifecycle termination.
                       </p>
                     </div>
                   </div>
@@ -1178,9 +1179,9 @@ Ritu,Chopra,ritu.chopra@goodwinbatteries.com,+91 98444 55667,Research & Battery 
                     <Lock className="w-4 h-4 text-slate-600" />
                   </div>
                   <div>
-                    <div className="font-bold text-slate-900">Standard HR Administrator Mode</div>
+                    <div className="font-bold text-slate-900">Standard Employee Viewer Mode</div>
                     <p className="text-[11px] text-slate-500">
-                      Sensitive payroll liabilities, banking routing, PAN, and lifecycle states are locked and editable exclusively by Super Admin.
+                      Sensitive payroll liabilities, banking routing, PAN, and lifecycle states are editable exclusively by Company Admin and Super Admin.
                     </p>
                   </div>
                 </div>
@@ -1382,13 +1383,13 @@ Ritu,Chopra,ritu.chopra@goodwinbatteries.com,+91 98444 55667,Research & Battery 
                     <DollarSign className="w-4 h-4 text-amber-600" />
                     <span className="font-extrabold text-slate-900">Compensation, Banking & Lifecycle Governance</span>
                   </div>
-                  {isSuperAdmin ? (
-                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300">
-                      <Sparkles className="w-3 h-3 text-amber-600" /> Super Admin Unlocked
+                  {canManagePayrollFields ? (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-900 border border-emerald-300">
+                      <Sparkles className="w-3 h-3 text-emerald-600" /> Executive Unlocked
                     </span>
                   ) : (
                     <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-300">
-                      <Lock className="w-3 h-3 text-slate-500" /> Super Admin Only
+                      <Lock className="w-3 h-3 text-slate-500" /> Admin Only
                     </span>
                   )}
                 </div>
@@ -1397,37 +1398,37 @@ Ritu,Chopra,ritu.chopra@goodwinbatteries.com,+91 98444 55667,Research & Battery 
                   <div>
                     <label className="block font-semibold text-slate-700 mb-1 flex items-center justify-between">
                       <span>Monthly Base Salary ({tenant?.currency}) *</span>
-                      {!isSuperAdmin && <Lock className="w-3 h-3 text-slate-400" />}
+                      {!canManagePayrollFields && <Lock className="w-3 h-3 text-slate-400" />}
                     </label>
                     <input
                       type="number"
                       required
                       min={0}
-                      disabled={!isSuperAdmin}
+                      disabled={!canManagePayrollFields}
                       value={editMonthlySalary}
                       onChange={(e) => setEditMonthlySalary(e.target.value)}
                       className={`w-full px-3 py-2 rounded-xl border ${
-                        !isSuperAdmin
+                        !canManagePayrollFields
                           ? 'bg-slate-100 text-slate-500 border-slate-200 cursor-not-allowed'
-                          : 'border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/30'
+                          : 'border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30'
                       }`}
                     />
                   </div>
                   <div>
                     <label className="block font-semibold text-slate-700 mb-1 flex items-center justify-between">
                       <span>PAN / Tax ID</span>
-                      {!isSuperAdmin && <Lock className="w-3 h-3 text-slate-400" />}
+                      {!canManagePayrollFields && <Lock className="w-3 h-3 text-slate-400" />}
                     </label>
                     <input
                       type="text"
-                      disabled={!isSuperAdmin}
+                      disabled={!canManagePayrollFields}
                       value={editPanOrTaxId}
                       onChange={(e) => setEditPanOrTaxId(e.target.value)}
                       placeholder="e.g. ABCDE1234F"
                       className={`w-full px-3 py-2 rounded-xl border ${
-                        !isSuperAdmin
+                        !canManagePayrollFields
                           ? 'bg-slate-100 text-slate-500 border-slate-200 cursor-not-allowed'
-                          : 'border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/30'
+                          : 'border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30'
                       }`}
                     />
                   </div>
@@ -1437,36 +1438,36 @@ Ritu,Chopra,ritu.chopra@goodwinbatteries.com,+91 98444 55667,Research & Battery 
                   <div>
                     <label className="block font-semibold text-slate-700 mb-1 flex items-center justify-between">
                       <span>Bank Name</span>
-                      {!isSuperAdmin && <Lock className="w-3 h-3 text-slate-400" />}
+                      {!canManagePayrollFields && <Lock className="w-3 h-3 text-slate-400" />}
                     </label>
                     <input
                       type="text"
-                      disabled={!isSuperAdmin}
+                      disabled={!canManagePayrollFields}
                       value={editBankName}
                       onChange={(e) => setEditBankName(e.target.value)}
                       placeholder="e.g. Axis Bank"
                       className={`w-full px-3 py-2 rounded-xl border ${
-                        !isSuperAdmin
+                        !canManagePayrollFields
                           ? 'bg-slate-100 text-slate-500 border-slate-200 cursor-not-allowed'
-                          : 'border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/30'
+                          : 'border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30'
                       }`}
                     />
                   </div>
                   <div>
                     <label className="block font-semibold text-slate-700 mb-1 flex items-center justify-between">
                       <span>Bank Account Number</span>
-                      {!isSuperAdmin && <Lock className="w-3 h-3 text-slate-400" />}
+                      {!canManagePayrollFields && <Lock className="w-3 h-3 text-slate-400" />}
                     </label>
                     <input
                       type="text"
-                      disabled={!isSuperAdmin}
+                      disabled={!canManagePayrollFields}
                       value={editBankAccountNumber}
                       onChange={(e) => setEditBankAccountNumber(e.target.value)}
                       placeholder="e.g. 98127394812"
                       className={`w-full px-3 py-2 rounded-xl border ${
-                        !isSuperAdmin
+                        !canManagePayrollFields
                           ? 'bg-slate-100 text-slate-500 border-slate-200 cursor-not-allowed'
-                          : 'border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/30'
+                          : 'border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30'
                       }`}
                     />
                   </div>
@@ -1476,16 +1477,16 @@ Ritu,Chopra,ritu.chopra@goodwinbatteries.com,+91 98444 55667,Research & Battery 
                   <div>
                     <label className="block font-semibold text-slate-700 mb-1 flex items-center justify-between">
                       <span>Lifecycle Status</span>
-                      {!isSuperAdmin && <Lock className="w-3 h-3 text-slate-400" />}
+                      {!canManagePayrollFields && <Lock className="w-3 h-3 text-slate-400" />}
                     </label>
                     <select
-                      disabled={!isSuperAdmin}
+                      disabled={!canManagePayrollFields}
                       value={editStatus}
                       onChange={(e) => setEditStatus(e.target.value as EmployeeStatus)}
                       className={`w-full px-3 py-2 rounded-xl border ${
-                        !isSuperAdmin
+                        !canManagePayrollFields
                           ? 'bg-slate-100 text-slate-500 border-slate-200 cursor-not-allowed'
-                          : 'border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/30 font-semibold text-emerald-800'
+                          : 'border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30 font-semibold text-emerald-800'
                       }`}
                     >
                       <option value="ACTIVE">ACTIVE (Active Regular Workforce)</option>
@@ -1499,16 +1500,16 @@ Ritu,Chopra,ritu.chopra@goodwinbatteries.com,+91 98444 55667,Research & Battery 
                   <div>
                     <label className="block font-semibold text-slate-700 mb-1 flex items-center justify-between">
                       <span>Login Account State</span>
-                      {!isSuperAdmin && <Lock className="w-3 h-3 text-slate-400" />}
+                      {!canManagePayrollFields && <Lock className="w-3 h-3 text-slate-400" />}
                     </label>
                     <select
-                      disabled={!isSuperAdmin}
+                      disabled={!canManagePayrollFields}
                       value={editLoginStatus}
                       onChange={(e) => setEditLoginStatus(e.target.value as LoginActivationStatus)}
                       className={`w-full px-3 py-2 rounded-xl border ${
-                        !isSuperAdmin
+                        !canManagePayrollFields
                           ? 'bg-slate-100 text-slate-500 border-slate-200 cursor-not-allowed'
-                          : 'border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/30'
+                          : 'border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30'
                       }`}
                     >
                       <option value="NOT_INVITED">NOT_INVITED (Record Only)</option>

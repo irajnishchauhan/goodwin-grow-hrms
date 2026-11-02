@@ -12,7 +12,8 @@ import {
   X,
   ShieldCheck,
   User,
-  Sparkles
+  Sparkles,
+  Trash2
 } from 'lucide-react';
 import { LeaveApplication, LeaveType, Employee, Tenant } from '@/lib/types';
 import { useCurrentUser } from '@/lib/auth/useCurrentUser';
@@ -175,6 +176,24 @@ export default function TenantLeavesPage() {
       }
     } catch (e) {
       console.error(e);
+    }
+  };
+
+  const handleWithdrawLeave = async (leaveId: string) => {
+    if (!confirm('Are you sure you want to withdraw this pending leave application?')) return;
+    try {
+      const res = await fetch(`/api/tenants/${tenantSlug}/leaves?id=${leaveId}`, {
+        method: 'DELETE'
+      });
+      const json = await res.json();
+      if (json.success) {
+        setApplications((prev) => prev.filter((a) => a.id !== leaveId));
+      } else {
+        alert(json.error || 'Failed to withdraw leave application');
+      }
+    } catch (e) {
+      console.error(e);
+      alert('Error withdrawing leave application');
     }
   };
 
@@ -501,9 +520,21 @@ export default function TenantLeavesPage() {
                         </td>
                         <td className="px-6 py-4 text-right">
                           {isEmployeeOnly ? (
-                            <span className="text-[11px] text-slate-500 italic">
-                              {app.reviewComment || (app.status === 'PENDING' ? 'Under Review' : 'Processed')}
-                            </span>
+                            <div className="flex items-center justify-end gap-2">
+                              {app.status === 'PENDING' && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleWithdrawLeave(app.id)}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-[10px] font-bold cursor-pointer"
+                                  title="Withdraw this pending leave application"
+                                >
+                                  <X className="w-3 h-3" /> Withdraw
+                                </button>
+                              )}
+                              <span className="text-[11px] text-slate-500 italic">
+                                {app.reviewComment || (app.status === 'PENDING' ? 'Under Review' : 'Processed')}
+                              </span>
+                            </div>
                           ) : app.status === 'PENDING' ? (
                             <div className="flex items-center justify-end gap-2">
                               <button
@@ -517,6 +548,14 @@ export default function TenantLeavesPage() {
                                 className="flex items-center gap-1 px-3 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-semibold text-[11px] cursor-pointer"
                               >
                                 <XCircle className="w-3 h-3" /> Reject
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleWithdrawLeave(app.id)}
+                                className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 cursor-pointer"
+                                title="Withdraw / Delete application"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
                               </button>
                             </div>
                           ) : (

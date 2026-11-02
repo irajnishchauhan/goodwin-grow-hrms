@@ -26,7 +26,8 @@ import {
   Trash2,
   Settings,
   Plus,
-  CheckSquare
+  CheckSquare,
+  Download
 } from 'lucide-react';
 import {
   AttendanceRecord,
@@ -321,6 +322,9 @@ function AttendanceContent() {
     };
   }, [selectedDate, tenantSlug]);
 
+  const FOUNDER_EMAILS = ['rajnish.chauhan@goodwinbatteries.com', 'rajnish.goodwinbatteries@gmail.com'];
+  const isFounderUser = Boolean(user?.email && FOUNDER_EMAILS.includes(user.email.toLowerCase()));
+
   // Current logged in employee record
   const currentEmp =
     employees.find(
@@ -329,9 +333,9 @@ function AttendanceContent() {
         (e.workEmail?.toLowerCase() === user.email?.toLowerCase() ||
           (user.id && (e.userId === user.id || e.id === user.id)) ||
           e.firstName?.toLowerCase() === user.name?.toLowerCase().split(' ')[0] ||
-          (user.email && user.email.toLowerCase().includes('rajnish') && e.firstName.toLowerCase().includes('rajnish')))
+          (isFounderUser && (FOUNDER_EMAILS.includes(e.workEmail?.toLowerCase() || '') || ['director', 'founder', 'owner'].includes((e.designationTitle || '').toLowerCase()))))
     ) ||
-    (user && (user.email?.toLowerCase().includes('rajnish') || user.isSuperAdmin || isCompanyAdmin)
+    (user && (isFounderUser || user.isSuperAdmin || isCompanyAdmin)
       ? ({
           id: `emp-${user.id || 'owner'}`,
           tenantId: tenant?.id || '',
@@ -836,6 +840,69 @@ function AttendanceContent() {
     setSelectedRecordIds([]);
   };
 
+  const handleExportAttendanceCSV = () => {
+    if (visibleRecords.length === 0) return;
+
+    const headers = [
+      'Date',
+      'Employee Code',
+      'Employee Name',
+      'Department',
+      'Shift',
+      'Clock In',
+      'Clock Out',
+      'Working Hours',
+      'Status',
+      'Late Minutes',
+      'Overtime Hours',
+      'Notes'
+    ];
+
+    const rows = visibleRecords.map((r) => {
+      const rAny = r as any;
+      const emp = employees.find((e) => e.id === r.employeeId);
+      return [
+        r.date || selectedDate,
+        emp?.employeeCode || rAny.employeeCode || 'N/A',
+        r.employeeName || (emp ? `${emp.firstName} ${emp.lastName}` : 'N/A'),
+        emp?.departmentName || 'Operations',
+        r.shiftName || activeShift.name,
+        r.clockInTime || 'Not Punched',
+        r.clockOutTime || 'Not Punched',
+        r.workingHours ? r.workingHours.toFixed(2) : '0',
+        r.status,
+        rAny.lateMinutes || 0,
+        rAny.overtimeHours ? Number(rAny.overtimeHours).toFixed(2) : '0',
+        r.notes || ''
+      ];
+    });
+
+    const csvContent = [
+      headers.join(','),
+      ...rows.map((row) =>
+        row
+          .map((cell) => {
+            const str = String(cell ?? '');
+            if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+              return `"${str.replace(/"/g, '""')}"`;
+            }
+            return str;
+          })
+          .join(',')
+      )
+    ].join('\r\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `Attendance_Roster_${tenant?.slug || 'company'}_${selectedDate}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   const pendingRegsCount = regularizations.filter((r) => r.status === 'PENDING').length;
   const approvedRegsCount = regularizations.filter((r) => r.status === 'APPROVED').length;
   const rejectedRegsCount = regularizations.filter((r) => r.status === 'REJECTED').length;
@@ -1224,6 +1291,15 @@ function AttendanceContent() {
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleExportAttendanceCSV}
+                    className="px-2.5 py-1 rounded-xl bg-white hover:bg-slate-100 text-slate-700 text-xs font-bold border border-slate-200 transition-colors cursor-pointer flex items-center gap-1.5 shadow-2xs"
+                    title="Export Attendance Log to CSV"
+                  >
+                    <Download className="w-3.5 h-3.5 text-slate-500" />
+                    <span>Export CSV</span>
+                  </button>
                   {canManageAttendance && visibleRecords.length > 0 && (
                     <button
                       type="button"

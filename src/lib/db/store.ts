@@ -1075,7 +1075,7 @@ class HRMSDataStore {
         shiftName: 'General Day Shift',
         loginStatus: (
           row.workEmail.trim().toLowerCase() === (tenant.businessEmail || '').toLowerCase() ||
-          row.workEmail.trim().toLowerCase().includes('rajnish') ||
+          ['rajnish.chauhan@goodwinbatteries.com', 'rajnish.goodwinbatteries@gmail.com'].includes(row.workEmail.trim().toLowerCase()) ||
           this.users.some(
             (u) =>
               u.email.toLowerCase() === row.workEmail.trim().toLowerCase() &&
@@ -1877,6 +1877,15 @@ class HRMSDataStore {
         this.leaveApplications.unshift(app);
       }
     }
+  }
+
+  public deleteLeaveApplication(tenantId: string, leaveId: string): boolean {
+    const idx = this.leaveApplications.findIndex((a) => a.id === leaveId && a.tenantId === tenantId);
+    if (idx >= 0) {
+      this.leaveApplications.splice(idx, 1);
+      return true;
+    }
+    return false;
   }
 
   public updateLeaveStatus(

@@ -21,6 +21,7 @@ import {
   RefreshCw,
   Upload,
   Trash2,
+  Clock,
   Image as ImageIcon
 } from 'lucide-react';
 import { Tenant } from '@/lib/types';
@@ -91,6 +92,7 @@ export default function TenantSettingsPage() {
   const [financialYear, setFinancialYear] = useState('April - March');
   const [primaryColor, setPrimaryColor] = useState('#059669');
   const [logoUrl, setLogoUrl] = useState('');
+  const [weeklyOffDays, setWeeklyOffDays] = useState<string[]>([]);
 
   const [savedMsg, setSavedMsg] = useState(false);
   const [copiedId, setCopiedId] = useState(false);
@@ -120,6 +122,7 @@ export default function TenantSettingsPage() {
           setFinancialYear(t.financialYear || 'April - March');
           setPrimaryColor(t.primaryColor || '#059669');
           setLogoUrl(t.logoUrl || '');
+          setWeeklyOffDays(t.weeklyOffDays || []);
         }
       } catch (e) {
         console.error('Failed to load tenant settings:', e);
@@ -166,7 +169,8 @@ export default function TenantSettingsPage() {
         timezone,
         financialYear,
         primaryColor,
-        logoUrl
+        logoUrl,
+        weeklyOffDays
       };
 
       const res = await fetch(`/api/tenants/${tenantSlug}`, {
@@ -375,6 +379,88 @@ export default function TenantSettingsPage() {
                   </select>
                   <p className="text-[11px] text-slate-400 mt-1">Defines annual leave reset and tax assessment period.</p>
                 </div>
+              </div>
+            </div>
+
+            {/* Work-Week Schedule & Weekly Off Days */}
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-4">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                <div className="flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-emerald-600" />
+                  <h2 className="text-sm font-bold text-slate-900">Work-Week Policy &amp; Weekly Off Days</h2>
+                </div>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 font-bold">
+                  {weeklyOffDays.length === 0 ? '7 Days / Continuous' : `${7 - weeklyOffDays.length} Work Days / ${weeklyOffDays.length} Off`}
+                </span>
+              </div>
+
+              <div className="space-y-3 text-xs">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={() => setWeeklyOffDays(['SUNDAY'])}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all cursor-pointer ${
+                      weeklyOffDays.length === 1 && weeklyOffDays[0] === 'SUNDAY'
+                        ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
+                        : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                    }`}
+                  >
+                    Preset: Standard 6-Day Week (Sunday Off)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setWeeklyOffDays(['SATURDAY', 'SUNDAY'])}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all cursor-pointer ${
+                      weeklyOffDays.length === 2 && weeklyOffDays.includes('SATURDAY') && weeklyOffDays.includes('SUNDAY')
+                        ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
+                        : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                    }`}
+                  >
+                    Preset: Corporate 5-Day Week (Sat &amp; Sun Off)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setWeeklyOffDays([])}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all cursor-pointer ${
+                      weeklyOffDays.length === 0
+                        ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
+                        : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                    }`}
+                  >
+                    Preset: 7-Day Continuous Production
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-2 pt-2">
+                  {['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'].map((day) => {
+                    const isOff = weeklyOffDays.includes(day);
+                    return (
+                      <button
+                        key={day}
+                        type="button"
+                        onClick={() => {
+                          if (isOff) {
+                            setWeeklyOffDays(weeklyOffDays.filter((d) => d !== day));
+                          } else {
+                            setWeeklyOffDays([...weeklyOffDays, day]);
+                          }
+                        }}
+                        className={`p-3 rounded-xl border text-center transition-all cursor-pointer ${
+                          isOff
+                            ? 'bg-emerald-50 border-emerald-300 text-emerald-900 font-bold shadow-2xs'
+                            : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50 font-medium'
+                        }`}
+                      >
+                        <div className="text-[10px] text-slate-400">{day.slice(0, 3)}</div>
+                        <div className="text-xs font-bold mt-0.5">{isOff ? 'OFF' : 'WORK'}</div>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <p className="text-[11px] text-slate-500 pt-1">
+                  Prorated attendance and payroll calculations automatically count weekly off days as paid rest days for all workforce members.
+                </p>
               </div>
             </div>
 

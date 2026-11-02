@@ -250,3 +250,40 @@ export async function PATCH(
     return NextResponse.json({ success: false, error: message }, { status: 400 });
   }
 }
+
+export async function DELETE(
+  req: Request,
+  context: { params: Promise<{ tenantSlug: string }> }
+) {
+  try {
+    const { tenantSlug } = await context.params;
+    const tenant = (await SupabaseStore.getTenantBySlug(tenantSlug)) || (await db.getResolvedTenant(tenantSlug, true));
+    if (!tenant) {
+      return NextResponse.json({ success: false, error: 'Tenant not found' }, { status: 404 });
+    }
+
+    const { searchParams } = new URL(req.url);
+    const leaveId = searchParams.get('id');
+    if (!leaveId) {
+      return NextResponse.json({ success: false, error: 'Leave application ID is required' }, { status: 400 });
+    }
+
+    db.invalidateCache(tenant.id);
+    db.invalidateCache(tenantSlug);
+
+    const deleted = db.deleteLeaveApplication(tenant.id, leaveId);
+    await SupabaseStore.deleteLeaveApplication(tenant.id, leaveId);
+
+    if (!deleted) {
+      return NextResponse.json({ success: false, error: 'Leave application not found' }, { status: 404 });
+    }
+
+    return NextResponse.json(
+      { success: true, message: 'Leave application successfully withdrawn and cancelled.' },
+      { headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate' } }
+    );
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Error cancelling leave application';
+    return NextResponse.json({ success: false, error: message }, { status: 500 });
+  }
+}

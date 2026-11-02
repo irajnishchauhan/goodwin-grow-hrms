@@ -287,6 +287,89 @@ function PayrollContent() {
     return date.toLocaleString('default', { month: 'long', year: 'numeric' });
   };
 
+  const handleExportPayrollCSV = () => {
+    if (filteredSlips.length === 0) return;
+
+    const headers = [
+      'Month',
+      'Employee Code',
+      'Employee Name',
+      'Department',
+      'Designation',
+      'Calendar Days',
+      'Payable Days',
+      'LOP Days',
+      'Basic (INR)',
+      'HRA (INR)',
+      'Special Allowance (INR)',
+      'Gross Salary (INR)',
+      'PF Employee (INR)',
+      'PT (INR)',
+      'ESI Employee (INR)',
+      'TDS (INR)',
+      'Total Deductions (INR)',
+      'Net Pay (INR)',
+      'Payment Status',
+      'Payment Ref / UTR',
+      'Bank Name',
+      'Bank Account Number'
+    ];
+
+    const rows = filteredSlips.map((slip) => {
+      const emp = employees.find((e) => e.id === slip.employeeId);
+      const bankAcc = slip.bankAccountNumber || emp?.bankAccountNumber;
+      return [
+        slip.month,
+        slip.employeeCode,
+        slip.employeeName,
+        slip.departmentName || emp?.departmentName || 'Operations',
+        slip.designationTitle || emp?.designationTitle || 'Associate',
+        slip.totalCalendarDays ?? 30,
+        slip.payableDays ?? 30,
+        slip.lopDays ?? 0,
+        slip.basicPay,
+        slip.hra,
+        slip.specialAllowance,
+        slip.grossSalary,
+        slip.providentFund,
+        slip.professionalTax,
+        slip.esi,
+        slip.taxDeduction,
+        slip.totalDeductions,
+        slip.netPay,
+        slip.paymentStatus,
+        slip.paymentReference || 'N/A',
+        slip.bankName || emp?.bankName || 'N/A',
+        bankAcc ? `="${bankAcc}"` : 'N/A'
+      ];
+    });
+
+    const csvContent = [
+      headers.join(','),
+      ...rows.map((row) =>
+        row
+          .map((cell) => {
+            const str = String(cell ?? '');
+            if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+              return `"${str.replace(/"/g, '""')}"`;
+            }
+            return str;
+          })
+          .join(',')
+      )
+    ].join('\r\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `Payroll_Register_${tenant?.slug || 'company'}_${selectedMonth}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="space-y-6 max-w-6xl pb-12">
       {/* Top Header */}
@@ -336,6 +419,15 @@ function PayrollContent() {
               <option value="2026-09">September 2026</option>
             </select>
           </div>
+
+          <button
+            onClick={handleExportPayrollCSV}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white hover:bg-slate-50 text-slate-700 font-semibold text-xs border border-slate-200 shadow-2xs transition-all cursor-pointer"
+            title="Download full payroll register as CSV"
+          >
+            <Download className="w-3.5 h-3.5 text-slate-500" />
+            <span>Export CSV</span>
+          </button>
 
           {!isEmployeeOnly && (
             <button
