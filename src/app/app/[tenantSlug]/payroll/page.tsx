@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 import {
   CreditCard,
   Play,
@@ -90,9 +91,18 @@ function PayrollContent() {
   const [bulkDownloadStatus, setBulkDownloadStatus] = useState<string | null>(null);
 
   // Search & Filter State
+  const [empFilterId, setEmpFilterId] = useState<string>(searchParams.get('emp') || '');
   const [searchQuery, setSearchQuery] = useState('');
   const [departmentFilter, setDepartmentFilter] = useState('ALL');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'PAID' | 'PENDING'>('ALL');
+  const [missingBankKycCount, setMissingBankKycCount] = useState(0);
+
+  useEffect(() => {
+    const eParam = searchParams.get('emp');
+    if (eParam !== null) {
+      setEmpFilterId(eParam);
+    }
+  }, [searchParams]);
 
   // Payslip Modal
   const [activeSlip, setActiveSlip] = useState<SalarySlip | null>(null);
@@ -118,6 +128,7 @@ function PayrollContent() {
 
       if (json.success) {
         setSlips(json.data.slips || []);
+        setMissingBankKycCount(json.data.missingBankKycCount || 0);
       } else if (json.error) {
         setErrorMsg(json.error);
       }
@@ -255,6 +266,10 @@ function PayrollContent() {
   // Apply Search & Filters
   const filteredSlips = useMemo(() => {
     return baseVisibleSlips.filter((s) => {
+      // Specific Employee Deep-Link Filter (?emp=...)
+      if (empFilterId && s.employeeId !== empFilterId) {
+        return false;
+      }
       // Department
       if (departmentFilter !== 'ALL' && s.departmentName !== departmentFilter) {
         return false;
@@ -273,7 +288,7 @@ function PayrollContent() {
       }
       return true;
     });
-  }, [baseVisibleSlips, departmentFilter, statusFilter, searchQuery]);
+  }, [baseVisibleSlips, empFilterId, departmentFilter, statusFilter, searchQuery]);
 
   const totalGross = baseVisibleSlips.reduce((sum, s) => sum + s.grossSalary, 0);
   const totalDeductions = baseVisibleSlips.reduce((sum, s) => sum + s.totalDeductions, 0);
@@ -650,6 +665,52 @@ function PayrollContent() {
         </div>
       )}
 
+      {/* Hand-in-Hand Directory Sync & Bank KYC Readiness Banner */}
+      {!isEmployeeOnly && missingBankKycCount > 0 && (
+        <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2 shadow-2xs">
+          <div className="flex items-center gap-2">
+            <Building2 className="w-4 h-4 text-amber-600 shrink-0" />
+            <span>
+              <strong>{missingBankKycCount} active employee(s)</strong> are missing Bank Account, IFSC Code, or PAN in the Employees Directory. Update their profiles for seamless NEFT disbursement &amp; statutory PDFs.
+            </span>
+          </div>
+          <Link
+            href={`/app/${tenantSlug}/employees`}
+            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-amber-200/70 hover:bg-amber-200 text-amber-950 font-bold text-xs shrink-0 transition-colors"
+          >
+            <span>Open Employees Directory</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </Link>
+        </div>
+      )}
+
+      {/* Deep-Link Employee Filter Chip */}
+      {empFilterId && (
+        <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <User className="w-4 h-4 text-emerald-700" />
+            <span>
+              Filtered for employee:{' '}
+              <strong>
+                {employees.find((e) => e.id === empFilterId)
+                  ? `${employees.find((e) => e.id === empFilterId).firstName} ${employees.find((e) => e.id === empFilterId).lastName}`
+                  : empFilterId}
+              </strong>
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setEmpFilterId('');
+              router.replace(`/app/${tenantSlug}/payroll${activeTab === 'slips' ? '?tab=slips' : ''}`, { scroll: false });
+            }}
+            className="px-2.5 py-1 rounded-lg bg-white border border-emerald-300 text-emerald-800 hover:bg-emerald-100 font-bold text-[11px] cursor-pointer"
+          >
+            Show All Employees
+          </button>
+        </div>
+      )}
+
       {/* ============================================================== */}
       {/* TAB 1: PAYROLL RUN & REGISTER                                  */}
       {/* ============================================================== */}
@@ -850,8 +911,26 @@ function PayrollContent() {
                     filteredSlips.map((slip) => (
                       <tr key={slip.id} className="hover:bg-slate-50/80 transition-colors">
                         <td className="px-6 py-4 font-bold text-slate-900">
-                          <div>{slip.employeeName}</div>
+                          {!isEmployeeOnly ? (
+                            <Link
+                              href={`/app/${tenantSlug}/employees?emp=${slip.employeeId}`}
+                              className="hover:text-emerald-700 hover:underline transition-colors"
+                              title="View employee profile in Employees Directory"
+                            >
+                              {slip.employeeName}
+                            </Link>
+                          ) : (
+                            <div>{slip.employeeName}</div>
+                          )}
                           <div className="text-[10px] text-slate-400 font-normal">{slip.designationTitle}</div>
+                          {!isEmployeeOnly && (!slip.bankAccountNumber || !slip.ifscCode || !slip.panOrTaxId) && (
+                            <Link
+                              href={`/app/${tenantSlug}/employees?edit=${slip.employeeId}`}
+                              className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-700 hover:underline mt-0.5"
+                            >
+                              <span>Fix Bank / KYC</span> &rarr;
+                            </Link>
+                          )}
                         </td>
                         <td className="px-6 py-4 font-mono font-bold text-emerald-700">{slip.employeeCode}</td>
                         <td className="px-6 py-4 text-slate-600 font-medium">{slip.departmentName}</td>

@@ -1254,6 +1254,9 @@ class HRMSDataStore {
 
   public deleteEmployee(tenantId: string, employeeId: string): boolean {
     const index = this.employees.findIndex((e) => e.id === employeeId && e.tenantId === tenantId);
+    this.salarySlips = this.salarySlips.filter(
+      (s) => !(s.tenantId === tenantId && s.employeeId === employeeId)
+    );
     if (index === -1) return false;
     this.employees.splice(index, 1);
     this.invalidateCache(`employees_${tenantId}`);
@@ -2387,6 +2390,26 @@ class HRMSDataStore {
       const existingIdx = this.salarySlips.findIndex(
         (s) => s.tenantId === tenantId && s.employeeId === emp.id && s.month === month
       );
+      const existingSlip = existingIdx >= 0 ? this.salarySlips[existingIdx] : null;
+
+      // Never mutate monetary figures on an already-PAID frozen slip
+      if (existingSlip && existingSlip.paymentStatus === 'PAID') {
+        const frozenPaidSlip: SalarySlip = {
+          ...existingSlip,
+          designationTitle: existingSlip.designationTitle || emp.designationTitle || 'Workforce Specialist',
+          bankName: existingSlip.bankName || emp.bankName || undefined,
+          bankAccountNumber: existingSlip.bankAccountNumber || emp.bankAccountNumber || undefined,
+          ifscCode: existingSlip.ifscCode || emp.ifscCode || undefined,
+          panOrTaxId: existingSlip.panOrTaxId || emp.panOrTaxId || undefined,
+          uan: existingSlip.uan || emp.uan || undefined,
+          taxRegime: existingSlip.taxRegime || emp.taxRegime || 'NEW',
+          workLocation: existingSlip.workLocation || emp.workLocation || undefined,
+          joiningDate: existingSlip.joiningDate || emp.joiningDate || undefined
+        };
+        this.salarySlips[existingIdx] = frozenPaidSlip;
+        generatedSlips.push(frozenPaidSlip);
+        continue;
+      }
 
       const slip: SalarySlip = {
         id: `slip-${emp.id}-${month}`,
@@ -2407,10 +2430,7 @@ class HRMSDataStore {
         taxDeduction: tax,
         totalDeductions,
         netPay,
-        paymentStatus: (existingIdx >= 0 && this.salarySlips[existingIdx].paymentStatus === 'PAID') ? 'PAID' : 'PENDING',
-        paymentConfirmedAt: existingIdx >= 0 ? this.salarySlips[existingIdx].paymentConfirmedAt : undefined,
-        paymentConfirmedBy: existingIdx >= 0 ? this.salarySlips[existingIdx].paymentConfirmedBy : undefined,
-        paymentReference: existingIdx >= 0 ? this.salarySlips[existingIdx].paymentReference : undefined,
+        paymentStatus: 'PENDING',
         generatedDate: new Date().toISOString().split('T')[0],
         totalCalendarDays,
         payableDays,

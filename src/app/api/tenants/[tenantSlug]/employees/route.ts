@@ -126,6 +126,15 @@ export async function POST(
     db.invalidateCache(tenant.id);
     db.invalidateCache(tenantSlug);
 
+    // Hydrate from Supabase before creating so employeeCode sequence doesn't collide on cold start
+    const [existingEmps, existingDepts] = await Promise.all([
+      SupabaseStore.getEmployees(tenant.id),
+      SupabaseStore.getDepartments(tenant.id)
+    ]);
+    if (existingEmps && existingEmps.length > 0) {
+      db.syncEmployees(existingEmps);
+    }
+
     const newEmp = db.createEmployee(tenant.id, {
       firstName,
       lastName,
@@ -149,8 +158,15 @@ export async function POST(
       joiningDate: joiningDate || new Date().toISOString().split('T')[0]
     });
 
-    // Save to Supabase PostgreSQL asynchronously
+    if (!newEmp.departmentName && existingDepts) {
+      const deptMatch = existingDepts.find((d) => d.id === departmentId);
+      if (deptMatch) newEmp.departmentName = deptMatch.name;
+    }
+
+    // Save to Supabase PostgreSQL and invalidate cache so Payroll & Directory see the new employee immediately
     await SupabaseStore.saveEmployee(newEmp);
+    SupabaseStore.invalidate(tenant.id);
+    SupabaseStore.invalidate(tenantSlug);
 
     return NextResponse.json(
       {
@@ -195,10 +211,12 @@ export async function DELETE(
 
     db.invalidateCache(tenant.id);
     db.invalidateCache(tenantSlug);
-    const deleted = db.deleteEmployee(tenant.id, employeeId);
-    await SupabaseStore.deleteEmployee(tenant.id, employeeId);
+    const deletedInMemory = db.deleteEmployee(tenant.id, employeeId);
+    const deletedInSupa = await SupabaseStore.deleteEmployee(tenant.id, employeeId);
+    SupabaseStore.invalidate(tenant.id);
+    SupabaseStore.invalidate(tenantSlug);
 
-    if (!deleted) {
+    if (!deletedInMemory && !deletedInSupa) {
       return NextResponse.json({ success: false, error: 'Employee not found in this tenant workspace' }, { status: 404 });
     }
 
@@ -300,10 +318,48 @@ export async function PATCH(
       }
     }
 
+    // Hydrate from Supabase before updating so in-memory store has full employee record on cold start
+    const supaEmployees = await SupabaseStore.getEmployees(tenant.id);
+    if (supaEmployees && supaEmployees.length > 0) {
+      db.syncEmployees(supaEmployees);
+    }
+
     await SupabaseStore.updateEmployee(tenant.id, employeeId, updates);
     const updatedEmp = db.updateEmployee(tenant.id, employeeId, updates);
     db.invalidateCache(tenant.id);
     db.invalidateCache(tenantSlug);
+    SupabaseStore.invalidate(tenant.id);
+    SupabaseStore.invalidate(tenantSlug);
+
+    // Sync pending current-month payroll slip when employee salary, tax regime, bank, or status changes
+    const payrollRelevantFields = [
+      'monthlySalary', 'taxRegime', 'status', 'firstName', 'lastName',
+      'departmentId', 'departmentName', 'designationTitle',
+      'bankName', 'bankAccountNumber', 'ifscCode', 'panOrTaxId', 'uan', 'workLocation'
+    ];
+    if (payrollRelevantFields.some((f) => updates[f] !== undefined)) {
+      try {
+        const currentMonth = new Date().toISOString().slice(0, 7);
+        const [supaAtt, supaLeaves, supaHolidays, supaSlips] = await Promise.all([
+          SupabaseStore.getAttendance(tenant.id),
+          SupabaseStore.getLeaveApplications(tenant.id),
+          SupabaseStore.getHolidays(tenant.id),
+          SupabaseStore.getSalarySlips(tenant.id)
+        ]);
+        if (supaAtt !== null) db.setAttendanceForTenant(tenant.id, supaAtt);
+        if (supaLeaves && supaLeaves.length > 0) db.syncLeaveApplications(supaLeaves);
+        if (supaHolidays && supaHolidays.length > 0) db.syncHolidays(supaHolidays);
+        if (supaSlips && supaSlips.length > 0) db.syncSalarySlips(supaSlips);
+
+        const refreshedSlips = db.generatePayrollRun(tenant.id, currentMonth);
+        const empSlip = refreshedSlips.find((s) => s.employeeId === employeeId && s.paymentStatus !== 'PAID');
+        if (empSlip) {
+          await SupabaseStore.saveSalarySlip(empSlip);
+        }
+      } catch (syncErr) {
+        console.warn('Non-blocking payroll sync after employee update:', syncErr);
+      }
+    }
 
     return NextResponse.json(
       {

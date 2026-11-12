@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { useParams } from 'next/navigation';
+import React, { useState, useEffect, Suspense } from 'react';
+import { useParams, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import {
   Users,
@@ -36,8 +36,9 @@ import {
 import { Employee, Department, Tenant, EmploymentType, EmployeeStatus, LoginActivationStatus, Shift } from '@/lib/types';
 import { useCurrentUser } from '@/lib/auth/useCurrentUser';
 
-export default function TenantEmployeesPage() {
+function EmployeesContent() {
   const params = useParams();
+  const searchParams = useSearchParams();
   const tenantSlug = params.tenantSlug as string;
   const { user, isSuperAdmin, isCompanyAdmin, isHRAdmin, isEmployeeOnly } = useCurrentUser(tenantSlug);
   const canManagePayrollFields = Boolean(isSuperAdmin || isCompanyAdmin);
@@ -137,12 +138,27 @@ export default function TenantEmployeesPage() {
       });
       const json = await res.json();
       if (json.success) {
-        setEmployees(json.data.employees);
+        const fetchedEmps: Employee[] = json.data.employees || [];
+        setEmployees(fetchedEmps);
         setDepartments(json.data.departments);
         if (json.data.shifts) setShifts(json.data.shifts);
         setTenant(json.data.tenant);
         if (json.data.departments.length > 0 && !departmentId) {
           setDepartmentId(json.data.departments[0].id);
+        }
+
+        // Support deep linking from Payroll (?edit=<empId> or ?emp=<empId>)
+        const editTargetId = searchParams.get('edit');
+        const viewTargetId = searchParams.get('emp');
+        if (editTargetId) {
+          const match = fetchedEmps.find((e) => e.id === editTargetId);
+          if (match) {
+            setSelectedEmp(match);
+            openEditModal(match);
+          }
+        } else if (viewTargetId) {
+          const match = fetchedEmps.find((e) => e.id === viewTargetId);
+          if (match) setSelectedEmp(match);
         }
       }
     } catch (e) {
@@ -511,6 +527,15 @@ Ritu,Chopra,ritu.chopra@goodwinbatteries.com,+91 98444 55667,Research & Battery 
             </button>
 
             <Link
+              href={`/app/${tenantSlug}/payroll`}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white hover:bg-slate-50 text-slate-700 font-semibold text-xs transition-all border border-slate-200 shadow-xs"
+              title="Open Payroll Run & Salary Slips"
+            >
+              <CreditCard className="w-4 h-4 text-emerald-600" />
+              <span>Payroll &amp; Slips</span>
+            </Link>
+
+            <Link
               href={`/app/${tenantSlug}/invitations`}
               className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 font-semibold text-xs transition-all border border-amber-200 shadow-xs"
             >
@@ -683,8 +708,29 @@ Ritu,Chopra,ritu.chopra@goodwinbatteries.com,+91 98444 55667,Research & Battery 
                       </>
                     ) : (
                       <>
-                        <td className="px-6 py-4 font-semibold text-slate-800">
-                          {tenant?.currency} {emp.monthlySalary.toLocaleString()} / mo
+                        <td className="px-6 py-4">
+                          <div className="font-semibold text-slate-800">
+                            {tenant?.currency} {emp.monthlySalary.toLocaleString()} / mo
+                          </div>
+                          {emp.bankAccountNumber && emp.ifscCode && emp.panOrTaxId ? (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-700 mt-0.5">
+                              <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                              Payroll &amp; NEFT Ready
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openEditModal(emp);
+                              }}
+                              className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-700 hover:text-amber-900 hover:underline mt-0.5 cursor-pointer"
+                              title="Add Bank Account, IFSC, or PAN for Payroll & NEFT disbursement"
+                            >
+                              <AlertTriangle className="w-3 h-3 text-amber-600" />
+                              Complete Bank / KYC
+                            </button>
+                          )}
                         </td>
                         <td className="px-6 py-4">
                           {emp.loginStatus === 'ACCEPTED' ? (
@@ -1863,8 +1909,8 @@ Ritu,Chopra,ritu.chopra@goodwinbatteries.com,+91 98444 55667,Research & Battery 
             {isEmployeeOnly &&
             !(
               user &&
-              (selectedEmp.workEmail.toLowerCase() === user.email.toLowerCase() ||
-                selectedEmp.firstName.toLowerCase() === user.name.toLowerCase().split(' ')[0])
+              ((user.email && selectedEmp.workEmail.toLowerCase() === user.email.toLowerCase()) ||
+                (user.id && selectedEmp.userId === user.id))
             ) ? (
               <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-2 text-center py-4">
                 <div className="w-8 h-8 rounded-full bg-slate-100 text-amber-600 flex items-center justify-center mx-auto mb-1 border border-slate-200">
@@ -1927,13 +1973,22 @@ Ritu,Chopra,ritu.chopra@goodwinbatteries.com,+91 98444 55667,Research & Battery 
             )}
 
             {!isEmployeeOnly && (
-              <Link
-                href={`/app/${tenantSlug}/invitations`}
-                className="w-full py-2.5 px-3 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 text-xs font-bold border border-amber-200 flex items-center justify-center gap-1.5 transition-colors shadow-xs"
-              >
-                <KeyRound className="w-3.5 h-3.5 text-amber-600" />
-                <span>Manage Credentials & Reset Password</span>
-              </Link>
+              <div className="space-y-2">
+                <Link
+                  href={`/app/${tenantSlug}/payroll?tab=slips&emp=${selectedEmp.id}`}
+                  className="w-full py-2.5 px-3 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-bold border border-emerald-200 flex items-center justify-center gap-1.5 transition-colors shadow-xs"
+                >
+                  <CreditCard className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>View Payroll &amp; Salary Slips</span>
+                </Link>
+                <Link
+                  href={`/app/${tenantSlug}/invitations`}
+                  className="w-full py-2.5 px-3 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 text-xs font-bold border border-amber-200 flex items-center justify-center gap-1.5 transition-colors shadow-xs"
+                >
+                  <KeyRound className="w-3.5 h-3.5 text-amber-600" />
+                  <span>Manage Credentials & Reset Password</span>
+                </Link>
+              </div>
             )}
 
             <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] flex items-center gap-2">
@@ -1944,5 +1999,13 @@ Ritu,Chopra,ritu.chopra@goodwinbatteries.com,+91 98444 55667,Research & Battery 
         </div>
       )}
     </div>
+  );
+}
+
+export default function TenantEmployeesPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-center text-xs text-slate-500 font-mono">Loading Employees Directory...</div>}>
+      <EmployeesContent />
+    </Suspense>
   );
 }

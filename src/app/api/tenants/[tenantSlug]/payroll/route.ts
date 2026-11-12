@@ -48,13 +48,25 @@ export async function GET(
     const employees = supaEmps !== null ? supaEmps : db.getEmployees(tenant.id);
     const empById = new Map(employees.map((e) => [e.id, e]));
 
-    const existingForMonth = (supaSlips || []).filter((s) => s.month === targetMonth);
+    const existingForMonth = (supaSlips || []).filter(
+      (s) => s.month === targetMonth && empById.has(s.employeeId)
+    );
     let slips = existingForMonth;
 
-    if (slips.length === 0) {
-      slips = db.generatePayrollRun(tenant.id, targetMonth);
-      await Promise.all(slips.map((s) => SupabaseStore.saveSalarySlip(s)));
-    } else {
+    const activeEmployees = employees.filter((e) => e.status !== 'ARCHIVED' && e.status !== 'EXITED');
+    const slipEmpIds = new Set(slips.map((s) => s.employeeId));
+    const hasMissingActiveEmps = activeEmployees.some((e) => !slipEmpIds.has(e.id));
+
+    if (slips.length === 0 || hasMissingActiveEmps) {
+      const freshlyGenerated = db.generatePayrollRun(tenant.id, targetMonth);
+      const newlyAdded = freshlyGenerated.filter((s) => !slipEmpIds.has(s.employeeId));
+      if (newlyAdded.length > 0) {
+        await Promise.all(newlyAdded.map((s) => SupabaseStore.saveSalarySlip(s)));
+        slips = [...slips, ...newlyAdded];
+      }
+    }
+
+    if (slips.length > 0) {
       // Filter out test/benchmark records to evaluate real payable attendance
       const validAttendance = (supaAtt || []).filter((a) => {
         if (!a.date.startsWith(targetMonth)) return false;
@@ -69,20 +81,24 @@ export async function GET(
       );
 
       // Strict enforcement of "No Entry = No Pay" (checking both attendance & approved leaves)
+      // Also always keep non-paid slip display/bank/KYC fields synced with Employee Directory
       slips = slips.map((slip) => {
         const emp = empById.get(slip.employeeId);
         const enrichedSlip = {
           ...slip,
+          employeeName: emp ? `${emp.firstName} ${emp.lastName}` : slip.employeeName,
+          employeeCode: emp?.employeeCode || slip.employeeCode,
+          departmentName: emp?.departmentName || slip.departmentName,
           totalCalendarDays: slip.totalCalendarDays ?? totalCalendarDays,
-          designationTitle: slip.designationTitle || emp?.designationTitle,
-          bankName: slip.bankName || emp?.bankName,
-          bankAccountNumber: slip.bankAccountNumber || emp?.bankAccountNumber,
-          ifscCode: slip.ifscCode || emp?.ifscCode,
-          panOrTaxId: slip.panOrTaxId || emp?.panOrTaxId,
-          uan: slip.uan || emp?.uan,
-          taxRegime: slip.taxRegime || emp?.taxRegime || 'NEW',
-          workLocation: slip.workLocation || emp?.workLocation,
-          joiningDate: slip.joiningDate || emp?.joiningDate
+          designationTitle: emp?.designationTitle || slip.designationTitle,
+          bankName: emp?.bankName || slip.bankName,
+          bankAccountNumber: emp?.bankAccountNumber || slip.bankAccountNumber,
+          ifscCode: emp?.ifscCode || slip.ifscCode,
+          panOrTaxId: emp?.panOrTaxId || slip.panOrTaxId,
+          uan: emp?.uan || slip.uan,
+          taxRegime: emp?.taxRegime || slip.taxRegime || 'NEW',
+          workLocation: emp?.workLocation || slip.workLocation,
+          joiningDate: emp?.joiningDate || slip.joiningDate
         };
 
         const empAtt = validAttendance.filter((a) => a.employeeId === slip.employeeId);
@@ -116,12 +132,16 @@ export async function GET(
     }
 
     const totalDisbursed = slips.reduce((sum, s) => sum + s.netPay, 0);
+    const missingBankKycCount = activeEmployees.filter(
+      (e) => !e.bankAccountNumber || !e.ifscCode || !e.panOrTaxId
+    ).length;
 
     const payload = {
       currency: tenant.currency,
       slips,
       totalNetDisbursed: totalDisbursed,
-      totalSlipsCount: slips.length
+      totalSlipsCount: slips.length,
+      missingBankKycCount
     };
 
     return NextResponse.json(

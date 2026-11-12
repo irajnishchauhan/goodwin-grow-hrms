@@ -25,11 +25,19 @@ export async function POST(
     db.invalidateCache(tenant.id);
     db.invalidateCache(tenantSlug);
 
+    // Sync existing employees from Supabase before importing so duplicate/code checks are accurate
+    const existingEmps = await SupabaseStore.getEmployees(tenant.id);
+    if (existingEmps && existingEmps.length > 0) {
+      db.syncEmployees(existingEmps);
+    }
+
     const result = db.bulkImportEmployees(tenant.id, rows);
 
-    // Persist all imported employees to Supabase in parallel
+    // Persist all imported employees to Supabase in parallel and invalidate cache
     if (result.importedEmployees && result.importedEmployees.length > 0) {
       await Promise.all(result.importedEmployees.map((emp) => SupabaseStore.saveEmployee(emp)));
+      SupabaseStore.invalidate(tenant.id);
+      SupabaseStore.invalidate(tenantSlug);
     }
 
     return NextResponse.json(
