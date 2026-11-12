@@ -588,11 +588,19 @@ export class SupabaseStore {
     const supabase = getSupabaseAdmin();
     if (!supabase) return false;
 
+    SupabaseStore.invalidate(tenantId);
+
     const { error } = await supabase
       .from('employees')
       .delete()
       .eq('tenant_id', tenantId)
       .eq('id', employeeId);
+
+    await supabase
+      .from('audit_logs')
+      .delete()
+      .eq('tenant_id', tenantId)
+      .eq('id', `empmeta-${employeeId}`);
 
     return !error;
   }

@@ -42,6 +42,7 @@ function EmployeesContent() {
   const tenantSlug = params.tenantSlug as string;
   const { user, isSuperAdmin, isCompanyAdmin, isHRAdmin, isEmployeeOnly } = useCurrentUser(tenantSlug);
   const canManagePayrollFields = Boolean(isSuperAdmin || isCompanyAdmin);
+  const canDeleteEmployee = Boolean(isSuperAdmin || isCompanyAdmin || isHRAdmin);
 
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
@@ -765,24 +766,17 @@ Ritu,Chopra,ritu.chopra@goodwinbatteries.com,+91 98444 55667,Research & Battery 
                               <Edit3 className="w-4 h-4" />
                             </button>
 
-                            {isSuperAdmin ? (
+                            {canDeleteEmployee && (
                               <button
                                 onClick={() => {
                                   setDeleteEmpTarget(emp);
                                   setDeleteConfirmOpen(true);
                                 }}
-                                className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
-                                title="Permanent Delete Employee (Super Admin Exclusive)"
+                                className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                                title="Delete Employee"
                               >
                                 <Trash2 className="w-4 h-4" />
                               </button>
-                            ) : (
-                              <span
-                                className="p-1.5 rounded-lg text-slate-300 cursor-not-allowed opacity-50"
-                                title="Permanent record purging is restricted exclusively to Super Admin"
-                              >
-                                <Lock className="w-4 h-4" />
-                              </span>
                             )}
                           </div>
                         </td>
@@ -1716,21 +1710,39 @@ Ritu,Chopra,ritu.chopra@goodwinbatteries.com,+91 98444 55667,Research & Battery 
               </div>
 
               {/* Modal Footer */}
-              <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-200">
-                <button
-                  type="button"
-                  onClick={() => setEditingEmp(null)}
-                  className="px-4 py-2 font-medium text-slate-600 hover:text-slate-900 rounded-xl hover:bg-slate-100 transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={editLoading}
-                  className="px-5 py-2 font-semibold rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white shadow-md disabled:opacity-50 flex items-center gap-2 cursor-pointer"
-                >
-                  {editLoading ? 'Saving Changes...' : 'Save Employee Profile'}
-                </button>
+              <div className="flex items-center justify-between gap-3 pt-3 border-t border-slate-200">
+                <div>
+                  {canDeleteEmployee && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDeleteEmpTarget(editingEmp);
+                        setEditingEmp(null);
+                        setDeleteConfirmOpen(true);
+                      }}
+                      className="px-3.5 py-2 font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-xl transition-colors flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                      <span>Delete Employee</span>
+                    </button>
+                  )}
+                </div>
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setEditingEmp(null)}
+                    className="px-4 py-2 font-medium text-slate-600 hover:text-slate-900 rounded-xl hover:bg-slate-100 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={editLoading}
+                    className="px-5 py-2 font-semibold rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white shadow-md disabled:opacity-50 flex items-center gap-2 cursor-pointer"
+                  >
+                    {editLoading ? 'Saving Changes...' : 'Save Employee Profile'}
+                  </button>
+                </div>
               </div>
             </form>
           </div>
@@ -1858,17 +1870,17 @@ Ritu,Chopra,ritu.chopra@goodwinbatteries.com,+91 98444 55667,Research & Battery 
               <span>Edit Profile {isSuperAdmin ? '(Super Admin Unlocked)' : ''}</span>
             </button>
 
-            {isSuperAdmin && (
+            {canDeleteEmployee && (
               <button
                 onClick={() => {
                   setDeleteEmpTarget(selectedEmp);
                   setDeleteConfirmOpen(true);
                 }}
                 className="py-2 px-3 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold border border-rose-200 flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
-                title="Purge record permanently from PostgreSQL database"
+                title="Delete employee record permanently"
               >
                 <Trash2 className="w-3.5 h-3.5 text-rose-600" />
-                <span>Purge</span>
+                <span>Delete</span>
               </button>
             )}
           </div>
