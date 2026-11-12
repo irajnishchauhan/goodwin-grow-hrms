@@ -2222,7 +2222,7 @@ class HRMSDataStore {
     );
 
     for (const emp of employees) {
-      if (emp.status === 'ARCHIVED' || emp.status === 'EXITED') continue;
+      if (emp.status === 'ARCHIVED' || emp.status === 'EXITED' || emp.status === 'TERMINATED') continue;
 
       const empAttendance = tenantAttendance.filter((a) => a.employeeId === emp.id);
 

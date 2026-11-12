@@ -2576,7 +2576,9 @@ function AttendanceContent() {
                       onChange={(e) => setRegEmpId(e.target.value)}
                       className="w-full p-2.5 rounded-xl bg-slate-50 border border-slate-300 text-slate-900 text-xs focus:ring-2 focus:ring-emerald-500"
                     >
-                      {employees.map((e) => (
+                      {employees
+                        .filter((e) => e.status !== 'EXITED' && e.status !== 'ARCHIVED' && e.status !== 'TERMINATED')
+                        .map((e) => (
                         <option key={e.id} value={e.id}>
                           {e.firstName} {e.lastName} ({e.employeeCode})
                         </option>

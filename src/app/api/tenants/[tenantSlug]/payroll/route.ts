@@ -53,7 +53,9 @@ export async function GET(
     );
     let slips = existingForMonth;
 
-    const activeEmployees = employees.filter((e) => e.status !== 'ARCHIVED' && e.status !== 'EXITED');
+    const activeEmployees = employees.filter(
+      (e) => e.status !== 'ARCHIVED' && e.status !== 'EXITED' && e.status !== 'TERMINATED'
+    );
     const slipEmpIds = new Set(slips.map((s) => s.employeeId));
     const hasMissingActiveEmps = activeEmployees.some((e) => !slipEmpIds.has(e.id));
 

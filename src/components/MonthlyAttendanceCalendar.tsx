@@ -83,10 +83,17 @@ export default function MonthlyAttendanceCalendar({
           setWorkingDays(json.data.workingDays);
         }
         if (json.data.employees && json.data.employees.length > 0) {
-          setEmployees(json.data.employees);
-          if (!selectedEmpId && !initialEmployeeId) {
-            setSelectedEmpId(json.data.employees[0].id);
+          const activeEmps = (json.data.employees as Employee[]).filter(
+            (e) => e.status !== 'EXITED' && e.status !== 'ARCHIVED' && e.status !== 'TERMINATED'
+          );
+          setEmployees(activeEmps);
+          if (activeEmps.length > 0 && (!selectedEmpId || !activeEmps.some((e) => e.id === selectedEmpId)) && !initialEmployeeId) {
+            setSelectedEmpId(activeEmps[0].id);
+          } else if (activeEmps.length === 0 && !initialEmployeeId) {
+            setSelectedEmpId('');
           }
+        } else {
+          setEmployees([]);
         }
       }
     } catch (err) {

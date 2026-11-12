@@ -285,7 +285,9 @@ export function buildDailyWorkforceRoster({
     };
   };
 } {
-  const activeEmployees = employees.filter((e) => e.status !== 'ARCHIVED' && e.status !== 'EXITED');
+  const activeEmployees = employees.filter(
+    (e) => e.status !== 'ARCHIVED' && e.status !== 'EXITED' && e.status !== 'TERMINATED'
+  );
 
   // Create shift lookup map
   const shiftMap = new Map<string, Shift>();

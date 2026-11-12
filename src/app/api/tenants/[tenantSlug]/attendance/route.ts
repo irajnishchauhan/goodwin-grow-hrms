@@ -100,12 +100,21 @@ export async function GET(
       (r) => !r.id.startsWith('absent-') && !r.id.startsWith('off-') && !r.id.startsWith('not-punched-')
     );
 
-    // Merge with any direct target date punch records to ensure 100% visibility
+    const activeEmployees = employees.filter(
+      (e) => e.status !== 'EXITED' && e.status !== 'ARCHIVED' && e.status !== 'TERMINATED'
+    );
+    const activeEmployeeIds = new Set(activeEmployees.map((e) => e.id));
+
+    // Merge with any direct target date punch records for active employees only
     const targetDatePunches = realPunchRecords.filter(
-      (r) => r.date === targetDate && Boolean(r.clockInTime)
+      (r) => r.date === targetDate && Boolean(r.clockInTime) && activeEmployeeIds.has(r.employeeId)
     );
     const recordMap = new Map<string, AttendanceRecord>();
-    rosterPunches.forEach((r) => recordMap.set(r.employeeId, r));
+    rosterPunches.forEach((r) => {
+      if (activeEmployeeIds.has(r.employeeId)) {
+        recordMap.set(r.employeeId, r);
+      }
+    });
     targetDatePunches.forEach((r) => {
       if (!recordMap.has(r.employeeId)) {
         recordMap.set(r.employeeId, r);
@@ -114,15 +123,17 @@ export async function GET(
     const loggedRecords = Array.from(recordMap.values());
 
     const targetMonth = searchParams.get('month') || targetDate.substring(0, 7);
-    const monthRecords = realPunchRecords.filter((r) => r.date.startsWith(targetMonth));
+    const monthRecords = realPunchRecords.filter(
+      (r) => r.date.startsWith(targetMonth) && activeEmployeeIds.has(r.employeeId)
+    );
 
     const payload = {
       records: loggedRecords,
       monthRecords,
-      leaves,
+      leaves: leaves.filter((l) => activeEmployeeIds.has(l.employeeId)),
       roster,
-      employees,
-      regularizations,
+      employees: activeEmployees,
+      regularizations: regularizations.filter((r) => activeEmployeeIds.has(r.employeeId)),
       shifts,
       holidays,
       stats,
