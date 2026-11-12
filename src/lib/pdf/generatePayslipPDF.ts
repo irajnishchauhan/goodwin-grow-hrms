@@ -164,15 +164,18 @@ export function downloadPayslipPDF(
   const row3Y = y + 23.5;
 
   const empName = slip.employeeName || `${employee?.firstName || ''} ${employee?.lastName || ''}`.trim() || 'Workforce Member';
-  const empCode = slip.employeeCode || employee?.employeeCode || 'GOODWIN-001';
+  const empCode = slip.employeeCode || employee?.employeeCode || 'N/A';
   const deptName = slip.departmentName || employee?.departmentName || 'Operations';
-  const desigTitle = slip.designationTitle || employee?.designationTitle || 'Fleet Specialist';
-  const joiningDate = slip.joiningDate || employee?.joiningDate || '2026-01-15';
-  const bankName = slip.bankName || employee?.bankName || 'HDFC Bank';
-  const bankAccount = slip.bankAccountNumber || employee?.bankAccountNumber || '•••••••• 4821';
-  const pan = slip.panOrTaxId || employee?.panOrTaxId || 'ABCDE1234F';
-  const uan = slip.uan || '100928374612';
-  const workLocation = slip.workLocation || employee?.workLocation || 'Indore Plant';
+  const desigTitle = slip.designationTitle || employee?.designationTitle || 'Associate';
+  const joiningDate = slip.joiningDate || employee?.joiningDate || 'Not Provided';
+  const bankName = slip.bankName || employee?.bankName || 'Not Provided';
+  const bankAccount = slip.bankAccountNumber || employee?.bankAccountNumber || 'Not Provided';
+  const ifscCode = slip.ifscCode || employee?.ifscCode || 'Not Provided';
+  const pan = slip.panOrTaxId || employee?.panOrTaxId || 'Not Provided';
+  const uan = slip.uan || employee?.uan || 'Not Provided';
+  const taxRegime = (slip.taxRegime || employee?.taxRegime || 'NEW') === 'OLD' ? 'Old Regime' : 'New Regime (115BAC)';
+  const workLocation = slip.workLocation || employee?.workLocation || tenant?.city || 'Head Office';
+  const curr = tenant?.currency || 'INR';
 
   // Helper for grid cell
   const drawField = (label: string, value: string, colIndex: number, textY: number) => {
@@ -199,13 +202,13 @@ export function downloadPayslipPDF(
   drawField('Date of Joining', joiningDate, 0, row2Y);
   drawField('Bank Name', bankName, 1, row2Y);
   drawField('Bank Account No', bankAccount, 2, row2Y);
-  drawField('Payment Mode', slip.paymentMode || 'Direct Bank Transfer (NEFT)', 3, row2Y);
+  drawField('IFSC / Mode', ifscCode !== 'Not Provided' ? `${ifscCode} (NEFT)` : (slip.paymentMode || 'NEFT / RTGS'), 3, row2Y);
 
   // Row 3
   drawField('PAN Number', pan, 0, row3Y);
-  drawField('UAN Number', uan, 1, row3Y);
+  drawField('EPFO UAN', uan, 1, row3Y);
   drawField('Work Location', workLocation, 2, row3Y);
-  drawField('Pay Period Cycle', '1st to End of Month', 3, row3Y);
+  drawField('Tax Regime', taxRegime, 3, row3Y);
 
   y += gridHeight + 4;
 
@@ -240,10 +243,16 @@ export function downloadPayslipPDF(
     doc.text(String(val), x, y + 10, { align: 'center' });
   };
 
+  const weeklyOffs = tenant?.weeklyOffDays || [];
+  const workPolicyLabel =
+    weeklyOffs.length === 0
+      ? '7 Days / Week'
+      : `${7 - weeklyOffs.length}d Work (${weeklyOffs.map((d) => d.slice(0, 3)).join(', ')} Off)`;
+
   drawAttMetric('Calendar Days', totalDays, 0);
   drawAttMetric('Payable Days', payableDays, 1, true);
   drawAttMetric('Loss of Pay (LOP)', lopDays, 2);
-  drawAttMetric('Working Days Policy', 'Mon - Sat (6/7 Work Days)', 3);
+  drawAttMetric('Work Schedule Policy', workPolicyLabel, 3);
 
   y += attStripHeight + 5;
 
@@ -262,7 +271,7 @@ export function downloadPayslipPDF(
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(8);
   doc.text('EARNINGS', margin + 4, y + 5);
-  doc.text('AMOUNT (INR)', margin + halfTable - 4, y + 5, { align: 'right' });
+  doc.text(`AMOUNT (${curr})`, margin + halfTable - 4, y + 5, { align: 'right' });
 
   // Right header: DEDUCTIONS
   doc.setFillColor(darkNavy[0], darkNavy[1], darkNavy[2]);
@@ -271,7 +280,7 @@ export function downloadPayslipPDF(
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(8);
   doc.text('DEDUCTIONS', margin + halfTable + 4, y + 5);
-  doc.text('AMOUNT (INR)', margin + tableWidth - 4, y + 5, { align: 'right' });
+  doc.text(`AMOUNT (${curr})`, margin + tableWidth - 4, y + 5, { align: 'right' });
 
   y += headerHeight;
 
@@ -357,13 +366,13 @@ export function downloadPayslipPDF(
   doc.setTextColor(darkNavy[0], darkNavy[1], darkNavy[2]);
   doc.text('TOTAL GROSS EARNINGS', margin + 4, y + 5.2);
   doc.setTextColor(emerald[0], emerald[1], emerald[2]);
-  doc.text(`INR ${slip.grossSalary.toLocaleString('en-IN')}`, margin + halfTable - 4, y + 5.2, { align: 'right' });
+  doc.text(`${curr} ${slip.grossSalary.toLocaleString('en-IN')}`, margin + halfTable - 4, y + 5.2, { align: 'right' });
 
   // Right Total
   doc.setTextColor(darkNavy[0], darkNavy[1], darkNavy[2]);
   doc.text('TOTAL DEDUCTIONS', margin + halfTable + 4, y + 5.2);
   doc.setTextColor(rose[0], rose[1], rose[2]);
-  doc.text(`INR ${slip.totalDeductions.toLocaleString('en-IN')}`, margin + tableWidth - 4, y + 5.2, { align: 'right' });
+  doc.text(`${curr} ${slip.totalDeductions.toLocaleString('en-IN')}`, margin + tableWidth - 4, y + 5.2, { align: 'right' });
 
   y += totalRowHeight + 5;
 
@@ -385,7 +394,7 @@ export function downloadPayslipPDF(
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(16);
   doc.setTextColor(darkNavy[0], darkNavy[1], darkNavy[2]);
-  doc.text(`INR ${slip.netPay.toLocaleString('en-IN')}`, margin + 5, y + 13.5);
+  doc.text(`${curr} ${slip.netPay.toLocaleString('en-IN')}`, margin + 5, y + 13.5);
 
   const words = numberToWordsIndian(slip.netPay);
   doc.setFont('helvetica', 'normal');

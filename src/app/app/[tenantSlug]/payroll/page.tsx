@@ -60,7 +60,20 @@ function PayrollContent() {
   };
 
   // Month & Batch State
-  const [selectedMonth, setSelectedMonth] = useState('2026-10');
+  const currentMonthStr = useMemo(() => new Date().toISOString().slice(0, 7), []);
+  const monthOptions = useMemo(() => {
+    const opts: string[] = [];
+    const now = new Date();
+    for (let i = 11; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      opts.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+    }
+    return opts.reverse();
+  }, []);
+
+  const [selectedMonth, setSelectedMonth] = useState(
+    searchParams.get('month') || currentMonthStr
+  );
   const [slips, setSlips] = useState<SalarySlip[]>([]);
   const [employees, setEmployees] = useState<any[]>([]);
   const [tenant, setTenant] = useState<Tenant | null>(null);
@@ -72,6 +85,7 @@ function PayrollContent() {
   const [targetSlipForPayment, setTargetSlipForPayment] = useState<SalarySlip | null>(null);
   const [paymentRefInput, setPaymentRefInput] = useState('');
   const [batchMsg, setBatchMsg] = useState<string | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [downloadingBulk, setDownloadingBulk] = useState(false);
   const [bulkDownloadStatus, setBulkDownloadStatus] = useState<string | null>(null);
 
@@ -104,6 +118,8 @@ function PayrollContent() {
 
       if (json.success) {
         setSlips(json.data.slips || []);
+      } else if (json.error) {
+        setErrorMsg(json.error);
       }
 
       if (empJson.success) {
@@ -112,6 +128,7 @@ function PayrollContent() {
       }
     } catch (e) {
       console.error('Failed to load payroll records:', e);
+      setErrorMsg('Unable to load payroll records. Please refresh and try again.');
     } finally {
       setLoading(false);
     }
@@ -126,6 +143,7 @@ function PayrollContent() {
   const handleRunPayroll = async () => {
     setRunningBatch(true);
     setBatchMsg(null);
+    setErrorMsg(null);
     try {
       const res = await fetch(`/api/tenants/${tenantSlug}/payroll`, {
         method: 'POST',
@@ -136,9 +154,12 @@ function PayrollContent() {
       if (json.success) {
         setBatchMsg(json.message);
         fetchPayroll(selectedMonth);
+      } else {
+        setErrorMsg(json.error || 'Failed to execute payroll batch');
       }
     } catch (e) {
       console.error(e);
+      setErrorMsg('Network error executing payroll batch');
     } finally {
       setRunningBatch(false);
     }
@@ -146,6 +167,7 @@ function PayrollContent() {
 
   const handleConfirmSinglePayment = async (slipId: string, reference?: string) => {
     setConfirmingSlipId(slipId);
+    setErrorMsg(null);
     try {
       const res = await fetch(`/api/tenants/${tenantSlug}/payroll`, {
         method: 'PATCH',
@@ -166,9 +188,12 @@ function PayrollContent() {
           setActiveSlip({ ...activeSlip, paymentStatus: 'PAID', paymentReference: reference });
         }
         fetchPayroll(selectedMonth);
+      } else {
+        setErrorMsg(json.error || 'Failed to confirm salary payment');
       }
     } catch (e) {
       console.error(e);
+      setErrorMsg('Network error confirming payment');
     } finally {
       setConfirmingSlipId(null);
     }
@@ -176,6 +201,7 @@ function PayrollContent() {
 
   const handleConfirmAllPayments = async () => {
     setConfirmingAll(true);
+    setErrorMsg(null);
     try {
       const res = await fetch(`/api/tenants/${tenantSlug}/payroll`, {
         method: 'PATCH',
@@ -190,28 +216,30 @@ function PayrollContent() {
       if (json.success) {
         setBatchMsg(json.message);
         fetchPayroll(selectedMonth);
+      } else {
+        setErrorMsg(json.error || 'Failed to confirm batch payments');
       }
     } catch (e) {
       console.error(e);
+      setErrorMsg('Network error confirming batch payments');
     } finally {
       setConfirmingAll(false);
     }
   };
 
-  // Filter slips if employee
+  // Filter slips cleanly if employee-only user
   const myEmp = employees.find(
     (e) =>
       user &&
-      (e.workEmail?.toLowerCase() === user.email?.toLowerCase() ||
-        e.firstName?.toLowerCase() === user.name?.toLowerCase().split(' ')[0])
+      ((user.email && e.workEmail?.toLowerCase() === user.email.toLowerCase()) ||
+        (user.id && e.userId === user.id))
   );
 
   const baseVisibleSlips = isEmployeeOnly
     ? slips.filter((s) => {
-        if (!user) return true;
-        if (myEmp && s.employeeId === myEmp.id) return true;
-        const firstName = user.name?.toLowerCase().split(' ')[0] || '';
-        return s.employeeName.toLowerCase().includes(firstName);
+        if (!user) return false;
+        if (myEmp) return s.employeeId === myEmp.id;
+        return Boolean(user.name && s.employeeName.toLowerCase() === user.name.toLowerCase());
       })
     : slips;
 
@@ -312,21 +340,29 @@ function PayrollContent() {
       'Payment Status',
       'Payment Ref / UTR',
       'Bank Name',
-      'Bank Account Number'
+      'Bank Account Number',
+      'IFSC Code',
+      'EPFO UAN',
+      'Tax Regime'
     ];
+
+    const [yN, mN] = selectedMonth.split('-').map(Number);
+    const fallbackCalDays = yN && mN ? new Date(yN, mN, 0).getDate() : 30;
 
     const rows = filteredSlips.map((slip) => {
       const emp = employees.find((e) => e.id === slip.employeeId);
       const bankAcc = slip.bankAccountNumber || emp?.bankAccountNumber;
+      const calDays = slip.totalCalendarDays ?? fallbackCalDays;
+      const payDays = slip.payableDays ?? calDays;
       return [
         slip.month,
         slip.employeeCode,
         slip.employeeName,
         slip.departmentName || emp?.departmentName || 'Operations',
         slip.designationTitle || emp?.designationTitle || 'Associate',
-        slip.totalCalendarDays ?? 30,
-        slip.payableDays ?? 30,
-        slip.lopDays ?? 0,
+        calDays,
+        payDays,
+        slip.lopDays ?? Math.max(0, Number((calDays - payDays).toFixed(1))),
         slip.basicPay,
         slip.hra,
         slip.specialAllowance,
@@ -340,7 +376,10 @@ function PayrollContent() {
         slip.paymentStatus,
         slip.paymentReference || 'N/A',
         slip.bankName || emp?.bankName || 'N/A',
-        bankAcc ? `="${bankAcc}"` : 'N/A'
+        bankAcc ? `="${bankAcc}"` : 'N/A',
+        slip.ifscCode || emp?.ifscCode || 'N/A',
+        slip.uan || emp?.uan || 'N/A',
+        slip.taxRegime || emp?.taxRegime || 'NEW'
       ];
     });
 
@@ -386,22 +425,32 @@ function PayrollContent() {
       'Bank Name'
     ];
 
+    let missingBankInfoCount = 0;
     const rows = filteredSlips.map((slip) => {
       const emp = employees.find((e) => e.id === slip.employeeId);
       const acc = slip.bankAccountNumber || emp?.bankAccountNumber || 'NOT_CONFIGURED';
-      const ifsc = slip.ifscCode || emp?.ifscCode || 'UTIB0000001';
+      const ifsc = slip.ifscCode || emp?.ifscCode || 'NOT_CONFIGURED';
+      if (acc === 'NOT_CONFIGURED' || ifsc === 'NOT_CONFIGURED') {
+        missingBankInfoCount += 1;
+      }
       return [
         'NEFT',
-        `="${acc}"`,
+        acc === 'NOT_CONFIGURED' ? acc : `="${acc}"`,
         slip.employeeName,
         ifsc,
         slip.netPay,
         `SALARY ${slip.month}`,
         slip.employeeCode,
         emp?.workEmail || '',
-        slip.bankName || emp?.bankName || 'Axis Bank'
+        slip.bankName || emp?.bankName || 'NOT_CONFIGURED'
       ];
     });
+
+    if (missingBankInfoCount > 0) {
+      setBatchMsg(
+        `Bank Batch CSV downloaded. Note: ${missingBankInfoCount} employee(s) are marked NOT_CONFIGURED for Bank Account or IFSC — update their profiles before uploading to net banking.`
+      );
+    }
 
     const csvContent = [
       headers.join(','),
@@ -473,9 +522,11 @@ function PayrollContent() {
               onChange={(e) => setSelectedMonth(e.target.value)}
               className="bg-transparent focus:outline-none cursor-pointer font-bold text-slate-900"
             >
-              <option value="2026-10">October 2026 (Active Closed Cycle)</option>
-              <option value="2026-11">November 2026 (Current Cycle)</option>
-              <option value="2026-09">September 2026</option>
+              {monthOptions.map((m) => (
+                <option key={m} value={m}>
+                  {getMonthDisplayName(m)} {m === currentMonthStr ? '(Current Cycle)' : ''}
+                </option>
+              ))}
             </select>
           </div>
 
@@ -554,6 +605,21 @@ function PayrollContent() {
       </div>
 
       {/* Alert Notifications */}
+      {errorMsg && (
+        <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center justify-between animate-fade-in shadow-2xs">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+            <span className="font-medium">{errorMsg}</span>
+          </div>
+          <button
+            onClick={() => setErrorMsg(null)}
+            className="text-rose-700 hover:text-rose-900 font-bold cursor-pointer text-xs"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
       {batchMsg && (
         <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-center justify-between animate-fade-in shadow-2xs">
           <div className="flex items-center gap-2">
@@ -613,7 +679,7 @@ function PayrollContent() {
                 {tenant?.currency} {totalDeductions.toLocaleString()}
               </div>
               <p className="text-[11px] text-slate-500 mt-1">
-                Professional Tax (PT) + ESI + PF (₹0) + TDS
+                Employee PF + Professional Tax (PT) + ESI + TDS
               </p>
             </div>
 
@@ -1214,8 +1280,34 @@ function PayrollContent() {
                 </span>
               </div>
               <div>
-                <span className="text-slate-500 block text-[10px] uppercase font-bold">Saturday Policy</span>
-                <span className="font-bold text-amber-700">Active Working Day</span>
+                <span className="text-slate-500 block text-[10px] uppercase font-bold">Work Schedule Policy</span>
+                <span className="font-bold text-amber-700">
+                  {tenant?.weeklyOffDays && tenant.weeklyOffDays.length > 0
+                    ? `${7 - tenant.weeklyOffDays.length}d Work (${tenant.weeklyOffDays.map((d) => d.slice(0, 3)).join(', ')} Off)`
+                    : '7 Days / Active Working'}
+                </span>
+              </div>
+            </div>
+
+            {/* Statutory KYC Strip */}
+            <div className="bg-white px-6 py-2 border-b border-slate-200 grid grid-cols-2 sm:grid-cols-4 gap-3 text-[11px]">
+              <div>
+                <span className="text-slate-400 uppercase font-semibold text-[9px] block">PAN</span>
+                <span className="font-mono font-semibold text-slate-800">{activeSlip.panOrTaxId || 'Not Provided'}</span>
+              </div>
+              <div>
+                <span className="text-slate-400 uppercase font-semibold text-[9px] block">EPFO UAN</span>
+                <span className="font-mono font-semibold text-slate-800">{activeSlip.uan || 'Not Provided'}</span>
+              </div>
+              <div>
+                <span className="text-slate-400 uppercase font-semibold text-[9px] block">IFSC Code</span>
+                <span className="font-mono font-semibold text-slate-800">{activeSlip.ifscCode || 'Not Provided'}</span>
+              </div>
+              <div>
+                <span className="text-slate-400 uppercase font-semibold text-[9px] block">Tax Regime</span>
+                <span className="font-semibold text-slate-800">
+                  {activeSlip.taxRegime === 'OLD' ? 'Old Regime' : 'New Regime (115BAC)'}
+                </span>
               </div>
             </div>
 

@@ -16,12 +16,17 @@ export async function GET(
     }
 
     const { searchParams } = new URL(req.url);
-    const targetMonth = searchParams.get('month') || '2026-10';
+    const defaultMonth = new Date().toISOString().slice(0, 7);
+    const targetMonth = searchParams.get('month') || defaultMonth;
+    const [yearNum, monthNum] = targetMonth.split('-').map(Number);
+    const totalCalendarDays = yearNum && monthNum ? new Date(yearNum, monthNum, 0).getDate() : 30;
 
-    const [supaSlips, supaAtt, supaEmps] = await Promise.all([
+    const [supaSlips, supaAtt, supaEmps, supaLeaves, supaHolidays] = await Promise.all([
       SupabaseStore.getSalarySlips(tenant.id),
       SupabaseStore.getAttendance(tenant.id),
-      SupabaseStore.getEmployees(tenant.id)
+      SupabaseStore.getEmployees(tenant.id),
+      SupabaseStore.getLeaveApplications(tenant.id),
+      SupabaseStore.getHolidays(tenant.id)
     ]);
 
     if (supaAtt !== null) {
@@ -30,9 +35,23 @@ export async function GET(
     if (supaEmps && supaEmps.length > 0) {
       db.syncEmployees(supaEmps);
     }
+    if (supaLeaves && supaLeaves.length > 0) {
+      db.syncLeaveApplications(supaLeaves);
+    }
+    if (supaHolidays && supaHolidays.length > 0) {
+      db.syncHolidays(supaHolidays);
+    }
+    if (supaSlips && supaSlips.length > 0) {
+      db.syncSalarySlips(supaSlips);
+    }
 
-    let slips = supaSlips;
-    if (slips === null || slips.length === 0) {
+    const employees = supaEmps !== null ? supaEmps : db.getEmployees(tenant.id);
+    const empById = new Map(employees.map((e) => [e.id, e]));
+
+    const existingForMonth = (supaSlips || []).filter((s) => s.month === targetMonth);
+    let slips = existingForMonth;
+
+    if (slips.length === 0) {
       slips = db.generatePayrollRun(tenant.id, targetMonth);
       await Promise.all(slips.map((s) => SupabaseStore.saveSalarySlip(s)));
     } else {
@@ -43,30 +62,57 @@ export async function GET(
         return !noteLower.includes('benchmark') && !noteLower.includes('test punch');
       });
 
-      // Strict enforcement of "No Entry = No Pay":
-      // If an employee has 0 valid logged shifts/leaves in the month, their earned pay must be 0
+      const monthApprovedLeaves = (supaLeaves || []).filter(
+        (l) =>
+          l.status === 'APPROVED' &&
+          (l.startDate.startsWith(targetMonth) || l.endDate.startsWith(targetMonth))
+      );
+
+      // Strict enforcement of "No Entry = No Pay" (checking both attendance & approved leaves)
       slips = slips.map((slip) => {
-        if (slip.month !== targetMonth) return slip;
+        const emp = empById.get(slip.employeeId);
+        const enrichedSlip = {
+          ...slip,
+          totalCalendarDays: slip.totalCalendarDays ?? totalCalendarDays,
+          designationTitle: slip.designationTitle || emp?.designationTitle,
+          bankName: slip.bankName || emp?.bankName,
+          bankAccountNumber: slip.bankAccountNumber || emp?.bankAccountNumber,
+          ifscCode: slip.ifscCode || emp?.ifscCode,
+          panOrTaxId: slip.panOrTaxId || emp?.panOrTaxId,
+          uan: slip.uan || emp?.uan,
+          taxRegime: slip.taxRegime || emp?.taxRegime || 'NEW',
+          workLocation: slip.workLocation || emp?.workLocation,
+          joiningDate: slip.joiningDate || emp?.joiningDate
+        };
+
         const empAtt = validAttendance.filter((a) => a.employeeId === slip.employeeId);
-        if (empAtt.length === 0 && (slip.netPay > 0 || slip.paymentStatus === 'PAID')) {
+        const empLeaves = monthApprovedLeaves.filter((l) => l.employeeId === slip.employeeId);
+        if (
+          empAtt.length === 0 &&
+          empLeaves.length === 0 &&
+          (enrichedSlip.netPay > 0 || enrichedSlip.totalDeductions > 0 || enrichedSlip.paymentStatus === 'PAID')
+        ) {
           const corrected = {
-            ...slip,
+            ...enrichedSlip,
             basicPay: 0,
             hra: 0,
             specialAllowance: 0,
             grossSalary: 0,
+            providentFund: 0,
+            esi: 0,
+            professionalTax: 0,
+            taxDeduction: 0,
+            totalDeductions: 0,
             netPay: 0,
+            payableDays: 0,
+            lopDays: totalCalendarDays,
             paymentStatus: 'PENDING' as const
           };
           SupabaseStore.saveSalarySlip(corrected).catch(() => {});
           return corrected;
         }
-        return slip;
+        return enrichedSlip;
       });
-
-      if (searchParams.get('month')) {
-        slips = slips.filter((s) => s.month === targetMonth);
-      }
     }
 
     const totalDisbursed = slips.reduce((sum, s) => sum + s.netPay, 0);
@@ -100,19 +146,31 @@ export async function POST(
     }
 
     const body = await req.json();
-    const targetMonth = body.month || '2026-10';
+    const targetMonth = body.month || new Date().toISOString().slice(0, 7);
     db.invalidateCache(tenant.id);
     db.invalidateCache(tenantSlug);
 
-    const [supaEmps, supaAtt] = await Promise.all([
+    const [supaEmps, supaAtt, supaLeaves, supaHolidays, supaSlips] = await Promise.all([
       SupabaseStore.getEmployees(tenant.id),
-      SupabaseStore.getAttendance(tenant.id)
+      SupabaseStore.getAttendance(tenant.id),
+      SupabaseStore.getLeaveApplications(tenant.id),
+      SupabaseStore.getHolidays(tenant.id),
+      SupabaseStore.getSalarySlips(tenant.id)
     ]);
     if (supaEmps && supaEmps.length > 0) {
       db.syncEmployees(supaEmps);
     }
     if (supaAtt !== null) {
       db.setAttendanceForTenant(tenant.id, supaAtt);
+    }
+    if (supaLeaves && supaLeaves.length > 0) {
+      db.syncLeaveApplications(supaLeaves);
+    }
+    if (supaHolidays && supaHolidays.length > 0) {
+      db.syncHolidays(supaHolidays);
+    }
+    if (supaSlips && supaSlips.length > 0) {
+      db.syncSalarySlips(supaSlips);
     }
 
     const slips = db.generatePayrollRun(tenant.id, targetMonth);
@@ -156,21 +214,28 @@ export async function PATCH(
     }
 
     if (action === 'CONFIRM_ALL') {
-      const targetMonth = month || '2026-10';
+      const targetMonth = month || new Date().toISOString().slice(0, 7);
       const updatedSlips = db.confirmAllSalaryPayments(
         tenant.id,
         targetMonth,
         confirmedBy || 'Company Finance',
         finalRef
       );
+      if (updatedSlips.length === 0) {
+        return NextResponse.json(
+          { success: false, error: `No salary slips found for ${targetMonth} to confirm.` },
+          { status: 404 }
+        );
+      }
       await Promise.all(updatedSlips.map((s) => SupabaseStore.saveSalarySlip(s)));
 
       // Emit in-app persistent notifications for all employees
+      const curr = tenant.currency || 'INR';
       try {
         const notifs = updatedSlips.map((s) =>
           db.createNotification(tenant.id, {
             title: `Salary Disbursed for ${s.month}`,
-            message: `Your net salary of ₹${s.netPay.toLocaleString('en-IN')} for ${s.month} has been marked as PAID. Official payslip PDF is ready in your portal.`,
+            message: `Your net salary of ${curr} ${s.netPay.toLocaleString('en-IN')} for ${s.month} has been marked as PAID. Official payslip PDF is ready in your portal.`,
             type: 'SALARY_PAID',
             employeeId: s.employeeId,
             linkUrl: `/app/${tenantSlug}/payroll?tab=slips`

@@ -2250,15 +2250,17 @@ class HRMSDataStore {
         }
       }
 
-      // Check approved leaves not already covered by attendance records
+      // Check approved leaves not already covered by attendance records (UTC-safe date math)
       tenantLeaves
         .filter((l) => l.employeeId === emp.id)
         .forEach((l) => {
-          const s = new Date(l.startDate);
-          const e = new Date(l.endDate);
-          const cur = new Date(s);
-          while (cur <= e) {
-            const dStr = cur.toISOString().split('T')[0];
+          const [sy, sm, sd] = l.startDate.split('-').map(Number);
+          const [ey, em, ed] = l.endDate.split('-').map(Number);
+          if (!sy || !sm || !sd || !ey || !em || !ed) return;
+          let curMs = Date.UTC(sy, sm - 1, sd);
+          const endMs = Date.UTC(ey, em - 1, ed);
+          while (curMs <= endMs) {
+            const dStr = new Date(curMs).toISOString().split('T')[0];
             if (dStr.startsWith(month) && !punchedDates.has(dStr)) {
               punchedDates.add(dStr);
               if (l.isHalfDay || Number(l.totalDays) === 0.5) {
@@ -2267,7 +2269,7 @@ class HRMSDataStore {
                 paidLeaveDays += 1;
               }
             }
-            cur.setDate(cur.getDate() + 1);
+            curMs += 86400000;
           }
         });
 
@@ -2338,24 +2340,42 @@ class HRMSDataStore {
         // Employee Provident Fund (PF): 12% of basic, capped at standard statutory ₹1,800/mo
         pf = (basicPay > 0 && grossSalary >= 15000) ? Math.min(1800, Math.round(basicPay * 0.12)) : 0;
 
-        // Income Tax (TDS) under Indian New Tax Regime (Section 87A rebate up to ₹7 LPA):
+        // Income Tax (TDS) under Indian Tax Regimes (NEW 115BAC vs OLD):
         const annualGross = grossSalary * 12;
-        if (annualGross > 700000) {
-          let annualTax = 0;
-          if (annualGross > 1500000) {
-            annualTax = 15000 + 30000 + 45000 + 60000 + (annualGross - 1500000) * 0.30;
-          } else if (annualGross > 1200000) {
-            annualTax = 15000 + 30000 + 45000 + (annualGross - 1200000) * 0.20;
-          } else if (annualGross > 900000) {
-            annualTax = 15000 + 30000 + (annualGross - 900000) * 0.15;
+        const regime = emp.taxRegime || 'NEW';
+        if (regime === 'OLD') {
+          const taxable = Math.max(0, annualGross - 50000); // ₹50k standard deduction
+          if (taxable > 500000) {
+            let annualTax = 0;
+            if (taxable > 1000000) {
+              annualTax = 12500 + 100000 + (taxable - 1000000) * 0.30;
+            } else if (taxable > 500000) {
+              annualTax = 12500 + (taxable - 500000) * 0.20;
+            }
+            annualTax = Math.round(annualTax * 1.04);
+            tax = Math.round(annualTax / 12);
           } else {
-            annualTax = 15000 + (annualGross - 600000) * 0.10;
+            tax = 0;
           }
-          // 4% Health & Education cess
-          annualTax = Math.round(annualTax * 1.04);
-          tax = Math.round(annualTax / 12);
         } else {
-          tax = 0;
+          const taxable = Math.max(0, annualGross - 75000); // ₹75k standard deduction (FY25-27 New Regime)
+          if (taxable > 700000) {
+            let annualTax = 0;
+            if (taxable > 1500000) {
+              annualTax = 15000 + 30000 + 45000 + 60000 + (taxable - 1500000) * 0.30;
+            } else if (taxable > 1200000) {
+              annualTax = 15000 + 30000 + 45000 + (taxable - 1200000) * 0.20;
+            } else if (taxable > 900000) {
+              annualTax = 15000 + 30000 + (taxable - 900000) * 0.15;
+            } else {
+              annualTax = 15000 + (taxable - 600000) * 0.10;
+            }
+            // 4% Health & Education cess
+            annualTax = Math.round(annualTax * 1.04);
+            tax = Math.round(annualTax / 12);
+          } else {
+            tax = 0;
+          }
         }
 
         totalDeductions = pt + pf + esi + tax;
@@ -2395,11 +2415,14 @@ class HRMSDataStore {
         totalCalendarDays,
         payableDays,
         lopDays,
-        bankName: emp.bankName || 'HDFC Bank',
-        bankAccountNumber: emp.bankAccountNumber || '•••••••• 4821',
-        panOrTaxId: emp.panOrTaxId || 'ABCDE1234F',
-        workLocation: emp.workLocation || 'Indore Plant',
-        joiningDate: emp.joiningDate || '2026-01-15'
+        bankName: emp.bankName || undefined,
+        bankAccountNumber: emp.bankAccountNumber || undefined,
+        ifscCode: emp.ifscCode || undefined,
+        panOrTaxId: emp.panOrTaxId || undefined,
+        uan: emp.uan || undefined,
+        taxRegime: emp.taxRegime || 'NEW',
+        workLocation: emp.workLocation || undefined,
+        joiningDate: emp.joiningDate || undefined
       };
 
       if (existingIdx >= 0) {

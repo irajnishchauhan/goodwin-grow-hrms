@@ -391,7 +391,12 @@ export class SupabaseStore {
         supabase.from('leave_types').delete().eq('tenant_id', tenantId),
         supabase.from('shifts').delete().eq('tenant_id', tenantId),
         supabase.from('departments').delete().eq('tenant_id', tenantId),
-        supabase.from('holidays').delete().eq('tenant_id', tenantId)
+        supabase.from('holidays').delete().eq('tenant_id', tenantId),
+        supabase
+          .from('audit_logs')
+          .delete()
+          .eq('tenant_id', tenantId)
+          .in('action', ['SALARY_SLIP_META', 'EMPLOYEE_STATUTORY_META'])
       ]);
 
       return true;
@@ -411,52 +416,69 @@ export class SupabaseStore {
     const supabase = getSupabaseAdmin();
     if (!supabase) return null;
 
-    const { data, error } = await supabase
-      .from('employees')
-      .select('*')
-      .eq('tenant_id', tenantId)
-      .order('employee_code', { ascending: true });
+    const [{ data, error }, { data: metaRows }] = await Promise.all([
+      supabase
+        .from('employees')
+        .select('*')
+        .eq('tenant_id', tenantId)
+        .order('employee_code', { ascending: true }),
+      supabase
+        .from('audit_logs')
+        .select('resource_id, details')
+        .eq('tenant_id', tenantId)
+        .eq('action', 'EMPLOYEE_STATUTORY_META')
+    ]);
 
     if (error || !data) {
       console.warn('Supabase getEmployees error:', error?.message);
       return null;
     }
 
-    const mapped = data.map((e) => ({
-      id: e.id,
-      tenantId: e.tenant_id,
-      userId: e.user_id,
-      employeeCode: e.employee_code,
-      firstName: e.first_name,
-      lastName: e.last_name,
-      workEmail: e.work_email,
-      personalEmail: e.personal_email || undefined,
-      phone: e.phone,
-      gender: e.gender,
-      joiningDate: e.joining_date,
-      departmentId: e.department_id,
-      departmentName: e.department_name,
-      designationId: e.designation_id,
-      designationTitle: e.designation_title,
-      reportingManagerId: e.reporting_manager_id,
-      reportingManagerName: e.reporting_manager_name,
-      employmentType: e.employment_type,
-      status: e.status,
-      monthlySalary: Number(e.monthly_salary),
-      panOrTaxId: e.pan_or_tax_id,
-      bankAccountNumber: e.bank_account_number,
-      bankName: e.bank_name,
-      ifscCode: e.ifsc_code || undefined,
-      uan: e.uan || undefined,
-      aadhaarNumber: e.aadhaar_number || undefined,
-      taxRegime: e.tax_regime || 'NEW',
-      workLocation: e.work_location,
-      shiftName: e.shift_name,
-      loginStatus: e.login_status,
-      invitationId: e.invitation_id,
-      createdAt: e.created_at,
-      updatedAt: e.updated_at
-    }));
+    const metaMap = new Map<string, Record<string, any>>();
+    (metaRows || []).forEach((m: any) => {
+      if (m.resource_id && m.details) {
+        metaMap.set(m.resource_id, m.details);
+      }
+    });
+
+    const mapped = data.map((e) => {
+      const meta = metaMap.get(e.id) || {};
+      return {
+        id: e.id,
+        tenantId: e.tenant_id,
+        userId: e.user_id,
+        employeeCode: e.employee_code,
+        firstName: e.first_name,
+        lastName: e.last_name,
+        workEmail: e.work_email,
+        personalEmail: e.personal_email || meta.personalEmail || undefined,
+        phone: e.phone,
+        gender: e.gender,
+        joiningDate: e.joining_date,
+        departmentId: e.department_id,
+        departmentName: e.department_name,
+        designationId: e.designation_id,
+        designationTitle: e.designation_title,
+        reportingManagerId: e.reporting_manager_id,
+        reportingManagerName: e.reporting_manager_name,
+        employmentType: e.employment_type,
+        status: e.status,
+        monthlySalary: Number(e.monthly_salary),
+        panOrTaxId: e.pan_or_tax_id,
+        bankAccountNumber: e.bank_account_number,
+        bankName: e.bank_name,
+        ifscCode: e.ifsc_code || meta.ifscCode || undefined,
+        uan: e.uan || meta.uan || undefined,
+        aadhaarNumber: e.aadhaar_number || meta.aadhaarNumber || undefined,
+        taxRegime: e.tax_regime || meta.taxRegime || 'NEW',
+        workLocation: e.work_location,
+        shiftName: e.shift_name,
+        loginStatus: e.login_status,
+        invitationId: e.invitation_id,
+        createdAt: e.created_at,
+        updatedAt: e.updated_at
+      };
+    });
 
     SupabaseStore.setCached(`employees_${tenantId}`, mapped, 30);
     return mapped;
@@ -468,7 +490,7 @@ export class SupabaseStore {
 
     SupabaseStore.invalidate(emp.tenantId);
 
-    const { error } = await supabase.from('employees').upsert({
+    const basePayload = {
       id: emp.id,
       tenant_id: emp.tenantId,
       user_id: emp.userId,
@@ -476,7 +498,6 @@ export class SupabaseStore {
       first_name: emp.firstName,
       last_name: emp.lastName,
       work_email: emp.workEmail,
-      personal_email: emp.personalEmail,
       phone: emp.phone,
       gender: emp.gender,
       joining_date: emp.joiningDate,
@@ -492,16 +513,46 @@ export class SupabaseStore {
       pan_or_tax_id: emp.panOrTaxId,
       bank_account_number: emp.bankAccountNumber,
       bank_name: emp.bankName,
-      ifsc_code: emp.ifscCode,
-      uan: emp.uan,
-      aadhaar_number: emp.aadhaarNumber,
-      tax_regime: emp.taxRegime || 'NEW',
       work_location: emp.workLocation,
       shift_name: emp.shiftName,
       login_status: emp.loginStatus,
       invitation_id: emp.invitationId,
       updated_at: new Date().toISOString()
-    });
+    };
+
+    const fullPayload = {
+      ...basePayload,
+      personal_email: emp.personalEmail,
+      ifsc_code: emp.ifscCode,
+      uan: emp.uan,
+      aadhaar_number: emp.aadhaarNumber,
+      tax_regime: emp.taxRegime || 'NEW'
+    };
+
+    // Persist extended statutory metadata in audit_logs so it survives even without DDL migration
+    if (emp.ifscCode || emp.uan || emp.aadhaarNumber || emp.taxRegime || emp.personalEmail) {
+      await supabase.from('audit_logs').upsert({
+        id: `empmeta-${emp.id}`,
+        tenant_id: emp.tenantId,
+        actor_email: 'system@goodwingrow.ai',
+        actor_role: 'SYSTEM',
+        action: 'EMPLOYEE_STATUTORY_META',
+        resource: 'Employee',
+        resource_id: emp.id,
+        details: {
+          ifscCode: emp.ifscCode,
+          uan: emp.uan,
+          aadhaarNumber: emp.aadhaarNumber,
+          taxRegime: emp.taxRegime || 'NEW',
+          personalEmail: emp.personalEmail
+        }
+      });
+    }
+
+    let { error } = await supabase.from('employees').upsert(fullPayload);
+    if (error && (error.message.includes('column') || error.message.includes('schema cache'))) {
+      ({ error } = await supabase.from('employees').upsert(basePayload));
+    }
 
     if (error) {
       console.warn('Supabase saveEmployee error:', error.message);
@@ -594,16 +645,63 @@ export class SupabaseStore {
     if (updates.personalEmail !== undefined) payload.personal_email = updates.personalEmail;
 
 
-    const { error } = await supabase
+    if (
+      updates.ifscCode !== undefined ||
+      updates.uan !== undefined ||
+      updates.aadhaarNumber !== undefined ||
+      updates.taxRegime !== undefined ||
+      updates.personalEmail !== undefined
+    ) {
+      const { data: existingMeta } = await supabase
+        .from('audit_logs')
+        .select('details')
+        .eq('id', `empmeta-${employeeId}`)
+        .maybeSingle();
+      const mergedDetails = {
+        ...(existingMeta?.details || {}),
+        ...(updates.ifscCode !== undefined ? { ifscCode: updates.ifscCode } : {}),
+        ...(updates.uan !== undefined ? { uan: updates.uan } : {}),
+        ...(updates.aadhaarNumber !== undefined ? { aadhaarNumber: updates.aadhaarNumber } : {}),
+        ...(updates.taxRegime !== undefined ? { taxRegime: updates.taxRegime } : {}),
+        ...(updates.personalEmail !== undefined ? { personalEmail: updates.personalEmail } : {})
+      };
+      await supabase.from('audit_logs').upsert({
+        id: `empmeta-${employeeId}`,
+        tenant_id: tenantId,
+        actor_email: 'system@goodwingrow.ai',
+        actor_role: 'SYSTEM',
+        action: 'EMPLOYEE_STATUTORY_META',
+        resource: 'Employee',
+        resource_id: employeeId,
+        details: mergedDetails
+      });
+    }
+
+    let { error } = await supabase
       .from('employees')
       .update(payload)
       .eq('tenant_id', tenantId)
       .eq('id', employeeId);
 
+    if (error && (error.message.includes('column') || error.message.includes('schema cache'))) {
+      const safePayload = { ...payload };
+      delete safePayload.ifsc_code;
+      delete safePayload.uan;
+      delete safePayload.aadhaar_number;
+      delete safePayload.tax_regime;
+      delete safePayload.personal_email;
+      ({ error } = await supabase
+        .from('employees')
+        .update(safePayload)
+        .eq('tenant_id', tenantId)
+        .eq('id', employeeId));
+    }
+
     if (error) {
       console.warn('Supabase updateEmployee error:', error.message);
       return false;
     }
+    SupabaseStore.invalidate(tenantId);
     return true;
   }
 
@@ -1386,34 +1484,66 @@ export class SupabaseStore {
     const supabase = getSupabaseAdmin();
     if (!supabase) return null;
 
-    const { data, error } = await supabase
-      .from('salary_slips')
-      .select('*')
-      .eq('tenant_id', tenantId);
+    const [{ data, error }, { data: metaRows }] = await Promise.all([
+      supabase
+        .from('salary_slips')
+        .select('*')
+        .eq('tenant_id', tenantId),
+      supabase
+        .from('audit_logs')
+        .select('resource_id, details')
+        .eq('tenant_id', tenantId)
+        .eq('action', 'SALARY_SLIP_META')
+    ]);
 
     if (error || !data) return null;
 
-    const mapped = data.map((s) => ({
-      id: s.id,
-      tenantId: s.tenant_id,
-      employeeId: s.employee_id,
-      employeeName: s.employee_name,
-      employeeCode: s.employee_code,
-      departmentName: s.department_name,
-      month: s.month,
-      basicPay: Number(s.basic_pay),
-      hra: Number(s.hra),
-      specialAllowance: Number(s.special_allowance),
-      grossSalary: Number(s.gross_salary),
-      providentFund: Number(s.provident_fund),
-      esi: Number(s.esi),
-      professionalTax: Number(s.professional_tax),
-      taxDeduction: Number(s.tax_deduction),
-      totalDeductions: Number(s.total_deductions),
-      netPay: Number(s.net_pay),
-      paymentStatus: s.payment_status,
-      generatedDate: s.generated_date
-    }));
+    const metaMap = new Map<string, Record<string, any>>();
+    (metaRows || []).forEach((m: any) => {
+      if (m.resource_id && m.details) {
+        metaMap.set(m.resource_id, m.details);
+      }
+    });
+
+    const mapped: SalarySlip[] = data.map((s) => {
+      const meta = metaMap.get(s.id) || {};
+      return {
+        id: s.id,
+        tenantId: s.tenant_id,
+        employeeId: s.employee_id,
+        employeeName: s.employee_name,
+        employeeCode: s.employee_code,
+        departmentName: s.department_name,
+        designationTitle: s.designation_title || meta.designationTitle,
+        month: s.month,
+        basicPay: Number(s.basic_pay),
+        hra: Number(s.hra),
+        specialAllowance: Number(s.special_allowance),
+        grossSalary: Number(s.gross_salary),
+        providentFund: Number(s.provident_fund),
+        esi: Number(s.esi),
+        professionalTax: Number(s.professional_tax),
+        taxDeduction: Number(s.tax_deduction),
+        totalDeductions: Number(s.total_deductions),
+        netPay: Number(s.net_pay),
+        paymentStatus: s.payment_status,
+        paymentReference: s.payment_reference || meta.paymentReference,
+        paymentConfirmedAt: s.payment_confirmed_at || meta.paymentConfirmedAt,
+        paymentConfirmedBy: s.payment_confirmed_by || meta.paymentConfirmedBy,
+        totalCalendarDays: s.total_calendar_days !== undefined && s.total_calendar_days !== null ? Number(s.total_calendar_days) : meta.totalCalendarDays,
+        payableDays: s.payable_days !== undefined && s.payable_days !== null ? Number(s.payable_days) : meta.payableDays,
+        lopDays: s.lop_days !== undefined && s.lop_days !== null ? Number(s.lop_days) : meta.lopDays,
+        bankName: s.bank_name || meta.bankName,
+        bankAccountNumber: s.bank_account_number || meta.bankAccountNumber,
+        ifscCode: s.ifsc_code || meta.ifscCode,
+        panOrTaxId: s.pan_or_tax_id || meta.panOrTaxId,
+        uan: s.uan || meta.uan,
+        taxRegime: s.tax_regime || meta.taxRegime,
+        workLocation: s.work_location || meta.workLocation,
+        joiningDate: s.joining_date || meta.joiningDate,
+        generatedDate: s.generated_date
+      };
+    });
 
     SupabaseStore.setCached(`salary_slips_${tenantId}`, mapped, 30);
     return mapped;
@@ -1425,7 +1555,7 @@ export class SupabaseStore {
 
     SupabaseStore.invalidate(slip.tenantId);
 
-    const { error } = await supabase.from('salary_slips').upsert({
+    const basePayload = {
       id: slip.id,
       tenant_id: slip.tenantId,
       employee_id: slip.employeeId,
@@ -1445,7 +1575,59 @@ export class SupabaseStore {
       net_pay: slip.netPay,
       payment_status: slip.paymentStatus,
       generated_date: slip.generatedDate
+    };
+
+    const fullPayload = {
+      ...basePayload,
+      payment_reference: slip.paymentReference,
+      payment_confirmed_at: slip.paymentConfirmedAt,
+      payment_confirmed_by: slip.paymentConfirmedBy,
+      total_calendar_days: slip.totalCalendarDays,
+      payable_days: slip.payableDays,
+      lop_days: slip.lopDays,
+      designation_title: slip.designationTitle,
+      bank_name: slip.bankName,
+      bank_account_number: slip.bankAccountNumber,
+      ifsc_code: slip.ifscCode,
+      pan_or_tax_id: slip.panOrTaxId,
+      uan: slip.uan,
+      tax_regime: slip.taxRegime,
+      work_location: slip.workLocation,
+      joining_date: slip.joiningDate
+    };
+
+    // Always persist extended slip metadata in audit_logs so UTR, payableDays, LOP, etc. survive without requiring DDL changes
+    await supabase.from('audit_logs').upsert({
+      id: `slipmeta-${slip.id}`,
+      tenant_id: slip.tenantId,
+      actor_email: 'system@goodwingrow.ai',
+      actor_role: 'SYSTEM',
+      action: 'SALARY_SLIP_META',
+      resource: 'SalarySlip',
+      resource_id: slip.id,
+      details: {
+        paymentReference: slip.paymentReference,
+        paymentConfirmedAt: slip.paymentConfirmedAt,
+        paymentConfirmedBy: slip.paymentConfirmedBy,
+        totalCalendarDays: slip.totalCalendarDays,
+        payableDays: slip.payableDays,
+        lopDays: slip.lopDays,
+        designationTitle: slip.designationTitle,
+        bankName: slip.bankName,
+        bankAccountNumber: slip.bankAccountNumber,
+        ifscCode: slip.ifscCode,
+        panOrTaxId: slip.panOrTaxId,
+        uan: slip.uan,
+        taxRegime: slip.taxRegime,
+        workLocation: slip.workLocation,
+        joiningDate: slip.joiningDate
+      }
     });
+
+    let { error } = await supabase.from('salary_slips').upsert(fullPayload);
+    if (error && (error.message.includes('column') || error.message.includes('schema cache'))) {
+      ({ error } = await supabase.from('salary_slips').upsert(basePayload));
+    }
 
     if (error) {
       console.warn('Supabase saveSalarySlip error:', error.message);
