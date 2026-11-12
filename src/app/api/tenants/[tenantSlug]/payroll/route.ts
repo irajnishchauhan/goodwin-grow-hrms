@@ -129,6 +129,29 @@ export async function GET(
           SupabaseStore.saveSalarySlip(corrected).catch(() => {});
           return corrected;
         }
+
+        // Zero out any stale statutory deductions on PENDING slips
+        if (
+          enrichedSlip.paymentStatus !== 'PAID' &&
+          (enrichedSlip.totalDeductions > 0 ||
+            enrichedSlip.providentFund > 0 ||
+            enrichedSlip.esi > 0 ||
+            enrichedSlip.professionalTax > 0 ||
+            enrichedSlip.taxDeduction > 0)
+        ) {
+          const zeroedSlip = {
+            ...enrichedSlip,
+            providentFund: 0,
+            esi: 0,
+            professionalTax: 0,
+            taxDeduction: 0,
+            totalDeductions: 0,
+            netPay: Math.max(0, enrichedSlip.grossSalary)
+          };
+          SupabaseStore.saveSalarySlip(zeroedSlip).catch(() => {});
+          return zeroedSlip;
+        }
+
         return enrichedSlip;
       });
     }

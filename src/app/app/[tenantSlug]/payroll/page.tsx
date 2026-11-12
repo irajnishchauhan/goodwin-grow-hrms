@@ -740,7 +740,7 @@ function PayrollContent() {
                 {tenant?.currency} {totalDeductions.toLocaleString()}
               </div>
               <p className="text-[11px] text-slate-500 mt-1">
-                Employee PF + Professional Tax (PT) + ESI + TDS
+                Employee PF + Professional Tax (PT) + ESI + TDS (All ₹0)
               </p>
             </div>
 

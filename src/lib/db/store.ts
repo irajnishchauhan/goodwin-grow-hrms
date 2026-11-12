@@ -2335,54 +2335,13 @@ class HRMSDataStore {
         hra = Math.round(grossSalary * 0.25);
         specialAllowance = grossSalary - (basicPay + hra);
 
-        // Keka standard statutory deductions (Indian Statutory Compliance):
-        // Professional Tax (PT): ₹200 if gross >= 15,000 in India
-        pt = grossSalary >= 15000 ? 200 : 0;
-        // ESI: 0.75% of Gross if gross <= 21,000
-        esi = (grossSalary <= 21000 && grossSalary > 0) ? Math.round(grossSalary * 0.0075) : 0;
-        // Employee Provident Fund (PF): 12% of basic, capped at standard statutory ₹1,800/mo
-        pf = (basicPay > 0 && grossSalary >= 15000) ? Math.min(1800, Math.round(basicPay * 0.12)) : 0;
-
-        // Income Tax (TDS) under Indian Tax Regimes (NEW 115BAC vs OLD):
-        const annualGross = grossSalary * 12;
-        const regime = emp.taxRegime || 'NEW';
-        if (regime === 'OLD') {
-          const taxable = Math.max(0, annualGross - 50000); // ₹50k standard deduction
-          if (taxable > 500000) {
-            let annualTax = 0;
-            if (taxable > 1000000) {
-              annualTax = 12500 + 100000 + (taxable - 1000000) * 0.30;
-            } else if (taxable > 500000) {
-              annualTax = 12500 + (taxable - 500000) * 0.20;
-            }
-            annualTax = Math.round(annualTax * 1.04);
-            tax = Math.round(annualTax / 12);
-          } else {
-            tax = 0;
-          }
-        } else {
-          const taxable = Math.max(0, annualGross - 75000); // ₹75k standard deduction (FY25-27 New Regime)
-          if (taxable > 700000) {
-            let annualTax = 0;
-            if (taxable > 1500000) {
-              annualTax = 15000 + 30000 + 45000 + 60000 + (taxable - 1500000) * 0.30;
-            } else if (taxable > 1200000) {
-              annualTax = 15000 + 30000 + 45000 + (taxable - 1200000) * 0.20;
-            } else if (taxable > 900000) {
-              annualTax = 15000 + 30000 + (taxable - 900000) * 0.15;
-            } else {
-              annualTax = 15000 + (taxable - 600000) * 0.10;
-            }
-            // 4% Health & Education cess
-            annualTax = Math.round(annualTax * 1.04);
-            tax = Math.round(annualTax / 12);
-          } else {
-            tax = 0;
-          }
-        }
-
-        totalDeductions = pt + pf + esi + tax;
-        netPay = Math.max(0, grossSalary - totalDeductions);
+        // Statutory deductions disabled (all set to 0 per company policy)
+        pt = 0;
+        esi = 0;
+        pf = 0;
+        tax = 0;
+        totalDeductions = 0;
+        netPay = Math.max(0, grossSalary);
       } else {
         payableDays = 0;
       }
