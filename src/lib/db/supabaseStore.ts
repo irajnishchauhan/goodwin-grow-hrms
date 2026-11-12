@@ -462,7 +462,7 @@ export class SupabaseStore {
         reportingManagerId: e.reporting_manager_id,
         reportingManagerName: e.reporting_manager_name,
         employmentType: e.employment_type,
-        status: e.status,
+        status: (meta.status || e.status || 'ACTIVE').toUpperCase(),
         monthlySalary: Number(e.monthly_salary),
         panOrTaxId: e.pan_or_tax_id,
         bankAccountNumber: e.bank_account_number,
@@ -480,7 +480,7 @@ export class SupabaseStore {
       };
     });
 
-    SupabaseStore.setCached(`employees_${tenantId}`, mapped, 30);
+    SupabaseStore.setCached(`employees_${tenantId}`, mapped, 5);
     return mapped;
   }
 
@@ -650,7 +650,8 @@ export class SupabaseStore {
       updates.uan !== undefined ||
       updates.aadhaarNumber !== undefined ||
       updates.taxRegime !== undefined ||
-      updates.personalEmail !== undefined
+      updates.personalEmail !== undefined ||
+      updates.status !== undefined
     ) {
       const { data: existingMeta } = await supabase
         .from('audit_logs')
@@ -663,7 +664,8 @@ export class SupabaseStore {
         ...(updates.uan !== undefined ? { uan: updates.uan } : {}),
         ...(updates.aadhaarNumber !== undefined ? { aadhaarNumber: updates.aadhaarNumber } : {}),
         ...(updates.taxRegime !== undefined ? { taxRegime: updates.taxRegime } : {}),
-        ...(updates.personalEmail !== undefined ? { personalEmail: updates.personalEmail } : {})
+        ...(updates.personalEmail !== undefined ? { personalEmail: updates.personalEmail } : {}),
+        ...(updates.status !== undefined ? { status: updates.status } : {})
       };
       await supabase.from('audit_logs').upsert({
         id: `empmeta-${employeeId}`,
@@ -683,13 +685,20 @@ export class SupabaseStore {
       .eq('tenant_id', tenantId)
       .eq('id', employeeId);
 
-    if (error && (error.message.includes('column') || error.message.includes('schema cache'))) {
-      const safePayload = { ...payload };
-      delete safePayload.ifsc_code;
-      delete safePayload.uan;
-      delete safePayload.aadhaar_number;
-      delete safePayload.tax_regime;
-      delete safePayload.personal_email;
+    if (error && (error.message.includes('column') || error.message.includes('schema cache') || error.message.includes('check constraint') || error.message.includes('employees_status_check'))) {
+      const safePayload: Record<string, unknown> = { ...payload };
+      if (error.message.includes('column') || error.message.includes('schema cache')) {
+        delete safePayload.ifsc_code;
+        delete safePayload.uan;
+        delete safePayload.aadhaar_number;
+        delete safePayload.tax_regime;
+        delete safePayload.personal_email;
+      }
+      if (safePayload.status) {
+        const st = String(safePayload.status).toUpperCase();
+        if (st === 'TERMINATED' || st === 'ARCHIVED') safePayload.status = 'EXITED';
+        else if (st === 'PROBATION' || st === 'NOTICE_PERIOD') safePayload.status = 'ACTIVE';
+      }
       ({ error } = await supabase
         .from('employees')
         .update(safePayload)

@@ -83,9 +83,10 @@ export default function MonthlyAttendanceCalendar({
           setWorkingDays(json.data.workingDays);
         }
         if (json.data.employees && json.data.employees.length > 0) {
-          const activeEmps = (json.data.employees as Employee[]).filter(
-            (e) => e.status !== 'EXITED' && e.status !== 'ARCHIVED' && e.status !== 'TERMINATED'
-          );
+          const activeEmps = (json.data.employees as Employee[]).filter((e) => {
+            const st = (e.status || '').trim().toUpperCase();
+            return st !== 'EXITED' && st !== 'ARCHIVED' && st !== 'TERMINATED';
+          });
           setEmployees(activeEmps);
           if (activeEmps.length > 0 && (!selectedEmpId || !activeEmps.some((e) => e.id === selectedEmpId)) && !initialEmployeeId) {
             setSelectedEmpId(activeEmps[0].id);

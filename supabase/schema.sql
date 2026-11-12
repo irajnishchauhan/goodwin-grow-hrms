@@ -131,7 +131,7 @@ CREATE TABLE IF NOT EXISTS public.employees (
     reporting_manager_id TEXT,
     reporting_manager_name TEXT,
     employment_type TEXT DEFAULT 'FULL_TIME' CHECK (employment_type IN ('FULL_TIME', 'PART_TIME', 'CONTRACTOR', 'INTERN')),
-    status TEXT DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'ON_LEAVE', 'SUSPENDED', 'EXITED')),
+    status TEXT DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'PROBATION', 'NOTICE_PERIOD', 'ON_LEAVE', 'SUSPENDED', 'TERMINATED', 'EXITED', 'ARCHIVED')),
     monthly_salary NUMERIC(12, 2) DEFAULT 45000,
     pan_or_tax_id TEXT,
     bank_account_number TEXT,

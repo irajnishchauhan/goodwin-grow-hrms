@@ -100,9 +100,10 @@ export async function GET(
       (r) => !r.id.startsWith('absent-') && !r.id.startsWith('off-') && !r.id.startsWith('not-punched-')
     );
 
-    const activeEmployees = employees.filter(
-      (e) => e.status !== 'EXITED' && e.status !== 'ARCHIVED' && e.status !== 'TERMINATED'
-    );
+    const activeEmployees = employees.filter((e) => {
+      const st = (e.status || '').trim().toUpperCase();
+      return st !== 'EXITED' && st !== 'ARCHIVED' && st !== 'TERMINATED';
+    });
     const activeEmployeeIds = new Set(activeEmployees.map((e) => e.id));
 
     // Merge with any direct target date punch records for active employees only

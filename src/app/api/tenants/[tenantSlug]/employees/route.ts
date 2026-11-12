@@ -324,7 +324,13 @@ export async function PATCH(
       db.syncEmployees(supaEmployees);
     }
 
-    await SupabaseStore.updateEmployee(tenant.id, employeeId, updates);
+    const supaUpdated = await SupabaseStore.updateEmployee(tenant.id, employeeId, updates);
+    if (SupabaseStore.isConnected() && !supaUpdated) {
+      return NextResponse.json(
+        { success: false, error: 'Failed to persist employee update to database' },
+        { status: 500 }
+      );
+    }
     const updatedEmp = db.updateEmployee(tenant.id, employeeId, updates);
     db.invalidateCache(tenant.id);
     db.invalidateCache(tenantSlug);
