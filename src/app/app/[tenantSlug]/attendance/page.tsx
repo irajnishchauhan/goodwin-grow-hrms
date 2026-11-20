@@ -783,10 +783,20 @@ function AttendanceContent() {
     );
   };
 
-  // Quick Open Regularization Modal for a specific unpunched or half-day record
-  const handleQuickRegularize = (empId: string, attDate: string) => {
+  // Quick Open Regularization Modal for a specific unpunched, late, or half-day record
+  const handleQuickRegularize = (empId: string, attDate: string, defaultReason?: string) => {
     setRegEmpId(empId);
     setRegDate(attDate);
+    if (defaultReason) {
+      setRegReasonCategory(defaultReason);
+      setRegRemarks(defaultReason);
+    }
+    const emp = employees.find((e) => e.id === empId);
+    const empShift = shifts.find((s) => s.name === emp?.shiftName) || shifts[0];
+    if (empShift) {
+      setRegClockIn(empShift.startTime || '10:00');
+      setRegClockOut(empShift.endTime || '19:00');
+    }
     setRegFeedback(null);
     setIsRegModalOpen(true);
   };
@@ -1934,12 +1944,28 @@ function AttendanceContent() {
                                   if (isUnpunched || isLate || isHalf) {
                                     return (
                                       <button
-                                        onClick={() => handleQuickRegularize(r.employeeId, r.date)}
+                                        onClick={() =>
+                                          handleQuickRegularize(
+                                            r.employeeId,
+                                            r.date,
+                                            isLate
+                                              ? 'Late Entry / Grace Period Exemption'
+                                              : isHalf
+                                              ? 'Half Day / Time Adjustment'
+                                              : 'Missed Punch / Forgot to Clock In or Out'
+                                          )
+                                        }
                                         disabled={isCycleLocked}
                                         className="px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 disabled:opacity-40 disabled:cursor-not-allowed text-emerald-800 border border-emerald-200 font-bold text-[11px] transition-colors cursor-pointer"
-                                        title={isCycleLocked ? 'Attendance cycle is locked' : 'Submit regularization request for this date'}
+                                        title={
+                                          isCycleLocked
+                                            ? 'Attendance cycle is locked'
+                                            : isLate
+                                            ? 'Regularize and waive late entry penalty'
+                                            : 'Submit regularization request for this date'
+                                        }
                                       >
-                                        Regularize
+                                        {isLate ? 'Regularize Late' : 'Regularize'}
                                       </button>
                                     );
                                   }
@@ -1991,9 +2017,20 @@ function AttendanceContent() {
               tenantSlug={tenantSlug}
               employeeId={isEmployeeOnly ? currentEmp?.id : undefined}
               isEmployeeOnly={isEmployeeOnly}
-              onRequestRegularization={(d, r) => {
+              onRequestRegularization={(d, r, empId) => {
                 setRegDate(d);
-                if (r) setRegRemarks(r);
+                if (empId) setRegEmpId(empId);
+                if (r) {
+                  setRegReasonCategory(r);
+                  setRegRemarks(r);
+                }
+                const effectiveId = empId || (isEmployeeOnly ? currentEmp?.id : regEmpId);
+                const emp = employees.find((e) => e.id === effectiveId);
+                const empShift = shifts.find((s) => s.name === emp?.shiftName) || shifts[0];
+                if (empShift) {
+                  setRegClockIn(empShift.startTime || '10:00');
+                  setRegClockOut(empShift.endTime || '19:00');
+                }
                 setRegFeedback(null);
                 setIsRegModalOpen(true);
               }}
@@ -3089,16 +3126,22 @@ function AttendanceContent() {
                   <select
                     value={regReasonCategory}
                     onChange={(e) => setRegReasonCategory(e.target.value)}
-                    className="w-full p-2.5 rounded-xl bg-slate-50 border border-slate-300 text-slate-900 text-xs focus:ring-2 focus:ring-emerald-500"
+                    className="w-full p-2.5 rounded-xl bg-slate-50 border border-slate-300 text-slate-900 text-xs focus:ring-2 focus:ring-emerald-500 font-semibold"
                   >
+                    <option value="Late Entry / Grace Period Exemption">Late Entry / Grace Period Exemption (Waiver)</option>
                     <option value="Missed Punch / Forgot to Clock In or Out">Missed Punch (Forgot to Clock In / Out)</option>
                     <option value="Biometric Machine / Device Sync Glitch">Biometric Machine / Device Sync Glitch</option>
                     <option value="Official Duty / Client Site Visit">Official Duty / Client Site Visit (On-Duty)</option>
                     <option value="Work From Home / Remote Approval">Work From Home / Approved Remote Duty</option>
-                    <option value="Late Entry / Grace Period Exemption">Late Entry / Grace Period Exemption</option>
                     <option value="Technical Glitch / Internet Outage">Technical Glitch / Network Disruption</option>
                     <option value="Other Official Reason">Other Official Reason</option>
                   </select>
+                  {regReasonCategory.includes('Late Entry') && (
+                    <div className="mt-2 p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-[11px] flex items-center gap-2">
+                      <Clock className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                      <span>Regularizing a late entry will convert status to on-time PRESENT and waive late arrival penalties.</span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Remarks */}

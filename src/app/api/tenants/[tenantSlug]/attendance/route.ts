@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db/store';
 import { SupabaseStore } from '@/lib/db/supabaseStore';
-import { Employee, AttendanceRecord } from '@/lib/types';
+import { Employee, AttendanceRecord, RegularizationRequest, AttendanceStatus } from '@/lib/types';
 import {
   buildDailyWorkforceRoster,
   evaluateAttendanceStatus,
@@ -124,9 +124,30 @@ export async function GET(
     const loggedRecords = Array.from(recordMap.values());
 
     const targetMonth = searchParams.get('month') || targetDate.substring(0, 7);
-    const monthRecords = realPunchRecords.filter(
-      (r) => r.date.startsWith(targetMonth) && activeEmployeeIds.has(r.employeeId)
-    );
+    const approvedRegMap = new Map<string, RegularizationRequest>();
+    regularizations
+      .filter((r) => r.status === 'APPROVED')
+      .forEach((r) => {
+        approvedRegMap.set(`${r.employeeId}::${r.attendanceDate}`, r);
+      });
+
+    const monthRecords = realPunchRecords
+      .filter((r) => r.date.startsWith(targetMonth) && activeEmployeeIds.has(r.employeeId))
+      .map((r) => {
+        const approvedReg = approvedRegMap.get(`${r.employeeId}::${r.date}`);
+        if (approvedReg) {
+          return {
+            ...r,
+            status: 'PRESENT' as AttendanceStatus,
+            clockInTime: approvedReg.requestedClockIn || r.clockInTime,
+            clockOutTime: approvedReg.requestedClockOut || r.clockOutTime,
+            notes: r.notes?.toLowerCase().includes('regulariz')
+              ? r.notes
+              : `Attendance Regularized & Approved (${approvedReg.reason})`
+          };
+        }
+        return r;
+      });
 
     const payload = {
       records: loggedRecords,
@@ -248,6 +269,11 @@ export async function POST(
         if (att) {
           await SupabaseStore.saveAttendance(att);
         }
+
+        SupabaseStore.invalidate(tenant.id);
+        SupabaseStore.invalidate(tenantSlug);
+        db.invalidateCache(tenant.id);
+        db.invalidateCache(tenantSlug);
 
         return NextResponse.json(
           {

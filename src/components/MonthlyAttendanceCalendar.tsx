@@ -22,7 +22,7 @@ interface MonthlyAttendanceCalendarProps {
   tenantSlug: string;
   employeeId?: string;
   isEmployeeOnly?: boolean;
-  onRequestRegularization?: (date: string, reason?: string) => void;
+  onRequestRegularization?: (date: string, reason?: string, employeeId?: string) => void;
 }
 
 export default function MonthlyAttendanceCalendar({
@@ -211,9 +211,14 @@ export default function MonthlyAttendanceCalendar({
 
     const punch = empPunchesMap.get(dStr);
     const leave = empLeavesMap.get(dStr);
+    const reg = empRegMap.get(dStr);
+    const isApprovedReg = reg?.status === 'APPROVED' || Boolean(punch?.notes?.toLowerCase().includes('regulariz'));
 
     if (punch && punch.clockInTime) {
-      if (punch.status === 'LATE_ENTRY') {
+      if (isApprovedReg) {
+        onTimeDays++;
+        presentDays++;
+      } else if (punch.status === 'LATE_ENTRY') {
         lateDays++;
         presentDays++;
       } else if (punch.status === 'HALF_DAY') {
@@ -224,6 +229,10 @@ export default function MonthlyAttendanceCalendar({
         presentDays++;
       }
       totalWorkingHours += punch.workingHours ?? punch.totalHours ?? 0;
+    } else if (isApprovedReg) {
+      onTimeDays++;
+      presentDays++;
+      totalWorkingHours += 8.5;
     } else if (leave) {
       onLeaveDays += leave.isHalfDay ? 0.5 : 1;
       if (leave.isHalfDay) {
@@ -402,8 +411,13 @@ export default function MonthlyAttendanceCalendar({
             let isAbsent = false;
             let isNotPunchedIn = false;
 
+            const isApprovedReg = reg?.status === 'APPROVED' || Boolean(punch?.notes?.toLowerCase().includes('regulariz'));
+
             if (punch && punch.clockInTime) {
-              if (punch.status === 'LATE_ENTRY') {
+              if (isApprovedReg) {
+                badgeText = 'Present';
+                badgeClass = 'bg-emerald-100 text-emerald-800 border-emerald-200';
+              } else if (punch.status === 'LATE_ENTRY') {
                 badgeText = 'Late';
                 badgeClass = 'bg-amber-100 text-amber-800 border-amber-200';
               } else if (punch.status === 'HALF_DAY') {
@@ -413,6 +427,9 @@ export default function MonthlyAttendanceCalendar({
                 badgeText = 'Present';
                 badgeClass = 'bg-emerald-100 text-emerald-800 border-emerald-200';
               }
+            } else if (isApprovedReg) {
+              badgeText = 'Present';
+              badgeClass = 'bg-emerald-100 text-emerald-800 border-emerald-200';
             } else if (leave) {
               badgeText = leave.isHalfDay ? 'Half Day Leave' : 'On Leave';
               badgeClass = 'bg-blue-100 text-blue-800 border-blue-200';
@@ -541,17 +558,27 @@ export default function MonthlyAttendanceCalendar({
                       <CheckCircle2 className="w-2.5 h-2.5" />
                       <span>Regularized ({reg.status})</span>
                     </span>
-                  ) : (isAbsent || isNotPunchedIn || (punch && !punch.clockOutTime && !isToday)) ? (
+                  ) : (isAbsent || isNotPunchedIn || (punch && !punch.clockOutTime && !isToday) || (punch && punch.status === 'LATE_ENTRY') || (punch && punch.status === 'HALF_DAY')) ? (
                     <button
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
-                        onRequestRegularization?.(dayStr, 'Missed Punch / Forgot to Clock In or Out');
+                        const defaultReason =
+                          punch?.status === 'LATE_ENTRY'
+                            ? 'Late Entry / Grace Period Exemption'
+                            : punch?.status === 'HALF_DAY'
+                            ? 'Half Day / Time Adjustment'
+                            : 'Missed Punch / Forgot to Clock In or Out';
+                        onRequestRegularization?.(dayStr, defaultReason, activeEmployee?.id);
                       }}
-                      className="w-full text-center py-0.5 px-1 rounded-md bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 text-[9px] font-bold transition-all cursor-pointer flex items-center justify-center gap-1"
+                      className={`w-full text-center py-0.5 px-1 rounded-md text-[9px] font-bold transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                        punch?.status === 'LATE_ENTRY'
+                          ? 'bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200'
+                          : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200'
+                      }`}
                     >
                       <Send className="w-2 h-2 text-amber-700" />
-                      <span>Missed Punch?</span>
+                      <span>{punch?.status === 'LATE_ENTRY' ? 'Regularize Late' : 'Missed Punch?'}</span>
                     </button>
                   ) : (
                     <span className="text-[9px] text-slate-300 invisible">--</span>
@@ -652,17 +679,23 @@ export default function MonthlyAttendanceCalendar({
                     )}
 
                     <div className="pt-2 flex items-center justify-end gap-2">
-                      {(!p || !p.clockOutTime) && !l && !h && (
+                      {(!p || !p.clockOutTime || p.status === 'LATE_ENTRY' || p.status === 'HALF_DAY') && (!r || r.status !== 'APPROVED') && !l && !h && (
                         <button
                           type="button"
                           onClick={() => {
                             setSelectedDayDetails(null);
-                            onRequestRegularization?.(selectedDayDetails, 'Missed Punch / Forgot to Clock In or Out');
+                            const defaultReason =
+                              p?.status === 'LATE_ENTRY'
+                                ? 'Late Entry / Grace Period Exemption'
+                                : p?.status === 'HALF_DAY'
+                                ? 'Half Day / Time Adjustment'
+                                : 'Missed Punch / Forgot to Clock In or Out';
+                            onRequestRegularization?.(selectedDayDetails, defaultReason, activeEmployee?.id);
                           }}
                           className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs transition-all cursor-pointer flex items-center gap-1.5"
                         >
                           <Send className="w-3.5 h-3.5" />
-                          <span>Request Regularization</span>
+                          <span>{p?.status === 'LATE_ENTRY' ? 'Regularize Late Entry' : 'Request Regularization'}</span>
                         </button>
                       )}
                       <button
