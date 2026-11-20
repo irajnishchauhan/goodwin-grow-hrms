@@ -411,6 +411,88 @@ export async function PATCH(
       });
     }
 
+    // Handle Bulk Regularization Approvals / Actions
+    if (
+      body.action === 'APPROVE_ALL_PENDING' ||
+      body.action === 'BULK_REGULARIZATION_REVIEW' ||
+      Array.isArray(body.regularizationIds)
+    ) {
+      const supaRegs = await SupabaseStore.getRegularizations(tenant.id);
+      if (supaRegs && supaRegs.length > 0) {
+        db.syncRegularizations(supaRegs);
+      }
+
+      let targetIds: string[] = [];
+      const status: 'APPROVED' | 'REJECTED' = body.status || 'APPROVED';
+      const reviewer = body.reviewedBy || 'Company Administrator';
+      const comment = body.comment || (status === 'APPROVED' ? 'Approved in bulk' : 'Rejected in bulk');
+
+      if (body.action === 'APPROVE_ALL_PENDING') {
+        let allPending = db.getRegularizations(tenant.id).filter((r) => r.status === 'PENDING');
+        if (body.employeeId) {
+          allPending = allPending.filter((r) => r.employeeId === body.employeeId);
+        }
+        if (body.month) {
+          allPending = allPending.filter((r) => r.attendanceDate.startsWith(body.month));
+        }
+        targetIds = allPending.map((r) => r.id);
+      } else {
+        targetIds = Array.isArray(body.regularizationIds) ? body.regularizationIds : [];
+      }
+
+      if (targetIds.length === 0) {
+        return NextResponse.json({
+          success: true,
+          message: 'No pending regularization requests to process',
+          count: 0
+        });
+      }
+
+      // Filter out any requests in locked months
+      const allowedIds: string[] = [];
+      const currentRegs = db.getRegularizations(tenant.id);
+      for (const id of targetIds) {
+        const found = currentRegs.find((r) => r.id === id);
+        if (found) {
+          const m = found.attendanceDate.substring(0, 7);
+          if (tenant.lockedAttendanceMonths?.includes(m)) {
+            continue; // Skip locked month
+          }
+        }
+        allowedIds.push(id);
+      }
+
+      const { updatedRegs, updatedAttendance } = db.updateRegularizationStatusBulk(
+        tenant.id,
+        allowedIds,
+        status,
+        reviewer,
+        comment
+      );
+
+      if (updatedRegs.length > 0) {
+        await SupabaseStore.saveRegularizationsBulk(updatedRegs);
+      }
+      if (updatedAttendance.length > 0) {
+        await SupabaseStore.saveAttendanceBulk(updatedAttendance);
+      }
+
+      SupabaseStore.invalidate(tenant.id);
+      SupabaseStore.invalidate(tenantSlug);
+      db.invalidateCache(tenant.id);
+      db.invalidateCache(tenantSlug);
+
+      return NextResponse.json(
+        {
+          success: true,
+          message: `Successfully ${status.toLowerCase()} ${updatedRegs.length} regularization request(s)`,
+          count: updatedRegs.length,
+          data: updatedRegs
+        },
+        { headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate' } }
+      );
+    }
+
     const { regularizationId, status, reviewedBy, comment } = body;
 
     if (!regularizationId || !status) {
@@ -425,7 +507,7 @@ export async function PATCH(
       db.syncRegularizations(supaRegs);
     }
 
-    const existingReg = db.getRegularizations(tenant.id).find((r) => r.id === regularizationId);
+    const existingReg = db.getRegularizationById(tenant.id, regularizationId);
     if (existingReg) {
       const regMonth = existingReg.attendanceDate.substring(0, 7);
       if (tenant.lockedAttendanceMonths?.includes(regMonth)) {
@@ -457,6 +539,11 @@ export async function PATCH(
         await SupabaseStore.saveAttendance(att);
       }
     }
+
+    SupabaseStore.invalidate(tenant.id);
+    SupabaseStore.invalidate(tenantSlug);
+    db.invalidateCache(tenant.id);
+    db.invalidateCache(tenantSlug);
 
     return NextResponse.json(
       {

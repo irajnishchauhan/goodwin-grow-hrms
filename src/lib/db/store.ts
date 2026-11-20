@@ -1693,7 +1693,26 @@ class HRMSDataStore {
   }
 
   public getRegularizations(tenantId: string): RegularizationRequest[] {
-    return this.regularizations.filter((r) => r.tenantId === tenantId);
+    const cleanTenant = tenantId.replace(/^tenant-/, '');
+    return this.regularizations.filter(
+      (r) =>
+        r.tenantId === tenantId ||
+        r.tenantId?.replace(/^tenant-/, '') === cleanTenant ||
+        !r.tenantId
+    );
+  }
+
+  public getRegularizationById(tenantId: string, id: string): RegularizationRequest | undefined {
+    const cleanTenant = tenantId.replace(/^tenant-/, '');
+    return (
+      this.regularizations.find(
+        (r) =>
+          r.id === id &&
+          (r.tenantId === tenantId ||
+            r.tenantId?.replace(/^tenant-/, '') === cleanTenant ||
+            !r.tenantId)
+      ) || this.regularizations.find((r) => r.id === id)
+    );
   }
 
   public syncRegularizations(regs: RegularizationRequest[]): void {
@@ -1756,7 +1775,17 @@ class HRMSDataStore {
     reviewedBy: string,
     comment?: string
   ): RegularizationRequest {
-    const req = this.regularizations.find((r) => r.id === id && r.tenantId === tenantId);
+    const cleanTenant = tenantId.replace(/^tenant-/, '');
+    let req = this.regularizations.find(
+      (r) =>
+        r.id === id &&
+        (r.tenantId === tenantId ||
+          r.tenantId?.replace(/^tenant-/, '') === cleanTenant ||
+          !r.tenantId)
+    );
+    if (!req) {
+      req = this.regularizations.find((r) => r.id === id);
+    }
     if (!req) throw new Error('Regularization request not found');
 
     req.status = status;
@@ -1779,7 +1808,10 @@ class HRMSDataStore {
       }
 
       const att = this.attendance.find(
-        (a) => a.tenantId === tenantId && a.employeeId === req.employeeId && a.date === req.attendanceDate
+        (a) =>
+          (a.tenantId === tenantId || a.tenantId?.replace(/^tenant-/, '') === cleanTenant) &&
+          a.employeeId === req.employeeId &&
+          a.date === req.attendanceDate
       );
       if (att) {
         att.clockInTime = req.requestedClockIn;
@@ -1816,6 +1848,38 @@ class HRMSDataStore {
     });
 
     return req;
+  }
+
+  public updateRegularizationStatusBulk(
+    tenantId: string,
+    ids: string[],
+    status: 'APPROVED' | 'REJECTED',
+    reviewedBy: string,
+    comment?: string
+  ): { updatedRegs: RegularizationRequest[]; updatedAttendance: AttendanceRecord[] } {
+    const updatedRegs: RegularizationRequest[] = [];
+    const updatedAttendance: AttendanceRecord[] = [];
+    const cleanTenant = tenantId.replace(/^tenant-/, '');
+
+    for (const id of ids) {
+      try {
+        const updated = this.updateRegularizationStatus(tenantId, id, status, reviewedBy, comment);
+        updatedRegs.push(updated);
+        if (status === 'APPROVED') {
+          const att = this.attendance.find(
+            (a) =>
+              (a.tenantId === tenantId || a.tenantId?.replace(/^tenant-/, '') === cleanTenant) &&
+              a.employeeId === updated.employeeId &&
+              a.date === updated.attendanceDate
+          );
+          if (att) updatedAttendance.push(att);
+        }
+      } catch (err) {
+        console.warn(`Could not update regularization ${id}:`, err);
+      }
+    }
+
+    return { updatedRegs, updatedAttendance };
   }
 
   public deleteRegularization(tenantId: string, regId: string): boolean {

@@ -29,7 +29,12 @@ import {
   CheckSquare,
   Download,
   Lock,
-  Unlock
+  Unlock,
+  CheckCheck,
+  Search,
+  Users,
+  RotateCcw,
+  Loader2
 } from 'lucide-react';
 import {
   AttendanceRecord,
@@ -234,8 +239,15 @@ function AttendanceContent() {
     'ALL' | 'PRESENT' | 'LATE_ENTRY' | 'HALF_DAY' | 'ON_LEAVE' | 'ABSENT' | 'NOT_PUNCHED_IN' | 'ROSTER'
   >('ALL');
 
-  // Regularization Filters
+  // Regularization Filters & Bulk Selection State
   const [regFilter, setRegFilter] = useState<'ALL' | 'PENDING' | 'APPROVED' | 'REJECTED'>('ALL');
+  const [regEmployeeFilter, setRegEmployeeFilter] = useState<string>('');
+  const [regMonthFilter, setRegMonthFilter] = useState<string>('');
+  const [regSearchQuery, setRegSearchQuery] = useState<string>('');
+  const [selectedRegIds, setSelectedRegIds] = useState<string[]>([]);
+  const [bulkRegSubmitting, setBulkRegSubmitting] = useState<boolean>(false);
+  const [inlineApprovingId, setInlineApprovingId] = useState<string | null>(null);
+  const [inlineRejectingId, setInlineRejectingId] = useState<string | null>(null);
 
   // Request Regularization Modal State
   const [isRegModalOpen, setIsRegModalOpen] = useState(searchParams.get('action') === 'request');
@@ -596,6 +608,179 @@ function AttendanceContent() {
       console.error('Error withdrawing regularization:', err);
       setStatusMsg('Error communicating with server');
     }
+  };
+
+  // 1-Click Inline Approve for a single Regularization Request
+  const handleQuickApproveInline = async (reg: RegularizationRequest) => {
+    setInlineApprovingId(reg.id);
+    const reviewerName = user?.name || (isCompanyAdmin ? 'Company Administrator' : 'Reporting Manager');
+
+    // Optimistic UI update
+    setRegularizations((prev) =>
+      prev.map((r) => (r.id === reg.id ? { ...r, status: 'APPROVED', reviewedBy: reviewerName } : r))
+    );
+
+    try {
+      const res = await fetch(`/api/tenants/${tenantSlug}/attendance`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          regularizationId: reg.id,
+          status: 'APPROVED',
+          reviewedBy: reviewerName,
+          comment: 'Approved directly from attendance roster'
+        })
+      });
+
+      const json = await res.json();
+      if (json.success) {
+        setStatusMsg(`Regularization for ${reg.employeeName} (${reg.attendanceDate}) approved.`);
+        setTimeout(() => setStatusMsg(null), 3000);
+        fetchAttendance(selectedDate);
+      } else {
+        alert(json.error || 'Failed to approve regularization');
+        fetchAttendance(selectedDate);
+      }
+    } catch (err) {
+      console.error(err);
+      fetchAttendance(selectedDate);
+    } finally {
+      setInlineApprovingId(null);
+    }
+  };
+
+  // 1-Click Inline Reject
+  const handleQuickRejectInline = async (reg: RegularizationRequest) => {
+    if (!confirm(`Reject regularization request for ${reg.employeeName} on ${reg.attendanceDate}?`)) return;
+    setInlineRejectingId(reg.id);
+    const reviewerName = user?.name || (isCompanyAdmin ? 'Company Administrator' : 'Reporting Manager');
+
+    setRegularizations((prev) =>
+      prev.map((r) => (r.id === reg.id ? { ...r, status: 'REJECTED', reviewedBy: reviewerName } : r))
+    );
+
+    try {
+      const res = await fetch(`/api/tenants/${tenantSlug}/attendance`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          regularizationId: reg.id,
+          status: 'REJECTED',
+          reviewedBy: reviewerName,
+          comment: 'Rejected by administrator'
+        })
+      });
+
+      const json = await res.json();
+      if (json.success) {
+        setStatusMsg(`Regularization for ${reg.employeeName} on ${reg.attendanceDate} rejected.`);
+        setTimeout(() => setStatusMsg(null), 3000);
+        fetchAttendance(selectedDate);
+      } else {
+        alert(json.error || 'Failed to reject regularization');
+        fetchAttendance(selectedDate);
+      }
+    } catch (err) {
+      console.error(err);
+      fetchAttendance(selectedDate);
+    } finally {
+      setInlineRejectingId(null);
+    }
+  };
+
+  // Bulk Review (Approve or Reject selected items)
+  const handleBulkReviewRegularizations = async (status: 'APPROVED' | 'REJECTED') => {
+    if (selectedRegIds.length === 0) return;
+    setBulkRegSubmitting(true);
+    const reviewerName = user?.name || (isCompanyAdmin ? 'Company Administrator' : 'Reporting Manager');
+
+    try {
+      const res = await fetch(`/api/tenants/${tenantSlug}/attendance`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'BULK_REGULARIZATION_REVIEW',
+          regularizationIds: selectedRegIds,
+          status,
+          reviewedBy: reviewerName,
+          comment: `Bulk ${status.toLowerCase()} by ${reviewerName}`
+        })
+      });
+
+      const json = await res.json();
+      if (json.success) {
+        setStatusMsg(`Successfully ${status.toLowerCase()} ${json.count || selectedRegIds.length} regularization request(s).`);
+        setSelectedRegIds([]);
+        setTimeout(() => setStatusMsg(null), 3500);
+        fetchAttendance(selectedDate);
+      } else {
+        alert(json.error || `Failed to ${status.toLowerCase()} selected requests`);
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Network error while processing bulk action');
+    } finally {
+      setBulkRegSubmitting(false);
+    }
+  };
+
+  // 1-Click "Approve All Pending"
+  const handleApproveAllPending = async () => {
+    const pendingToApprove = filteredRegularizations.filter((r) => r.status === 'PENDING');
+    if (pendingToApprove.length === 0) {
+      alert('No pending regularization requests matching your current filters.');
+      return;
+    }
+
+    if (!confirm(`Are you sure you want to approve all ${pendingToApprove.length} pending regularization request(s)?`)) {
+      return;
+    }
+
+    setBulkRegSubmitting(true);
+    const reviewerName = user?.name || (isCompanyAdmin ? 'Company Administrator' : 'Reporting Manager');
+
+    try {
+      const res = await fetch(`/api/tenants/${tenantSlug}/attendance`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'BULK_REGULARIZATION_REVIEW',
+          regularizationIds: pendingToApprove.map((r) => r.id),
+          status: 'APPROVED',
+          reviewedBy: reviewerName,
+          comment: `Bulk approved by ${reviewerName}`
+        })
+      });
+
+      const json = await res.json();
+      if (json.success) {
+        setStatusMsg(`All ${json.count || pendingToApprove.length} pending regularizations approved successfully!`);
+        setSelectedRegIds([]);
+        setTimeout(() => setStatusMsg(null), 3500);
+        fetchAttendance(selectedDate);
+      } else {
+        alert(json.error || 'Failed to approve pending requests');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Network error while approving all pending requests');
+    } finally {
+      setBulkRegSubmitting(false);
+    }
+  };
+
+  const handleToggleSelectAllRegs = () => {
+    if (selectedRegIds.length === filteredRegularizations.length && filteredRegularizations.length > 0) {
+      setSelectedRegIds([]);
+    } else {
+      setSelectedRegIds(filteredRegularizations.map((r) => r.id));
+    }
+  };
+
+  const handleToggleSelectRegRow = (id: string) => {
+    setSelectedRegIds((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+    );
   };
 
   // Quick Open Regularization Modal for a specific unpunched or half-day record
@@ -999,6 +1184,44 @@ function AttendanceContent() {
   const pendingRegsCount = regularizations.filter((r) => r.status === 'PENDING').length;
   const approvedRegsCount = regularizations.filter((r) => r.status === 'APPROVED').length;
   const rejectedRegsCount = regularizations.filter((r) => r.status === 'REJECTED').length;
+
+  const filteredRegularizations = useMemo(() => {
+    return regularizations.filter((r) => {
+      if (regFilter === 'PENDING' && r.status !== 'PENDING') return false;
+      if (regFilter === 'APPROVED' && r.status !== 'APPROVED') return false;
+      if (regFilter === 'REJECTED' && r.status !== 'REJECTED') return false;
+      if (regEmployeeFilter && r.employeeId !== regEmployeeFilter) return false;
+      if (regMonthFilter && !r.attendanceDate.startsWith(regMonthFilter)) return false;
+      if (regSearchQuery.trim()) {
+        const q = regSearchQuery.toLowerCase().trim();
+        const empName = (r.employeeName || '').toLowerCase();
+        const reason = (r.reason || '').toLowerCase();
+        const mgrName = (r.managerName || '').toLowerCase();
+        const date = (r.attendanceDate || '').toLowerCase();
+        if (!empName.includes(q) && !reason.includes(q) && !mgrName.includes(q) && !date.includes(q)) {
+          return false;
+        }
+      }
+      return true;
+    });
+  }, [regularizations, regFilter, regEmployeeFilter, regMonthFilter, regSearchQuery]);
+
+  const uniqueRegEmployees = useMemo(() => {
+    const map = new Map<string, { id: string; name: string; pendingCount: number }>();
+    regularizations.forEach((r) => {
+      if (!map.has(r.employeeId)) {
+        map.set(r.employeeId, { id: r.employeeId, name: r.employeeName, pendingCount: 0 });
+      }
+      if (r.status === 'PENDING') {
+        map.get(r.employeeId)!.pendingCount += 1;
+      }
+    });
+    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [regularizations]);
+
+  const filteredPendingCount = useMemo(() => {
+    return filteredRegularizations.filter((r) => r.status === 'PENDING').length;
+  }, [filteredRegularizations]);
 
   const targetRegEmp = employees.find((e) => e.id === (isEmployeeOnly ? currentEmp?.id || regEmpId : regEmpId));
 
@@ -1830,43 +2053,213 @@ function AttendanceContent() {
               </div>
             </div>
 
-            {/* Regularizations Controls Bar */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-2xl bg-white border border-slate-200 shadow-xs">
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <span className="text-xs font-bold text-slate-500 mr-2 flex items-center gap-1">
-                  <Filter className="w-3.5 h-3.5" /> Filter:
-                </span>
-                {(['ALL', 'PENDING', 'APPROVED', 'REJECTED'] as const).map((st) => (
-                  <button
-                    key={st}
-                    onClick={() => setRegFilter(st)}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                      regFilter === st
-                        ? 'bg-slate-900 text-white shadow-xs'
-                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                    }`}
-                  >
-                    {st === 'ALL'
-                      ? 'All Requests'
-                      : st === 'PENDING'
-                      ? `Pending (${pendingRegsCount})`
-                      : st === 'APPROVED'
-                      ? `Approved (${approvedRegsCount})`
-                      : `Rejected (${rejectedRegsCount})`}
-                  </button>
-                ))}
+            {/* Regularizations Controls & Filter Toolbar */}
+            <div className="space-y-3">
+              {/* Comprehensive Filters Bar */}
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 p-4 rounded-2xl bg-white border border-slate-200 shadow-xs">
+                <div className="flex flex-wrap items-center gap-2.5 flex-1">
+                  {/* Search query input */}
+                  <div className="relative min-w-[200px] flex-1 max-w-xs">
+                    <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input
+                      type="text"
+                      placeholder="Search employee, reason, date..."
+                      value={regSearchQuery}
+                      onChange={(e) => setRegSearchQuery(e.target.value)}
+                      className="w-full pl-8 pr-7 py-1.5 rounded-xl border border-slate-200 bg-slate-50 text-slate-900 text-xs focus:ring-2 focus:ring-emerald-500 focus:bg-white transition-all"
+                    />
+                    {regSearchQuery && (
+                      <button
+                        type="button"
+                        onClick={() => setRegSearchQuery('')}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Employee Filter Dropdown */}
+                  <div className="min-w-[170px]">
+                    <select
+                      value={regEmployeeFilter}
+                      onChange={(e) => setRegEmployeeFilter(e.target.value)}
+                      className="w-full px-3 py-1.5 rounded-xl border border-slate-200 bg-slate-50 text-slate-800 text-xs font-semibold focus:ring-2 focus:ring-emerald-500 cursor-pointer"
+                    >
+                      <option value="">All Workforce ({uniqueRegEmployees.length})</option>
+                      {uniqueRegEmployees.map((emp) => (
+                        <option key={emp.id} value={emp.id}>
+                          {emp.name} {emp.pendingCount > 0 ? `(${emp.pendingCount} pending)` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Month Filter */}
+                  <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase">Month:</span>
+                    <input
+                      type="month"
+                      value={regMonthFilter}
+                      onChange={(e) => setRegMonthFilter(e.target.value)}
+                      className="bg-transparent text-slate-800 text-xs font-semibold focus:outline-none cursor-pointer"
+                    />
+                    {regMonthFilter && (
+                      <button
+                        type="button"
+                        onClick={() => setRegMonthFilter('')}
+                        className="text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
+                        title="Clear Month Filter"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Reset Filters button if any filter active */}
+                  {(regSearchQuery || regEmployeeFilter || regMonthFilter || regFilter !== 'ALL') && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setRegSearchQuery('');
+                        setRegEmployeeFilter('');
+                        setRegMonthFilter('');
+                        setRegFilter('ALL');
+                        setSelectedRegIds([]);
+                      }}
+                      className="flex items-center gap-1 px-2.5 py-1 rounded-xl text-slate-500 hover:text-slate-800 hover:bg-slate-100 text-xs font-bold transition-all cursor-pointer"
+                      title="Reset all filters"
+                    >
+                      <RotateCcw className="w-3 h-3" />
+                      <span>Reset Filters</span>
+                    </button>
+                  )}
+                </div>
+
+                <button
+                  onClick={() => {
+                    setRegFeedback(null);
+                    setIsRegModalOpen(true);
+                  }}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-sm transition-all cursor-pointer self-start lg:self-auto shrink-0"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  <span>Submit New Regularization</span>
+                </button>
               </div>
 
-              <button
-                onClick={() => {
-                  setRegFeedback(null);
-                  setIsRegModalOpen(true);
-                }}
-                className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-sm transition-all cursor-pointer self-start sm:self-auto"
-              >
-                <Send className="w-3.5 h-3.5" />
-                <span>Submit New Regularization</span>
-              </button>
+              {/* Status Chips + 1-Click Approve All Pending Bar */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-2xl bg-white border border-slate-200 shadow-xs">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-xs font-bold text-slate-500 mr-2 flex items-center gap-1">
+                    <Filter className="w-3.5 h-3.5" /> Status:
+                  </span>
+                  {(['ALL', 'PENDING', 'APPROVED', 'REJECTED'] as const).map((st) => (
+                    <button
+                      key={st}
+                      onClick={() => setRegFilter(st)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                        regFilter === st
+                          ? 'bg-slate-900 text-white shadow-xs'
+                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                      }`}
+                    >
+                      <span>
+                        {st === 'ALL'
+                          ? 'All Requests'
+                          : st === 'PENDING'
+                          ? 'Pending'
+                          : st === 'APPROVED'
+                          ? 'Approved'
+                          : 'Rejected'}
+                      </span>
+                      <span
+                        className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${
+                          regFilter === st
+                            ? 'bg-white/20 text-white'
+                            : st === 'PENDING' && pendingRegsCount > 0
+                            ? 'bg-amber-500 text-white'
+                            : 'bg-slate-200 text-slate-700'
+                        }`}
+                      >
+                        {st === 'ALL'
+                          ? regularizations.length
+                          : st === 'PENDING'
+                          ? pendingRegsCount
+                          : st === 'APPROVED'
+                          ? approvedRegsCount
+                          : rejectedRegsCount}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+
+                {/* 1-Click Approve All Pending Button */}
+                {isAdmin && pendingRegsCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleApproveAllPending}
+                    disabled={bulkRegSubmitting}
+                    className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-extrabold text-xs shadow-md transition-all disabled:opacity-50 cursor-pointer self-start sm:self-auto shrink-0"
+                    title="Approve all pending regularization requests matching your current filter in one single click"
+                  >
+                    {bulkRegSubmitting ? (
+                      <Loader2 className="w-4 h-4 animate-spin text-white" />
+                    ) : (
+                      <CheckCheck className="w-4 h-4 text-emerald-100" />
+                    )}
+                    <span>
+                      Approve All {filteredPendingCount > 0 ? `(${filteredPendingCount} Pending)` : 'Pending'}
+                    </span>
+                  </button>
+                )}
+              </div>
+
+              {/* Floating / Sticky Bulk Selection Bar */}
+              {selectedRegIds.length > 0 && (
+                <div className="p-3.5 rounded-2xl bg-slate-900 text-white flex flex-wrap items-center justify-between gap-3 shadow-xl animate-fade-in border border-slate-800">
+                  <div className="flex items-center gap-2.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping" />
+                    <span className="font-bold text-xs text-slate-100">
+                      {selectedRegIds.length} request{selectedRegIds.length > 1 ? 's' : ''} selected
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={() => handleBulkReviewRegularizations('APPROVED')}
+                      disabled={bulkRegSubmitting}
+                      className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-xs flex items-center gap-1.5 transition-all disabled:opacity-50 cursor-pointer"
+                    >
+                      {bulkRegSubmitting ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <Check className="w-3.5 h-3.5 text-emerald-100" />
+                      )}
+                      <span>Approve Selected ({selectedRegIds.length})</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleBulkReviewRegularizations('REJECTED')}
+                      disabled={bulkRegSubmitting}
+                      className="px-3.5 py-1.5 rounded-xl bg-rose-600/90 hover:bg-rose-600 text-white font-bold text-xs shadow-xs flex items-center gap-1.5 transition-all disabled:opacity-50 cursor-pointer"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                      <span>Reject Selected</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setSelectedRegIds([])}
+                      className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition-all cursor-pointer"
+                    >
+                      Deselect All
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Regularizations Table */}
@@ -1885,15 +2278,31 @@ function AttendanceContent() {
                       : 'Review and approve time adjustment requests submitted by your team members.'}
                   </p>
                 </div>
-                <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
-                  {regularizations.length} Items
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
+                    Showing {filteredRegularizations.length} of {regularizations.length} Requests
+                  </span>
+                </div>
               </div>
 
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs text-slate-700">
                   <thead className="bg-slate-50 uppercase font-semibold text-[10px] text-slate-500 tracking-wider border-b border-slate-200">
                     <tr>
+                      {isAdmin && (
+                        <th className="w-10 px-4 py-3.5 text-center">
+                          <input
+                            type="checkbox"
+                            checked={
+                              selectedRegIds.length === filteredRegularizations.length &&
+                              filteredRegularizations.length > 0
+                            }
+                            onChange={handleToggleSelectAllRegs}
+                            className="w-3.5 h-3.5 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                            title="Select / Deselect all visible requests"
+                          />
+                        </th>
+                      )}
                       <th className="px-6 py-3.5">Employee</th>
                       <th className="px-6 py-3.5">Attendance Date</th>
                       <th className="px-6 py-3.5">Requested Hours</th>
@@ -1904,87 +2313,138 @@ function AttendanceContent() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200">
-                    {regularizations.length === 0 ? (
+                    {filteredRegularizations.length === 0 ? (
                       <tr>
-                        <td colSpan={7} className="px-6 py-10 text-center text-slate-400">
+                        <td colSpan={isAdmin ? 8 : 7} className="px-6 py-10 text-center text-slate-400">
                           <div className="flex flex-col items-center justify-center space-y-2">
                             <History className="w-8 h-8 text-slate-300" />
-                            <span>No regularization requests submitted yet.</span>
+                            <span>
+                              {regularizations.length === 0
+                                ? 'No regularization requests submitted yet.'
+                                : 'No regularization requests match your active filters.'}
+                            </span>
+                            {regularizations.length > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setRegSearchQuery('');
+                                  setRegEmployeeFilter('');
+                                  setRegMonthFilter('');
+                                  setRegFilter('ALL');
+                                }}
+                                className="text-xs text-emerald-600 font-bold hover:underline cursor-pointer"
+                              >
+                                Clear all filters
+                              </button>
+                            )}
                           </div>
                         </td>
                       </tr>
                     ) : (
-                      regularizations
-                        .filter((r) => {
-                          if (regFilter === 'PENDING') return r.status === 'PENDING';
-                          if (regFilter === 'APPROVED') return r.status === 'APPROVED';
-                          if (regFilter === 'REJECTED') return r.status === 'REJECTED';
-                          return true;
-                        })
-                        .map((reg) => (
-                          <tr key={reg.id} className="hover:bg-slate-50/80 transition-colors">
-                            <td className="px-6 py-4 font-bold text-slate-900">{reg.employeeName}</td>
-                            <td className="px-6 py-4 font-mono font-semibold text-emerald-800">
-                              {reg.attendanceDate}
+                      filteredRegularizations.map((reg) => (
+                        <tr
+                          key={reg.id}
+                          className={`hover:bg-slate-50/80 transition-colors ${
+                            reg.status === 'PENDING' ? 'bg-amber-50/30' : ''
+                          }`}
+                        >
+                          {isAdmin && (
+                            <td className="w-10 px-4 py-4 text-center">
+                              <input
+                                type="checkbox"
+                                checked={selectedRegIds.includes(reg.id)}
+                                onChange={() => handleToggleSelectRegRow(reg.id)}
+                                className="w-3.5 h-3.5 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                              />
                             </td>
-                            <td className="px-6 py-4 font-mono">
-                              {reg.requestedClockIn} - {reg.requestedClockOut} (
-                              {getRequestedHours(reg.requestedClockIn, reg.requestedClockOut)})
-                            </td>
-                            <td className="px-6 py-4 text-slate-600 max-w-xs truncate">{reg.reason}</td>
-                            <td className="px-6 py-4 text-slate-500">
-                              {reg.managerName || 'Reporting Lead'}
-                            </td>
-                            <td className="px-6 py-4">
-                              <span
-                                className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
-                                  reg.status === 'APPROVED'
-                                    ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-                                    : reg.status === 'REJECTED'
-                                    ? 'bg-rose-50 text-rose-800 border border-rose-200'
-                                    : 'bg-amber-50 text-amber-800 border border-amber-200'
-                                }`}
-                              >
-                                {reg.status}
-                              </span>
-                            </td>
-                            <td className="px-6 py-4 text-right">
-                              <div className="flex items-center justify-end gap-1.5">
-                                {isAdmin && reg.status === 'PENDING' && (
-                                  <>
-                                    <button
-                                      onClick={() => {
-                                        setReviewingReg(reg);
-                                        setReviewAction('APPROVED');
-                                      }}
-                                      className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] shadow-xs cursor-pointer"
-                                    >
-                                      Approve
-                                    </button>
-                                    <button
-                                      onClick={() => {
-                                        setReviewingReg(reg);
-                                        setReviewAction('REJECTED');
-                                      }}
-                                      className="px-2.5 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold text-[11px] cursor-pointer"
-                                    >
-                                      Reject
-                                    </button>
-                                  </>
-                                )}
-                                {reg.status === 'PENDING' && (isAdmin || (currentEmp && reg.employeeId === currentEmp.id)) && (
+                          )}
+                          <td className="px-6 py-4 font-bold text-slate-900">{reg.employeeName}</td>
+                          <td className="px-6 py-4 font-mono font-semibold text-emerald-800">
+                            {reg.attendanceDate}
+                          </td>
+                          <td className="px-6 py-4 font-mono">
+                            {reg.requestedClockIn} - {reg.requestedClockOut} (
+                            {getRequestedHours(reg.requestedClockIn, reg.requestedClockOut)})
+                          </td>
+                          <td className="px-6 py-4 text-slate-600 max-w-xs truncate" title={reg.reason}>
+                            {reg.reason}
+                          </td>
+                          <td className="px-6 py-4 text-slate-500">
+                            {reg.managerName || 'Reporting Lead'}
+                          </td>
+                          <td className="px-6 py-4">
+                            <span
+                              className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+                                reg.status === 'APPROVED'
+                                  ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                                  : reg.status === 'REJECTED'
+                                  ? 'bg-rose-50 text-rose-800 border border-rose-200'
+                                  : 'bg-amber-50 text-amber-800 border border-amber-200'
+                              }`}
+                            >
+                              {reg.status}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 text-right">
+                            <div className="flex items-center justify-end gap-1.5">
+                              {isAdmin && reg.status === 'PENDING' && (
+                                <>
+                                  {/* 1-Click Direct Inline Approve */}
                                   <button
-                                    onClick={() => handleWithdrawRegularization(reg.id)}
-                                    className="p-1.5 rounded-lg bg-slate-100 hover:bg-rose-100 text-slate-500 hover:text-rose-700 border border-slate-200 hover:border-rose-300 transition-colors cursor-pointer"
-                                    title="Withdraw Regularization Request"
+                                    onClick={() => handleQuickApproveInline(reg)}
+                                    disabled={inlineApprovingId === reg.id}
+                                    className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] shadow-xs cursor-pointer flex items-center gap-1 transition-all disabled:opacity-50"
+                                    title="Approve immediately in 1-click"
                                   >
-                                    <Trash2 className="w-3.5 h-3.5" />
+                                    {inlineApprovingId === reg.id ? (
+                                      <Loader2 className="w-3 h-3 animate-spin" />
+                                    ) : (
+                                      <Check className="w-3 h-3" />
+                                    )}
+                                    <span>Approve</span>
                                   </button>
-                                )}
-                              </div>
-                            </td>
-                          </tr>
-                        ))
+
+                                  {/* 1-Click Direct Inline Reject */}
+                                  <button
+                                    onClick={() => handleQuickRejectInline(reg)}
+                                    disabled={inlineRejectingId === reg.id}
+                                    className="px-2.5 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold text-[11px] cursor-pointer flex items-center gap-1 transition-all disabled:opacity-50"
+                                    title="Reject request"
+                                  >
+                                    {inlineRejectingId === reg.id ? (
+                                      <Loader2 className="w-3 h-3 animate-spin" />
+                                    ) : (
+                                      <X className="w-3 h-3" />
+                                    )}
+                                    <span>Reject</span>
+                                  </button>
+
+                                  {/* Review with custom comments modal */}
+                                  <button
+                                    onClick={() => {
+                                      setReviewingReg(reg);
+                                      setReviewAction('APPROVED');
+                                    }}
+                                    className="p-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 border border-slate-200 transition-colors cursor-pointer"
+                                    title="Add custom manager comments before approving/rejecting"
+                                  >
+                                    <Edit2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </>
+                              )}
+                              {reg.status === 'PENDING' && (isAdmin || (currentEmp && reg.employeeId === currentEmp.id)) && (
+                                <button
+                                  onClick={() => handleWithdrawRegularization(reg.id)}
+                                  className="p-1.5 rounded-lg bg-slate-100 hover:bg-rose-100 text-slate-500 hover:text-rose-700 border border-slate-200 hover:border-rose-300 transition-colors cursor-pointer"
+                                  title="Withdraw Regularization Request"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ))
                     )}
                   </tbody>
                 </table>

@@ -51,8 +51,13 @@ export class SupabaseStore {
       SupabaseStore.cache.clear();
       return;
     }
+    const clean = tenantIdOrSlug.replace(/^tenant-/, '');
     for (const key of SupabaseStore.cache.keys()) {
-      if (key.includes(tenantIdOrSlug)) {
+      if (
+        key.includes(tenantIdOrSlug) ||
+        key.includes(clean) ||
+        (clean && key.includes(`tenant-${clean}`))
+      ) {
         SupabaseStore.cache.delete(key);
       }
     }
@@ -1225,10 +1230,13 @@ export class SupabaseStore {
     if (!supabase) return null;
 
     try {
+      const clean = tenantId.replace(/^tenant-/, '');
+      const tenantIds = Array.from(new Set([tenantId, clean, `tenant-${clean}`].filter(Boolean)));
+
       const { data, error } = await supabase
         .from('audit_logs')
         .select('*')
-        .eq('tenant_id', tenantId)
+        .in('tenant_id', tenantIds)
         .eq('resource', 'regularization')
         .order('timestamp', { ascending: false });
 
@@ -1310,6 +1318,100 @@ export class SupabaseStore {
       return true;
     } catch (e) {
       console.warn('Supabase saveRegularization exception:', e);
+      return false;
+    }
+  }
+
+  public static async saveRegularizationsBulk(regs: RegularizationRequest[]): Promise<boolean> {
+    const supabase = getSupabaseAdmin();
+    if (!supabase || regs.length === 0) return false;
+
+    const tenantIds = new Set<string>();
+    const rows = regs.map((reg) => {
+      tenantIds.add(reg.tenantId);
+      return {
+        id: reg.id,
+        tenant_id: reg.tenantId,
+        actor_email: `${reg.employeeId}@goodwin.local`,
+        actor_role: 'EMPLOYEE',
+        action:
+          reg.status === 'APPROVED'
+            ? 'REGULARIZATION_APPROVED'
+            : reg.status === 'REJECTED'
+            ? 'REGULARIZATION_REJECTED'
+            : 'REGULARIZATION_REQUEST',
+        resource: 'regularization',
+        resource_id: reg.id,
+        details: {
+          id: reg.id,
+          tenantId: reg.tenantId,
+          employeeId: reg.employeeId,
+          employeeName: reg.employeeName,
+          attendanceDate: reg.attendanceDate,
+          requestedClockIn: reg.requestedClockIn,
+          requestedClockOut: reg.requestedClockOut,
+          reason: reg.reason,
+          status: reg.status,
+          requestedAt: reg.requestedAt,
+          reviewedBy: reg.reviewedBy,
+          managerId: reg.managerId,
+          managerName: reg.managerName,
+          comment: reg.comment
+        },
+        timestamp: new Date().toISOString()
+      };
+    });
+
+    tenantIds.forEach((tId) => SupabaseStore.invalidate(tId));
+
+    try {
+      const { error } = await supabase.from('audit_logs').upsert(rows);
+      if (error) {
+        console.warn('Supabase saveRegularizationsBulk error:', error.message);
+        return false;
+      }
+      return true;
+    } catch (e) {
+      console.warn('Supabase saveRegularizationsBulk exception:', e);
+      return false;
+    }
+  }
+
+  public static async saveAttendanceBulk(records: AttendanceRecord[]): Promise<boolean> {
+    const supabase = getSupabaseAdmin();
+    if (!supabase || records.length === 0) return false;
+
+    const tenantIds = new Set<string>();
+    const rows = records.map((rec) => {
+      tenantIds.add(rec.tenantId);
+      return {
+        id: rec.id,
+        tenant_id: rec.tenantId,
+        employee_id: rec.employeeId,
+        employee_name: rec.employeeName,
+        date: rec.date,
+        clock_in_time: rec.clockInTime || null,
+        clock_out_time: rec.clockOutTime || null,
+        working_hours: rec.workingHours ?? 0,
+        status: rec.status,
+        notes: rec.notes || null,
+        shift_name: rec.shiftName || null
+      };
+    });
+
+    tenantIds.forEach((tId) => SupabaseStore.invalidate(tId));
+
+    try {
+      const { error } = await supabase
+        .from('attendance')
+        .upsert(rows, { onConflict: 'tenant_id,employee_id,date' });
+      if (error) {
+        console.warn('Supabase saveAttendanceBulk error:', error.message);
+        return false;
+      }
+      return true;
+    } catch (e) {
+      console.warn('Supabase saveAttendanceBulk exception:', e);
       return false;
     }
   }
